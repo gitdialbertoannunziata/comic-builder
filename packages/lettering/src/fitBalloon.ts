@@ -20,6 +20,13 @@ export interface FitBalloonInput {
   maxHeightPx: number;
   minFontScale?: number;
   scaleStep?: number;
+  /**
+   * Margine di sicurezza oltre `padding`, come frazione di `fontSizePx` per lato
+   * (`project.lettering.safety_margin_ratio`, §5.2 — default 0.15 se il progetto
+   * non lo specifica). Assorbe lo scarto fra la misurazione a riga intera e il
+   * render spezzato in più `<tspan>` ai confini dell'enfasi.
+   */
+  safetyMarginRatio?: number;
 }
 
 export interface FitBalloonResult {
@@ -32,6 +39,9 @@ export interface FitBalloonResult {
   balloonHeight: number;
   /** false se anche al `minFontScale` il testo eccede `maxHeightPx` (§8.1: mai testo che esce dal balloon senza avviso). */
   fits: boolean;
+  /** Padding e margine di sicurezza (px) effettivamente applicati per lato, incluso il default se il chiamante non li ha specificati. */
+  paddingPx: number;
+  safetyMarginPx: number;
 }
 
 function computeBlockHeight(lines: Line[], fontSizePx: number, lineHeight: number): number {
@@ -49,8 +59,10 @@ function computeBlockHeight(lines: Line[], fontSizePx: number, lineHeight: numbe
  * assorbe lo scarto qualunque sia il motore che disegna l'SVG finale, così il
  * testo non tocca mai il contorno (verificato visivamente con resvg).
  */
-function renderSafetyMarginPx(fontSizePx: number): number {
-  return fontSizePx * 0.15;
+const DEFAULT_SAFETY_MARGIN_RATIO = 0.15;
+
+function renderSafetyMarginPx(fontSizePx: number, ratio: number): number {
+  return fontSizePx * ratio;
 }
 
 /**
@@ -61,6 +73,7 @@ function renderSafetyMarginPx(fontSizePx: number): number {
 export function fitBalloonText(input: FitBalloonInput): FitBalloonResult {
   const minScale = input.minFontScale ?? 0.6;
   const step = input.scaleStep ?? 0.05;
+  const marginRatio = input.safetyMarginRatio ?? DEFAULT_SAFETY_MARGIN_RATIO;
 
   let scale = input.fontScale;
   let lines: Line[] = [];
@@ -74,7 +87,7 @@ export function fitBalloonText(input: FitBalloonInput): FitBalloonResult {
     lines = wrapText(input.runs, input.font, fontSizePx, input.maxWidthPx);
     width = blockWidth(lines, input.font, fontSizePx);
     height = computeBlockHeight(lines, fontSizePx, input.lineHeight);
-    margin = renderSafetyMarginPx(fontSizePx);
+    margin = renderSafetyMarginPx(fontSizePx, marginRatio);
 
     const totalHeight = height + input.padding * 2 + margin * 2;
     if (totalHeight <= input.maxHeightPx || scale <= minScale) break;
@@ -92,5 +105,7 @@ export function fitBalloonText(input: FitBalloonInput): FitBalloonResult {
     balloonWidth: width + (input.padding + margin) * 2,
     balloonHeight: height + (input.padding + margin) * 2,
     fits,
+    paddingPx: input.padding,
+    safetyMarginPx: margin,
   };
 }

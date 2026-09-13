@@ -53,6 +53,15 @@ export const LetteringConfigSchema = z.object({
   padding: z.number().nonnegative(),
   max_width_ratio: z.number().positive().max(1),
   tail_width: z.number().positive(),
+  /**
+   * Margine oltre il `padding`, come frazione di `fontSizePx` per lato: assorbe
+   * lo scarto fra il testo misurato come riga unica e il render, che lo spezza
+   * in più `<tspan>` ai confini dell'enfasi — la maggior parte dei motori SVG
+   * non applica il kerning fra `<tspan>` diversi (verificato con resvg). Non
+   * un dettaglio nascosto del renderer: dichiarato qui con un default, come
+   * gli altri parametri del lettering (§5.2).
+   */
+  safety_margin_ratio: z.number().min(0).max(1).default(0.15),
 });
 export type LetteringConfig = z.infer<typeof LetteringConfigSchema>;
 

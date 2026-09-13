@@ -56,12 +56,22 @@ describe("fitBalloonText (§8.1)", () => {
 
   it("balloonWidth e balloonHeight includono padding e margine di sicurezza su entrambi i lati", () => {
     const result = fitBalloonText(baseInput({ maxHeightPx: 300, padding: 20 }));
-    // Margine di sicurezza = fontSizePx * 0.15 per lato (oltre al padding), vedi
-    // renderSafetyMarginPx in fitBalloon.ts: assorbe lo scarto fra la misurazione
-    // a riga intera e il render spezzato in più <tspan> ai confini dell'enfasi.
+    // Nessun safetyMarginRatio esplicito: si applica il default dichiarato
+    // (project.lettering.safety_margin_ratio, §5.2) — non un numero nascosto nel renderer.
     const margin = result.fontSizePx * 0.15;
     const inset = (20 + margin) * 2;
+    expect(result.paddingPx).toBe(20);
+    expect(result.safetyMarginPx).toBeCloseTo(margin, 5);
     expect(result.balloonWidth).toBeCloseTo(result.blockWidth + inset, 5);
     expect(result.balloonHeight).toBeCloseTo(result.blockHeight + inset, 5);
+  });
+
+  it("rispetta un safetyMarginRatio esplicito diverso dal default", () => {
+    const custom = fitBalloonText(baseInput({ maxHeightPx: 300, safetyMarginRatio: 0.3 }));
+    const zero = fitBalloonText(baseInput({ maxHeightPx: 300, safetyMarginRatio: 0 }));
+    expect(custom.safetyMarginPx).toBeCloseTo(custom.fontSizePx * 0.3, 5);
+    expect(zero.safetyMarginPx).toBe(0);
+    expect(zero.balloonWidth).toBeCloseTo(zero.blockWidth + zero.paddingPx * 2, 5);
+    expect(custom.balloonWidth).toBeGreaterThan(zero.balloonWidth);
   });
 });

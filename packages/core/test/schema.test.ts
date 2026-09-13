@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PageSchema } from "../src/schema/page.js";
-import { ProjectSchema } from "../src/schema/project.js";
+import { ProjectSchema, LetteringConfigSchema } from "../src/schema/project.js";
 import { ScenesDocSchema } from "../src/schema/scenes.js";
 import { ChaptersDocSchema } from "../src/schema/chapters.js";
 import { samplePage } from "../src/fixtures/sample-page.js";
@@ -75,6 +75,33 @@ describe("ProjectSchema", () => {
 
     expect(project.targets).toHaveLength(3);
     expect(project.targets[0]!.primary).toBe(true);
+  });
+});
+
+describe("LetteringConfigSchema — safety_margin_ratio (§8.1)", () => {
+  it("applica il default 0.15 se il progetto non lo specifica", () => {
+    const lettering = LetteringConfigSchema.parse({
+      font_family: "OpenComicSans",
+      base_size_px: 26,
+      line_height: 1.35,
+      padding: 12,
+      max_width_ratio: 0.62,
+      tail_width: 10,
+    });
+    expect(lettering.safety_margin_ratio).toBe(0.15);
+  });
+
+  it("rispetta un valore esplicito diverso dal default", () => {
+    const lettering = LetteringConfigSchema.parse({
+      font_family: "OpenComicSans",
+      base_size_px: 26,
+      line_height: 1.35,
+      padding: 12,
+      max_width_ratio: 0.62,
+      tail_width: 10,
+      safety_margin_ratio: 0.3,
+    });
+    expect(lettering.safety_margin_ratio).toBe(0.3);
   });
 });
 

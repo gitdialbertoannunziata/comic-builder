@@ -3,6 +3,7 @@ import { loadSampleFont, fitBalloonText, type LoadedFont } from "@comic-builder/
 import { samplePage } from "../src/fixtures/sample-page.js";
 import { resolvePageLayout, resolveStripFromPage } from "../src/layout/resolveLayout.js";
 import { renderPageSvg, renderStripSvg } from "../src/render/renderSvg.js";
+import { LetteringConfigSchema } from "../src/schema/project.js";
 import type { Box } from "../src/layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "../src/render/types.js";
 import type { StripLayout } from "../src/schema/page.js";
@@ -11,14 +12,16 @@ const PAGE_W = 1600;
 const PAGE_H = 2400;
 const MARGIN = 56;
 
-const LETTERING = {
+// safety_margin_ratio non specificato: prende il default dichiarato nello
+// schema (§5.2), non un numero nascosto nel renderer o nel pacchetto lettering.
+const LETTERING = LetteringConfigSchema.parse({
   font_family: "ComicNeue",
   base_size_px: 26,
   line_height: 1.35,
   padding: 12,
   max_width_ratio: 0.62,
   tail_width: 10,
-};
+});
 
 function computeFits(font: LoadedFont, boxes: Map<string, Box>): Map<string, LetteringFit> {
   const fits = new Map<string, LetteringFit>();
@@ -33,6 +36,7 @@ function computeFits(font: LoadedFont, boxes: Map<string, Box>): Map<string, Let
         fontScale: balloon.font_scale,
         lineHeight: LETTERING.line_height,
         padding: LETTERING.padding,
+        safetyMarginRatio: LETTERING.safety_margin_ratio,
         maxWidthPx: box.width * LETTERING.max_width_ratio,
         maxHeightPx: box.height * 0.9,
       });
