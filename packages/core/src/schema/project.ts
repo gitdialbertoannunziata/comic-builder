@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IdSchema, ReadingDirectionSchema, TextDirectionSchema } from "./common.js";
+import { BalloonTypeSchema } from "./balloon.js";
 
 const PageTargetSchema = z.object({
   id: z.string(),
@@ -71,6 +72,38 @@ export const StyleConfigSchema = z.object({
   negative: z.array(z.string()).default([]),
 });
 
+/** Aspetto grafico di un balloon: stroke, riempimento, raggio degli angoli, tratteggio. */
+export const BalloonVisualStyleSchema = z.object({
+  stroke: z.string().default("black"),
+  stroke_width: z.number().nonnegative().default(2),
+  fill: z.string().default("white"),
+  /** Capato a metà altezza dal renderer, come oggi: qui è il raggio "a riposo". */
+  corner_radius_px: z.number().nonnegative().default(18),
+  /** `stroke-dasharray` SVG, o null per un contorno pieno. */
+  dash: z.string().nullable().default(null),
+});
+export type BalloonVisualStyle = z.infer<typeof BalloonVisualStyleSchema>;
+
+/**
+ * Stile grafico dei balloon (§8.2): uno stile di base più override per i tipi
+ * enum-chiusi di `BalloonTypeSchema` — stessa precedenza progetto→pannello già
+ * usata per lo stile dell'arte (§9.1), applicata qui al solo livello progetto.
+ * Dichiarato in project.json, non costanti nascoste nel renderer: chi vuole un
+ * altro tratto (più spesso, un altro colore, tratteggi diversi) lo cambia qui.
+ */
+export const BalloonStyleSchema = z.object({
+  base: BalloonVisualStyleSchema.default({}),
+  by_type: z
+    .record(BalloonTypeSchema, BalloonVisualStyleSchema.partial())
+    .default({
+      whisper: { dash: "6 4" },
+      thought: { dash: "2 4" },
+      shout: { stroke_width: 4 },
+      caption: { corner_radius_px: 4 },
+    }),
+});
+export type BalloonStyle = z.infer<typeof BalloonStyleSchema>;
+
 export const FontDeclarationSchema = z.object({
   family: z.string(),
   path: z.string(),
@@ -91,6 +124,7 @@ export const ProjectSchema = z.object({
   page: z.object({ margin: MarginSchema }),
   lettering: LetteringConfigSchema,
   style: StyleConfigSchema,
+  balloon_style: BalloonStyleSchema.default({}),
   fonts: z.array(FontDeclarationSchema).default([]),
   chapters: z.string(),
   scenes: z.string(),

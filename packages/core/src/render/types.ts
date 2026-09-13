@@ -1,4 +1,5 @@
 import type { Emphasis } from "../schema/balloon.js";
+import type { BalloonStyle } from "../schema/project.js";
 
 /**
  * Risultato del fitting testo di un balloon, calcolato a monte (dal pacchetto
@@ -22,4 +23,6 @@ export interface RenderConfig {
   lineHeight: number;
   padding: number;
   tailWidthPx: number;
+  /** Stile grafico dei balloon (§8.2), dichiarato in `project.balloon_style` — non costanti nel renderer. */
+  balloonStyle: BalloonStyle;
 }

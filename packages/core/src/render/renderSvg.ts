@@ -2,6 +2,7 @@ import type { Page } from "../schema/page.js";
 import type { StripLayout } from "../schema/page.js";
 import type { Panel } from "../schema/panel.js";
 import type { Balloon, BalloonType } from "../schema/balloon.js";
+import type { BalloonStyle, BalloonVisualStyle } from "../schema/project.js";
 import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
 
@@ -20,22 +21,21 @@ function renderPanelBorder(panel: Panel, box: Box): string {
 }
 
 /**
- * Stroke della forma del balloon per tipo (§8.2). Approssimazione volutamente
- * semplice per F0: whisper/thought si distinguono col tratteggio, shout con
- * uno stroke più spesso. Forme a nuvoletta/stella complete restano un
- * affinamento successivo, non un presupposto di questa fase.
+ * Stile effettivo di un tipo di balloon: base + override dichiarati in
+ * `project.balloon_style.by_type` (§8.2) — non più costanti nel renderer.
+ * Approssimazione volutamente semplice per F0: whisper/thought si distinguono
+ * col tratteggio, shout con uno stroke più spesso. Forme a nuvoletta/stella
+ * complete restano un affinamento successivo, non un presupposto di questa fase.
  */
-function balloonStrokeAttrs(type: BalloonType): string {
-  switch (type) {
-    case "whisper":
-      return ' stroke-dasharray="6 4"';
-    case "thought":
-      return ' stroke-dasharray="2 4"';
-    case "shout":
-      return ' stroke-width="4"';
-    default:
-      return "";
-  }
+function resolveBalloonVisual(style: BalloonStyle, type: BalloonType): BalloonVisualStyle {
+  const override = style.by_type[type];
+  return {
+    stroke: override?.stroke ?? style.base.stroke,
+    stroke_width: override?.stroke_width ?? style.base.stroke_width,
+    fill: override?.fill ?? style.base.fill,
+    corner_radius_px: override?.corner_radius_px ?? style.base.corner_radius_px,
+    dash: override?.dash ?? style.base.dash,
+  };
 }
 
 function hasTail(type: BalloonType): boolean {
@@ -60,7 +60,14 @@ function ellipseBoundaryPoint(center: Point, rx: number, ry: number, target: Poi
   return { x: center.x + rx * Math.cos(angle), y: center.y + ry * Math.sin(angle) };
 }
 
-function renderTail(center: Point, rx: number, ry: number, target: Point, tailWidthPx: number): string {
+function renderTail(
+  center: Point,
+  rx: number,
+  ry: number,
+  target: Point,
+  tailWidthPx: number,
+  visual: BalloonVisualStyle,
+): string {
   const edge = ellipseBoundaryPoint(center, rx, ry, target);
   const dx = target.x - edge.x;
   const dy = target.y - edge.y;
@@ -69,7 +76,7 @@ function renderTail(center: Point, rx: number, ry: number, target: Point, tailWi
   const perpY = (dx / len) * (tailWidthPx / 2);
   const base1 = { x: edge.x + perpX, y: edge.y + perpY };
   const base2 = { x: edge.x - perpX, y: edge.y - perpY };
-  return `<polygon points="${base1.x},${base1.y} ${base2.x},${base2.y} ${target.x},${target.y}" fill="white" stroke="black" stroke-width="2"/>`;
+  return `<polygon points="${base1.x},${base1.y} ${base2.x},${base2.y} ${target.x},${target.y}" fill="${escapeXml(visual.fill)}" stroke="${escapeXml(visual.stroke)}" stroke-width="${visual.stroke_width}"/>`;
 }
 
 function renderTextLines(fit: LetteringFit, centerX: number, topY: number, lineHeight: number): string {
@@ -104,14 +111,17 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
   const centerX = x + w / 2;
   const centerY = y + h / 2;
 
+  const visual = resolveBalloonVisual(config.balloonStyle, balloon.type);
+
   // Rettangolo arrotondato invece di un'ellisse: un'ellisse inscritta nel
   // rettangolo testo+padding è più stretta del rettangolo ai bordi e taglia
   // il testo su una riga larga (verificato visivamente con resvg). Il
   // rettangolo arrotondato garantisce invece di contenere sempre il blocco.
   let shape = "";
   if (hasContainer(balloon.type)) {
-    const radius = balloon.type === "caption" ? 4 : Math.min(h / 2, config.padding * 1.5);
-    shape = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" ry="${radius}" fill="white" stroke="black" stroke-width="2"${balloon.type === "caption" ? "" : balloonStrokeAttrs(balloon.type)}/>`;
+    const radius = Math.min(h / 2, visual.corner_radius_px);
+    const dashAttr = visual.dash ? ` stroke-dasharray="${escapeXml(visual.dash)}"` : "";
+    shape = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" ry="${radius}" fill="${escapeXml(visual.fill)}" stroke="${escapeXml(visual.stroke)}" stroke-width="${visual.stroke_width}"${dashAttr}/>`;
   }
 
   let tail = "";
@@ -121,7 +131,7 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
       x: containerBox.x + targetNorm.x * containerBox.width,
       y: containerBox.y + targetNorm.y * containerBox.height,
     };
-    tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx);
+    tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx, visual);
   }
 
   // Centrato nell'altezza del box, non `y + padding`: il box può includere un

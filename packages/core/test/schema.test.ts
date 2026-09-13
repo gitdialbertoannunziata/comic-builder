@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PageSchema } from "../src/schema/page.js";
-import { ProjectSchema, LetteringConfigSchema } from "../src/schema/project.js";
+import { ProjectSchema, LetteringConfigSchema, BalloonStyleSchema } from "../src/schema/project.js";
 import { ScenesDocSchema } from "../src/schema/scenes.js";
 import { ChaptersDocSchema } from "../src/schema/chapters.js";
 import { samplePage } from "../src/fixtures/sample-page.js";
@@ -102,6 +102,30 @@ describe("LetteringConfigSchema — safety_margin_ratio (§8.1)", () => {
       safety_margin_ratio: 0.3,
     });
     expect(lettering.safety_margin_ratio).toBe(0.3);
+  });
+});
+
+describe("BalloonStyleSchema (§8.2)", () => {
+  it("applica i default dichiarati se il progetto non specifica nulla", () => {
+    const style = BalloonStyleSchema.parse({});
+    expect(style.base).toEqual({ stroke: "black", stroke_width: 2, fill: "white", corner_radius_px: 18, dash: null });
+    expect(style.by_type.whisper).toEqual({ dash: "6 4" });
+    expect(style.by_type.thought).toEqual({ dash: "2 4" });
+    expect(style.by_type.shout).toEqual({ stroke_width: 4 });
+    expect(style.by_type.caption).toEqual({ corner_radius_px: 4 });
+    expect(style.by_type.speech).toBeUndefined();
+  });
+
+  it("un override per tipo si somma alla base dichiarata, non la sostituisce", () => {
+    const style = BalloonStyleSchema.parse({
+      base: { stroke: "#2a2a2a", fill: "#fffaf0" },
+      by_type: { shout: { stroke: "#c23b3b" } },
+    });
+    expect(style.base.stroke).toBe("#2a2a2a");
+    expect(style.base.fill).toBe("#fffaf0");
+    // stroke_width di base resta il default anche con override parziale.
+    expect(style.base.stroke_width).toBe(2);
+    expect(style.by_type.shout).toEqual({ stroke: "#c23b3b" });
   });
 });
 

@@ -3,7 +3,7 @@ import { loadSampleFont, fitBalloonText, type LoadedFont } from "@comic-builder/
 import { samplePage } from "../src/fixtures/sample-page.js";
 import { resolvePageLayout, resolveStripFromPage } from "../src/layout/resolveLayout.js";
 import { renderPageSvg, renderStripSvg } from "../src/render/renderSvg.js";
-import { LetteringConfigSchema } from "../src/schema/project.js";
+import { LetteringConfigSchema, BalloonStyleSchema } from "../src/schema/project.js";
 import type { Box } from "../src/layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "../src/render/types.js";
 import type { StripLayout } from "../src/schema/page.js";
@@ -22,6 +22,10 @@ const LETTERING = LetteringConfigSchema.parse({
   max_width_ratio: 0.62,
   tail_width: 10,
 });
+
+// Anche qui: nessun override, solo i default dichiarati (whisper tratteggiato,
+// thought punteggiato, shout più spesso, caption con raggio piccolo — §8.2).
+const BALLOON_STYLE = BalloonStyleSchema.parse({});
 
 function computeFits(font: LoadedFont, boxes: Map<string, Box>): Map<string, LetteringFit> {
   const fits = new Map<string, LetteringFit>();
@@ -60,6 +64,7 @@ function renderConfig(width: number, height: number): RenderConfig {
     lineHeight: LETTERING.line_height,
     padding: LETTERING.padding,
     tailWidthPx: LETTERING.tail_width,
+    balloonStyle: BALLOON_STYLE,
   };
 }
 
@@ -131,5 +136,69 @@ describe("renderPageSvg / renderStripSvg — golden (§11.4, criterio d'uscita F
     expect(svg.match(/<rect /g)).toHaveLength(7);
     expect(svg.match(/<polygon/g)).toHaveLength(1);
     expect(svg).toMatchSnapshot();
+  });
+});
+
+describe("renderPageSvg — stile grafico dei balloon (§8.2, project.balloon_style)", () => {
+  it("uno stile di base personalizzato arriva fino all'SVG renderizzato", () => {
+    const font = loadSampleFont();
+    const boxes = resolvePageLayout(
+      samplePage.layout.mode === "page"
+        ? samplePage.layout
+        : (() => {
+            throw new Error("fixture non in modalità page");
+          })(),
+      samplePage.panels,
+      PAGE_W - MARGIN * 2,
+      PAGE_H - MARGIN * 2,
+      MARGIN,
+      MARGIN,
+    );
+    const fits = computeFits(font, boxes);
+
+    const customConfig: RenderConfig = {
+      ...renderConfig(PAGE_W, PAGE_H),
+      balloonStyle: BalloonStyleSchema.parse({
+        base: { stroke: "#2a2a2a", stroke_width: 3, fill: "#fffaf0", corner_radius_px: 6 },
+      }),
+    };
+
+    const svg = renderPageSvg(samplePage, boxes, fits, customConfig);
+
+    expect(svg).toContain('fill="#fffaf0"');
+    expect(svg).toContain('stroke="#2a2a2a"');
+    expect(svg).toContain('stroke-width="3"');
+    expect(svg).toContain('rx="6"');
+    // Non tocca il bordo dei pannelli, che resta nero fisso (non fa parte di balloon_style).
+    expect(svg).toContain('stroke="black" stroke-width="3"');
+  });
+
+  it("un override per tipo cambia solo quel tipo, gli altri restano sulla base", () => {
+    const font = loadSampleFont();
+    const boxes = resolvePageLayout(
+      samplePage.layout.mode === "page"
+        ? samplePage.layout
+        : (() => {
+            throw new Error("fixture non in modalità page");
+          })(),
+      samplePage.panels,
+      PAGE_W - MARGIN * 2,
+      PAGE_H - MARGIN * 2,
+      MARGIN,
+      MARGIN,
+    );
+    const fits = computeFits(font, boxes);
+
+    // L'unico balloon della fixture è "speech": un override su "thought" non deve avere effetto.
+    const customConfig: RenderConfig = {
+      ...renderConfig(PAGE_W, PAGE_H),
+      balloonStyle: BalloonStyleSchema.parse({
+        by_type: { thought: { fill: "#e0e0ff" } },
+      }),
+    };
+
+    const svg = renderPageSvg(samplePage, boxes, fits, customConfig);
+    expect(svg).not.toContain("#e0e0ff");
+    expect(svg).toContain('fill="white"');
   });
 });
