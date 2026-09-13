@@ -18,6 +18,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@comic-builder/lettering": "workspace:*",
     "vitest": "^2.1.5"
   }
 }
