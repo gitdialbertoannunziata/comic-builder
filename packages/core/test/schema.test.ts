@@ -3,23 +3,23 @@ import { PageSchema } from "../src/schema/page.js";
 import { ProjectSchema } from "../src/schema/project.js";
 import { ScenesDocSchema } from "../src/schema/scenes.js";
 import { ChaptersDocSchema } from "../src/schema/chapters.js";
-import { ep012p003 } from "../src/fixtures/ep012-p003.js";
+import { samplePage } from "../src/fixtures/sample-page.js";
 
 describe("PageSchema", () => {
   it("accetta la pagina a 6 pannelli scritta a mano", () => {
-    const parsed = PageSchema.parse(ep012p003);
+    const parsed = PageSchema.parse(samplePage);
     expect(parsed.panels).toHaveLength(6);
     expect(parsed.layout.mode).toBe("page");
   });
 
   it("rifiuta un'ancora di balloon fuori da [0,1]", () => {
-    const broken = structuredClone(ep012p003);
+    const broken = structuredClone(samplePage);
     broken.panels[2]!.balloons[0]!.anchor.x = 1.5;
     expect(() => PageSchema.parse(broken)).toThrow();
   });
 
   it("rifiuta un lens_mm fuori dal vocabolario chiuso", () => {
-    const broken = structuredClone(ep012p003) as unknown as { panels: Array<{ camera: { lens_mm: number } }> };
+    const broken = structuredClone(samplePage) as unknown as { panels: Array<{ camera: { lens_mm: number } }> };
     broken.panels[0]!.camera.lens_mm = 50.5;
     expect(() => PageSchema.parse(broken)).toThrow();
   });
@@ -29,8 +29,8 @@ describe("ProjectSchema", () => {
   it("accetta un project.json minimale coerente con §5.2", () => {
     const project = ProjectSchema.parse({
       schema: 1,
-      id: "serie-il-garage",
-      title: "Il garage",
+      id: "sample-series",
+      title: "Serie di prova",
       locale: "it-IT",
       text_direction: "ltr",
       reading_direction: "rtl",
@@ -84,14 +84,14 @@ describe("ScenesDocSchema / ChaptersDocSchema", () => {
       schema: 1,
       scenes: [
         {
-          id: "s014",
+          id: "scene-01",
           title: "Il garage",
-          location: "garage di Marco",
+          location: "garage di Alex",
           time_of_day: "sera",
-          characters: ["marco"],
+          characters: ["alex"],
           beats: [
-            { id: "s014-b1", function: "establish", summary: "Il garage vuoto, polvere controluce" },
-            { id: "s014-b2", function: "reveal", summary: "Marco apre la porta e resta immobile" },
+            { id: "scene-01-b1", function: "establish", summary: "Il garage vuoto, polvere controluce" },
+            { id: "scene-01-b2", function: "reveal", summary: "Alex apre la porta e resta immobile" },
           ],
         },
       ],
@@ -102,12 +102,12 @@ describe("ScenesDocSchema / ChaptersDocSchema", () => {
       schema: 1,
       chapters: [
         {
-          id: "ep012",
-          number: 12,
+          id: "sample-chapter",
+          number: 1,
           title: "Il garage",
           status: "in-production",
           due: "2026-10-02",
-          pages: ["ep012-p001", "ep012-p002", "ep012-p003"],
+          pages: ["sample-page-01", "sample-page-02", "sample-page-03"],
         },
       ],
     });

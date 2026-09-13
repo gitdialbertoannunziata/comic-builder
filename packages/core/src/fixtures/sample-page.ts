@@ -31,7 +31,7 @@ function camera(overrides: Partial<Page["panels"][number]["camera"]> = {}) {
 function basePanel(id: string, area: Page["panels"][number]["area"]) {
   return {
     id,
-    scene_id: "s014",
+    scene_id: "scene-01",
     beat_index: 0,
     area,
     border: { style: "solid" as const, width: 3, radius: 0 },
@@ -47,13 +47,14 @@ function basePanel(id: string, area: Page["panels"][number]["area"]) {
 /**
  * Pagina a 6 pannelli scritta a mano (criterio d'uscita F0, §12): griglia 3x3 con
  * alternanza 1/3 + 2/3 per riga (classic-6, §7.3), che tassella senza buchi né
- * sovrapposizioni non dichiarate.
+ * sovrapposizioni non dichiarate. Id e nomi sono placeholder generici, non
+ * legati all'esempio illustrativo del piano (docs/PLAN.md §5.3-§5.6).
  */
-export const ep012p003: Page = {
+export const samplePage: Page = {
   schema: 1,
-  id: "ep012-p003",
-  chapter_id: "ep012",
-  order: 3,
+  id: "sample-page",
+  chapter_id: "sample-chapter",
+  order: 1,
   spread_with: null,
   layout: {
     mode: "page",
@@ -63,12 +64,12 @@ export const ep012p003: Page = {
     rows: [1, 1, 0.8],
     gutter: { x: 14, y: 18 },
     reading_order: [
-      "ep012-p003-01",
-      "ep012-p003-02",
-      "ep012-p003-03",
-      "ep012-p003-04",
-      "ep012-p003-05",
-      "ep012-p003-06",
+      "sample-page-01",
+      "sample-page-02",
+      "sample-page-03",
+      "sample-page-04",
+      "sample-page-05",
+      "sample-page-06",
     ],
   },
   variants: {
@@ -88,31 +89,31 @@ export const ep012p003: Page = {
   overlays: [],
   panels: [
     {
-      ...basePanel("ep012-p003-01", { col: 0, row: 0, col_span: 1, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-01", { col: 0, row: 0, col_span: 1, row_span: 1, z: 0 }),
       camera: camera({ shot: "LS", angle: "high" }),
       action: "Il garage vuoto, polvere controluce",
       setting: "garage, sera",
     },
     {
-      ...basePanel("ep012-p003-02", { col: 1, row: 0, col_span: 2, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-02", { col: 1, row: 0, col_span: 2, row_span: 1, z: 0 }),
       camera: camera({ shot: "MLS", angle: "eye" }),
-      action: "Marco si avvicina alla porta basculante",
+      action: "Alex si avvicina alla porta basculante",
       setting: "garage, sera",
-      characters: [character("marco", 0.6, "lead", "full-body", "teso")],
+      characters: [character("alex", 0.6, "lead", "full-body", "teso")],
     },
     {
-      ...basePanel("ep012-p003-03", { col: 0, row: 1, col_span: 2, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-03", { col: 0, row: 1, col_span: 2, row_span: 1, z: 0 }),
       camera: camera({ shot: "MS", angle: "low", lighting: "backlit", mood: "tense" }),
-      action: "Marco spinge la porta del garage e si ferma",
+      action: "Alex spinge la porta del garage e si ferma",
       setting: "garage, polvere sospesa, sera",
       props: ["porta basculante", "auto coperta da un telo"],
-      continuity_notes: "giacca strappata al gomito sinistro da ep012-p002",
-      characters: [character("marco", 0.75, "lead", "head-and-torso", "teso")],
+      continuity_notes: "giacca strappata al gomito sinistro dalla pagina precedente",
+      characters: [character("alex", 0.75, "lead", "head-and-torso", "teso")],
       balloons: [
         {
-          id: "ep012-p003-03-b1",
+          id: "sample-page-03-b1",
           type: "speech",
-          speaker: { ref: "marco", visible: true, offscreen_dir: null },
+          speaker: { ref: "alex", visible: true, offscreen_dir: null },
           text: [
             { t: "Non c'è più " },
             { t: "niente", em: "bold" },
@@ -131,24 +132,24 @@ export const ep012p003: Page = {
       ],
     },
     {
-      ...basePanel("ep012-p003-04", { col: 2, row: 1, col_span: 1, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-04", { col: 2, row: 1, col_span: 1, row_span: 1, z: 0 }),
       camera: camera({ shot: "CU", angle: "eye", dof: "shallow" }),
-      action: "Primo piano sugli occhi di Marco",
+      action: "Primo piano sugli occhi di Alex",
       setting: "garage, sera",
-      characters: [character("marco", 0.9, "lead", "head-only", "sorpreso")],
+      characters: [character("alex", 0.9, "lead", "head-only", "sorpreso")],
     },
     {
-      ...basePanel("ep012-p003-05", { col: 0, row: 2, col_span: 1, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-05", { col: 0, row: 2, col_span: 1, row_span: 1, z: 0 }),
       camera: camera({ shot: "INSERT", subject_placement: "none" }),
       action: "Dettaglio: chiave appesa al chiodo, vuota accanto",
       setting: "garage, sera",
     },
     {
-      ...basePanel("ep012-p003-06", { col: 1, row: 2, col_span: 2, row_span: 1, z: 0 }),
+      ...basePanel("sample-page-06", { col: 1, row: 2, col_span: 2, row_span: 1, z: 0 }),
       camera: camera({ shot: "LS", angle: "eye", motion: "static" }),
-      action: "Marco esce lentamente, richiude la porta alle spalle",
+      action: "Alex esce lentamente, richiude la porta alle spalle",
       setting: "garage, sera",
-      characters: [character("marco", 0.5, "lead", "full-body", "rassegnato")],
+      characters: [character("alex", 0.5, "lead", "full-body", "rassegnato")],
     },
   ].map((p) => ({
     prompt: { override: null, negative_override: null },
