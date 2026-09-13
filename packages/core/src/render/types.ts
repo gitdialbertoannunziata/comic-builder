@@ -9,6 +9,8 @@ import type { Emphasis } from "../schema/balloon.js";
 export interface LetteringFit {
   lines: Array<Array<{ text: string; em?: Emphasis }>>;
   fontSizePx: number;
+  /** Altezza del solo blocco di testo, senza padding/margine — serve al renderer per centrarlo nel box. */
+  blockHeight: number;
   balloonWidth: number;
   balloonHeight: number;
 }

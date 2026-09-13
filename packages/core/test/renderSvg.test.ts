@@ -39,6 +39,7 @@ function computeFits(font: LoadedFont, boxes: Map<string, Box>): Map<string, Let
       fits.set(balloon.id, {
         lines: result.lines,
         fontSizePx: result.fontSizePx,
+        blockHeight: result.blockHeight,
         balloonWidth: result.balloonWidth,
         balloonHeight: result.balloonHeight,
       });

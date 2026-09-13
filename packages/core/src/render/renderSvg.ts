@@ -124,7 +124,10 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
     tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx);
   }
 
-  const textTopY = y + config.padding;
+  // Centrato nell'altezza del box, non `y + padding`: il box può includere un
+  // margine di sicurezza oltre al padding dichiarato (§8.1, pacchetto lettering),
+  // e centrare sulla differenza reale lo distribuisce simmetricamente in ogni caso.
+  const textTopY = y + (h - fit.blockHeight) / 2;
   const text = `<text x="${centerX}" y="${textTopY}" font-family="${escapeXml(config.fontFamily)}" font-size="${fit.fontSizePx}" text-anchor="middle">${renderTextLines(fit, centerX, textTopY, config.lineHeight)}</text>`;
 
   return `${tail}${shape}${text}`;
