@@ -180,8 +180,15 @@ describe("Layer bozza nel render", () => {
       const fit = fits.get(panel.id);
       const box = boxes.get(panel.id)!;
       if (!fit) continue;
-      // Il blocco misurato deve stare nella larghezza utile del pannello.
-      expect(fit.balloonWidth).toBeLessThanOrEqual(box.width - DRAFT_STYLE.padding * 2 + 1);
+
+      // Non basta "entra nella larghezza utile": serve margine vero. Quel che
+      // misuriamo qui e quel che un motore disegna davvero divergono di qualche
+      // punto percentuale (verificato nel browser), e su una riga lunga quella
+      // percentuale supera il padding. Il margine è la ragione per cui il testo
+      // della bozza non tocca i bordi: se qualcuno lo riducesse, questo test cade.
+      const usable = box.width - DRAFT_STYLE.padding * 2;
+      expect(fit.balloonWidth).toBeLessThanOrEqual(usable);
+      expect(fit.balloonWidth).toBeLessThanOrEqual(usable * 0.9);
     }
   });
 });

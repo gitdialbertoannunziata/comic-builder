@@ -48,7 +48,15 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
         lineHeight: lettering.line_height,
         padding: 0,
         safetyMarginRatio: lettering.safety_margin_ratio,
-        maxWidthPx: box.width - draftStyle.padding * 2,
+        // Margine esplicito, non la larghezza utile piena. La misurazione dei
+        // glifi e ciò che un motore disegna davvero divergono fino a qualche
+        // punto percentuale (misurato nel browser: una riga data per ≤459px
+        // ne occupava 505), e su una riga lunga quella percentuale vale più
+        // del padding. I balloon assorbono lo scarto col loro padding più il
+        // margine di sicurezza; il testo della bozza, che arriva quasi al
+        // bordo del pannello, no — quindi il margine glielo si dà qui.
+        // Un'annotazione non ha comunque motivo di toccare i bordi.
+        maxWidthPx: (box.width - draftStyle.padding * 2) * 0.82,
         // Metà altezza: il resto serve a badge dell'inquadratura e cast, che
         // stanno ai bordi e non devono finirci sotto.
         maxHeightPx: box.height * 0.5,

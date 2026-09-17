@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { PageSchema, type Page, type Panel, type Balloon, type ValidationIssue } from "@comic-builder/core";
+import { PageSchema, type Page, type Panel, type Balloon, type Scene, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { renderPreview } from "./renderPreview.js";
-import { initialPages, initialScene } from "./samplePage.js";
+import { runBreakdown } from "./runBreakdown.js";
+import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { CameraForm } from "./components/CameraForm.js";
 import { BalloonEditor } from "./components/BalloonEditor.js";
 import { ValidationPanel } from "./components/ValidationPanel.js";
 import { SvgPreview } from "./components/SvgPreview.js";
+import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 
 function updatePanel(page: Page, panelId: string, updater: (panel: Panel) => Panel): Page {
   return { ...page, panels: page.panels.map((p) => (p.id === panelId ? updater(p) : p)) };
@@ -37,8 +39,37 @@ export function App() {
   const [selectedPanelId, setSelectedPanelId] = useState<string>(initialPages[0]!.panels[0]!.id);
   const [lastValidPage, setLastValidPage] = useState<Page>(initialPages[0]!);
 
+  const [scene, setScene] = useState<Scene>(initialScene);
+  const [script, setScript] = useState(SAMPLE_SCRIPT);
+  const [service, setService] = useState<ServiceChoice>("mock");
+  const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
+  const [running, setRunning] = useState(false);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<BreakdownSummary | null>(null);
+
   const { font, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
   const page = pages[pageIndex]!;
+
+  async function onRunBreakdown() {
+    setRunning(true);
+    setBreakdownError(null);
+    try {
+      const result = await runBreakdown({ script, service, ollamaModel, chapterId: "ep001" });
+      if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
+      setPages(result.pages);
+      setPageIndex(0);
+      setSelectedPanelId(result.pages[0]!.panels[0]!.id);
+      // La scena serve al lint per le regole di contenuto (personaggi assenti
+      // dalla pagina): senza aggiornarla, resterebbe quella dell'esempio.
+      setScene(result.scenes[0] ?? initialScene);
+      setSummary(result.summary);
+    } catch (error) {
+      setBreakdownError(error instanceof Error ? error.message : String(error));
+      setSummary(null);
+    } finally {
+      setRunning(false);
+    }
+  }
 
   const parsed = useMemo(() => PageSchema.safeParse(page), [page]);
   const schemaIssues = parsed.success ? [] : parsed.error.issues;
@@ -49,8 +80,8 @@ export function App() {
 
   const preview = useMemo(() => {
     if (!font) return null;
-    return renderPreview(lastValidPage, font, initialScene);
-  }, [lastValidPage, font]);
+    return renderPreview(lastValidPage, font, scene);
+  }, [lastValidPage, font, scene]);
 
   const issues = preview?.issues ?? [];
   const badges = useMemo(() => worstLevelByPanel(issues), [issues]);
@@ -70,7 +101,20 @@ export function App() {
   return (
     <div className="app">
       <aside className="col">
-        <p className="eyebrow">Pagine</p>
+        <ScriptPanel
+          script={script}
+          onScriptChange={setScript}
+          service={service}
+          onServiceChange={setService}
+          ollamaModel={ollamaModel}
+          onOllamaModelChange={setOllamaModel}
+          onRun={() => void onRunBreakdown()}
+          running={running}
+          error={breakdownError}
+          summary={summary}
+        />
+
+        <p className="eyebrow eyebrow-gap">Pagine</p>
         <div className="pages">
           {pages.map((p, i) => (
             <button

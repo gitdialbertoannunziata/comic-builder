@@ -93,6 +93,9 @@ importers:
       '@comic-builder/lettering':
         specifier: workspace:*
         version: link:../lettering
+      '@comic-builder/llm':
+        specifier: workspace:*
+        version: link:../llm
       react:
         specifier: ^18.3.1
         version: 18.3.1

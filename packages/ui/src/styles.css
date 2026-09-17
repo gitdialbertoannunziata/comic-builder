@@ -518,3 +518,76 @@ textarea:focus {
 .muted {
   color: var(--text-muted);
 }
+
+/* ---------- copione ---------- */
+
+.script {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+  margin-bottom: 4px;
+}
+
+.script__toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0 0 8px;
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.script__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.script__text {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.script__result {
+  font-size: 11.5px;
+}
+
+.btn {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}

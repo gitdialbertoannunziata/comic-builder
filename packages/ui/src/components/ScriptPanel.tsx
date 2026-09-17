@@ -1,0 +1,145 @@
+import { useState } from "react";
+import type { ValidationIssue } from "@comic-builder/core";
+
+export type ServiceChoice = "mock" | "ollama";
+
+export interface BreakdownSummary {
+  scenes: number;
+  beats: number;
+  pages: number;
+  service: string;
+  model: string;
+  durationMs: number;
+  issues: ValidationIssue[];
+}
+
+interface Props {
+  script: string;
+  onScriptChange: (script: string) => void;
+  service: ServiceChoice;
+  onServiceChange: (service: ServiceChoice) => void;
+  ollamaModel: string;
+  onOllamaModelChange: (model: string) => void;
+  onRun: () => void;
+  running: boolean;
+  error: string | null;
+  summary: BreakdownSummary | null;
+}
+
+/**
+ * Da qui entra il capitolo. Finora la catena dello spoglio esisteva solo da
+ * codice: senza un posto dove incollare il testo, F1 non era raggiungibile da
+ * chi usa lo strumento.
+ */
+export function ScriptPanel({
+  script,
+  onScriptChange,
+  service,
+  onServiceChange,
+  ollamaModel,
+  onOllamaModelChange,
+  onRun,
+  running,
+  error,
+  summary,
+}: Props) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <section className="script">
+      <button type="button" className="script__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="eyebrow" style={{ margin: 0 }}>
+          Copione
+        </span>
+        <span className="muted">{open ? "nascondi" : "mostra"}</span>
+      </button>
+
+      {open && (
+        <div className="script__body">
+          <label className="field">
+            <span className="field__label">capitolo</span>
+            <textarea
+              className="script__text"
+              value={script}
+              rows={12}
+              spellCheck={false}
+              onChange={(e) => onScriptChange(e.target.value)}
+              placeholder={"# Titolo della scena\n\nDescrizione di cosa si vede.\n\nNOME: Una battuta."}
+            />
+            <span className="field__hint">
+              Titoli markdown o righe <code>INT./EST.</code> dividono le scene; i paragrafi diventano beat; le
+              battute si scrivono <code>NOME: testo</code>.
+            </span>
+          </label>
+
+          <div className="field">
+            <span className="field__label">spoglio</span>
+            <div className="segmented">
+              <button
+                type="button"
+                className="seg"
+                aria-pressed={service === "mock"}
+                onClick={() => onServiceChange("mock")}
+                title="Euristica deterministica, nessun modello: è il livello di riferimento da battere"
+              >
+                euristico
+              </button>
+              <button
+                type="button"
+                className="seg"
+                aria-pressed={service === "ollama"}
+                onClick={() => onServiceChange("ollama")}
+                title="Modello locale via Ollama: il copione non esce dalla macchina"
+              >
+                ollama
+              </button>
+            </div>
+          </div>
+
+          {service === "ollama" && (
+            <label className="field">
+              <span className="field__label">modello</span>
+              <input
+                type="text"
+                value={ollamaModel}
+                onChange={(e) => onOllamaModelChange(e.target.value)}
+                placeholder="llama3.1:8b"
+              />
+              <span className="field__hint">
+                Richiede <code>ollama serve</code> sulla stessa macchina del browser. Se la richiesta viene
+                bloccata, avvia Ollama con <code>OLLAMA_ORIGINS=*</code>.
+              </span>
+            </label>
+          )}
+
+          <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
+            {running ? "Spoglio in corso…" : "Spoglia il capitolo"}
+          </button>
+
+          {error && <p className="issue issue--error script__result">{error}</p>}
+
+          {summary && !error && (
+            <div className="script__result">
+              <p className="muted" style={{ margin: 0 }}>
+                {summary.scenes} scene · {summary.beats} beat · {summary.pages} pagine — {summary.service}/
+                {summary.model}, {summary.durationMs}ms
+              </p>
+              {summary.issues.length > 0 && (
+                <ul className="issues" style={{ marginTop: 8 }}>
+                  {summary.issues.map((issue, i) => (
+                    <li key={i}>
+                      <div className={`issue issue--${issue.level}`}>
+                        <span className="issue__code">{issue.code}</span>
+                        <span className="issue__text">{issue.message}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
