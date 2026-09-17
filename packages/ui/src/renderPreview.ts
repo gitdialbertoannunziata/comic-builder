@@ -4,16 +4,17 @@ import {
   validateDocument,
   LetteringConfigSchema,
   BalloonStyleSchema,
+  DraftStyleSchema,
   type Page,
   type ValidationIssue,
   type RenderConfig,
-  type LetteringFit,
 } from "@comic-builder/core";
-import { fitBalloonText, type LoadedFont } from "@comic-builder/lettering";
+import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
 
 export const PAGE_WIDTH_PX = 1600;
 export const PAGE_HEIGHT_PX = 2400;
 export const PAGE_MARGIN_PX = 56;
+export const TARGET = "digital-page";
 
 export const LETTERING = LetteringConfigSchema.parse({
   font_family: "Comic Neue",
@@ -25,6 +26,7 @@ export const LETTERING = LetteringConfigSchema.parse({
 });
 
 const BALLOON_STYLE = BalloonStyleSchema.parse({});
+const DRAFT_STYLE = DraftStyleSchema.parse({});
 
 export interface PreviewResult {
   svg: string | null;
@@ -52,31 +54,14 @@ export function renderPreview(page: Page, font: LoadedFont): PreviewResult {
     PAGE_MARGIN_PX,
   );
 
-  const fits = new Map<string, LetteringFit>();
-  for (const panel of page.panels) {
-    const box = boxes.get(panel.id);
-    if (!box) continue;
-    for (const balloon of panel.balloons) {
-      const result = fitBalloonText({
-        runs: balloon.text,
-        font,
-        baseFontSizePx: LETTERING.base_size_px,
-        fontScale: balloon.font_scale,
-        lineHeight: LETTERING.line_height,
-        padding: LETTERING.padding,
-        safetyMarginRatio: LETTERING.safety_margin_ratio,
-        maxWidthPx: box.width * LETTERING.max_width_ratio,
-        maxHeightPx: box.height * 0.9,
-      });
-      fits.set(balloon.id, {
-        lines: result.lines,
-        fontSizePx: result.fontSizePx,
-        blockHeight: result.blockHeight,
-        balloonWidth: result.balloonWidth,
-        balloonHeight: result.balloonHeight,
-      });
-    }
-  }
+  const fits = computePageFits({
+    page,
+    boxes,
+    font,
+    lettering: LETTERING,
+    draftStyle: DRAFT_STYLE,
+    target: TARGET,
+  });
 
   const config: RenderConfig = {
     width: PAGE_WIDTH_PX,
@@ -86,6 +71,9 @@ export function renderPreview(page: Page, font: LoadedFont): PreviewResult {
     padding: LETTERING.padding,
     tailWidthPx: LETTERING.tail_width,
     balloonStyle: BALLOON_STYLE,
+    draftStyle: DRAFT_STYLE,
+    baseFontSizePx: LETTERING.base_size_px,
+    target: TARGET,
   };
 
   return { svg: renderPageSvg(page, boxes, fits, config), issues };

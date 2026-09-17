@@ -5,6 +5,7 @@ import {
   resolvePageLayout,
   renderPageSvg,
   BalloonStyleSchema,
+  DraftStyleSchema,
   type RenderConfig,
 } from "@comic-builder/core";
 
@@ -91,6 +92,12 @@ describe("rasterizeSvgToPng — pipeline reale del Core (§12: 'export SVG/PNG')
       padding: 12,
       tailWidthPx: 10,
       balloonStyle: BalloonStyleSchema.parse({}),
+      draftStyle: DraftStyleSchema.parse({}),
+      baseFontSizePx: 26,
+      target: "digital-page",
+      // Senza font a disposizione in questo test non si può misurare il testo
+      // dell'azione: il layer bozza resta spento, si verifica la sola rasterizzazione.
+      draft: false,
     };
     const svg = renderPageSvg(page, boxes, new Map(), config);
 

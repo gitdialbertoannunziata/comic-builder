@@ -1,5 +1,5 @@
 import type { Emphasis } from "../schema/balloon.js";
-import type { BalloonStyle } from "../schema/project.js";
+import type { BalloonStyle, DraftStyle } from "../schema/project.js";
 
 /**
  * Risultato del fitting testo di un balloon, calcolato a monte (dal pacchetto
@@ -25,4 +25,22 @@ export interface RenderConfig {
   tailWidthPx: number;
   /** Stile grafico dei balloon (§8.2), dichiarato in `project.balloon_style` — non costanti nel renderer. */
   balloonStyle: BalloonStyle;
+  /** Stile del layer bozza (§5.5), dichiarato in `project.draft_style`. */
+  draftStyle: DraftStyle;
+  /**
+   * Corpo base del lettering per questo target: serve al layer bozza per
+   * dimensionare badge e annotazioni in unità di pagina (§8.1).
+   */
+  baseFontSizePx: number;
+  /**
+   * Target di render corrente: decide quale `panel.render[target]` conta per
+   * stabilire se un pannello è ancora da disegnare.
+   */
+  target: string;
+  /**
+   * Disegna la specifica nei pannelli senza arte. Default attivo: una pagina
+   * non disegnata dev'essere leggibile. Si spegne per l'export finale, dove
+   * un pannello vuoto è un pannello vuoto.
+   */
+  draft?: boolean;
 }

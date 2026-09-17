@@ -4,6 +4,18 @@ import { parseFont, type LoadedFont } from "./font.js";
 
 const FONT_PATH = fileURLToPath(new URL("../assets/fonts/ComicNeue-Regular.ttf", import.meta.url));
 
+/**
+ * Percorso del file del font, non solo il font già letto: chi rasterizza
+ * (resvg, §export) deve ricevere *il file*, altrimenti misura con Comic Neue
+ * e disegna con un font di sistema qualsiasi — e le due larghezze non
+ * coincidono. Era esattamente il baco che faceva sbordare il testo dai
+ * pannelli prima che questo percorso venisse esposto.
+ */
+export const sampleFontPath = FONT_PATH;
+
+/** Nome della famiglia come va dichiarato in `font-family` dell'SVG. */
+export const sampleFontFamily = "Comic Neue";
+
 let cached: LoadedFont | undefined;
 
 /**

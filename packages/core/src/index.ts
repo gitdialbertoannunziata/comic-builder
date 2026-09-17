@@ -3,6 +3,7 @@ export * from "./validate/index.js";
 export * from "./layout/resolveLayout.js";
 export * from "./render/types.js";
 export * from "./render/renderSvg.js";
+export * from "./render/renderDraft.js";
 export * from "./templates/catalog.js";
 export * from "./templates/expand.js";
 export * from "./script/beatCamera.js";

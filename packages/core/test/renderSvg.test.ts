@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fitBalloonText, type LoadedFont } from "@comic-builder/lettering";
+import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
 import { loadSampleFont } from "@comic-builder/lettering/sampleFont";
 import { samplePage } from "../src/fixtures/sample-page.js";
 import { resolvePageLayout, resolveStripFromPage } from "../src/layout/resolveLayout.js";
 import { renderPageSvg, renderStripSvg } from "../src/render/renderSvg.js";
-import { LetteringConfigSchema, BalloonStyleSchema } from "../src/schema/project.js";
+import { LetteringConfigSchema, BalloonStyleSchema, DraftStyleSchema } from "../src/schema/project.js";
 import type { Box } from "../src/layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "../src/render/types.js";
 import type { StripLayout } from "../src/schema/page.js";
@@ -27,34 +27,22 @@ const LETTERING = LetteringConfigSchema.parse({
 // Anche qui: nessun override, solo i default dichiarati (whisper tratteggiato,
 // thought punteggiato, shout più spesso, caption con raggio piccolo — §8.2).
 const BALLOON_STYLE = BalloonStyleSchema.parse({});
+const DRAFT_STYLE = DraftStyleSchema.parse({});
+const TARGET = "digital-page";
 
+// I test golden restano sul render "finale": il layer bozza ha il suo test
+// dedicato, e tenerlo fuori da qui lascia gli snapshot concentrati sulla
+// geometria di pannelli e balloon.
 function computeFits(font: LoadedFont, boxes: Map<string, Box>): Map<string, LetteringFit> {
-  const fits = new Map<string, LetteringFit>();
-  for (const panel of samplePage.panels) {
-    const box = boxes.get(panel.id);
-    if (!box) continue;
-    for (const balloon of panel.balloons) {
-      const result = fitBalloonText({
-        runs: balloon.text,
-        font,
-        baseFontSizePx: LETTERING.base_size_px,
-        fontScale: balloon.font_scale,
-        lineHeight: LETTERING.line_height,
-        padding: LETTERING.padding,
-        safetyMarginRatio: LETTERING.safety_margin_ratio,
-        maxWidthPx: box.width * LETTERING.max_width_ratio,
-        maxHeightPx: box.height * 0.9,
-      });
-      fits.set(balloon.id, {
-        lines: result.lines,
-        fontSizePx: result.fontSizePx,
-        blockHeight: result.blockHeight,
-        balloonWidth: result.balloonWidth,
-        balloonHeight: result.balloonHeight,
-      });
-    }
-  }
-  return fits;
+  return computePageFits({
+    page: samplePage,
+    boxes,
+    font,
+    lettering: LETTERING,
+    draftStyle: DRAFT_STYLE,
+    target: TARGET,
+    draft: false,
+  });
 }
 
 function renderConfig(width: number, height: number): RenderConfig {
@@ -66,6 +54,10 @@ function renderConfig(width: number, height: number): RenderConfig {
     padding: LETTERING.padding,
     tailWidthPx: LETTERING.tail_width,
     balloonStyle: BALLOON_STYLE,
+    draftStyle: DRAFT_STYLE,
+    baseFontSizePx: LETTERING.base_size_px,
+    target: TARGET,
+    draft: false,
   };
 }
 

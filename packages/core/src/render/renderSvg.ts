@@ -5,6 +5,7 @@ import type { Balloon, BalloonType } from "../schema/balloon.js";
 import type { BalloonStyle, BalloonVisualStyle } from "../schema/project.js";
 import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
+import { panelNeedsDraft, renderPanelDraft } from "./renderDraft.js";
 
 function escapeXml(text: string): string {
   return text
@@ -126,11 +127,18 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
 
   let tail = "";
   if (hasContainer(balloon.type) && hasTail(balloon.type) && balloon.tail.mode !== "none") {
-    const targetNorm = balloon.tail.target ?? { x: 0.5, y: 0.95 };
-    const target = {
-      x: containerBox.x + targetNorm.x * containerBox.width,
-      y: containerBox.y + targetNorm.y * containerBox.height,
-    };
+    // Senza un target esplicito la bocca dello speaker non è nota. Il default
+    // è una coda *corta* appena sotto il balloon, non una che scende fino al
+    // fondo del pannello: in un pannello alto quest'ultima attraversa mezza
+    // vignetta e incrocia le code degli altri balloon (§8.2 vuole che la coda
+    // non attraversi il testo). Resta comunque un ripiego: `tail.target`
+    // esplicito è ciò che risolve davvero l'ambiguità.
+    const target = balloon.tail.target
+      ? {
+          x: containerBox.x + balloon.tail.target.x * containerBox.width,
+          y: containerBox.y + balloon.tail.target.y * containerBox.height,
+        }
+      : { x: centerX, y: y + h + containerBox.height * 0.1 };
     tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx, visual);
   }
 
@@ -144,7 +152,23 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
 }
 
 function renderPanel(panel: Panel, box: Box, fits: Map<string, LetteringFit>, config: RenderConfig): string {
-  let out = renderPanelBorder(panel, box);
+  let out = "";
+
+  // Layer bozza sotto tutto il resto: è il fondo del pannello finché l'arte
+  // non arriva, quindi bordo e balloon gli vanno sopra.
+  if ((config.draft ?? true) && panelNeedsDraft(panel, config.target)) {
+    out += renderPanelDraft({
+      panel,
+      box,
+      style: config.draftStyle,
+      fontFamily: config.fontFamily,
+      baseFontSizePx: config.baseFontSizePx,
+      lineHeight: config.lineHeight,
+      actionFit: fits.get(panel.id),
+    });
+  }
+
+  out += renderPanelBorder(panel, box);
   for (const balloon of panel.balloons) {
     const fit = fits.get(balloon.id);
     if (!fit) continue;

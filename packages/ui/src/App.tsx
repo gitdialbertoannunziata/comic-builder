@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageSchema, type Page, type Panel, type Balloon } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { renderPreview } from "./renderPreview.js";
-import { initialPage } from "./samplePage.js";
+import { initialPages } from "./samplePage.js";
 import { CameraForm } from "./components/CameraForm.js";
 import { BalloonEditor } from "./components/BalloonEditor.js";
 import { ValidationPanel } from "./components/ValidationPanel.js";
@@ -17,11 +17,14 @@ function updateBalloon(panel: Panel, balloonId: string, updater: (balloon: Ballo
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>(initialPage);
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(initialPage.panels[0]!.id);
-  const [lastValidPage, setLastValidPage] = useState<Page>(initialPage);
+  const [pages, setPages] = useState<Page[]>(initialPages);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(initialPages[0]!.panels[0]!.id);
+  const [lastValidPage, setLastValidPage] = useState<Page>(initialPages[0]!);
 
   const { font, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
+
+  const page = pages[pageIndex]!;
 
   const parsed = useMemo(() => PageSchema.safeParse(page), [page]);
   const schemaIssues = parsed.success ? [] : parsed.error.issues;
@@ -38,12 +41,42 @@ export function App() {
   const selectedPanel = page.panels.find((p) => p.id === selectedPanelId) ?? page.panels[0]!;
 
   function patchSelectedPanel(updater: (panel: Panel) => Panel) {
-    setPage((prev) => updatePanel(prev, selectedPanel.id, updater));
+    setPages((prev) =>
+      prev.map((p, i) => (i === pageIndex ? updatePanel(p, selectedPanel.id, updater) : p)),
+    );
+  }
+
+  function goToPage(index: number) {
+    setPageIndex(index);
+    setSelectedPanelId(pages[index]!.panels[0]!.id);
   }
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "220px 380px 1fr", gap: 16, padding: 16, height: "100%" }}>
       <aside>
+        <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: 0.5, color: "#666" }}>Pagine</h2>
+        <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
+          {pages.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => goToPage(i)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid " + (i === pageIndex ? "#3a5a99" : "#ddd"),
+                background: i === pageIndex ? "#eaf1fb" : "white",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              {p.id}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
+          template <strong>{page.layout.mode === "page" ? page.layout.template_id : "—"}</strong>, scelto dal
+          catalogo in base ai beat
+        </p>
         <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: 0.5, color: "#666" }}>Pannelli</h2>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
           {page.panels.map((panel) => (

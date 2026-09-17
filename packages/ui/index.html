@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ispettore — comic-builder</title>
     <style>
+      /* Lo stesso file che opentype.js misura: senza questo @font-face il
+         browser disegnerebbe con un font di ripiego mentre il lettering è
+         calcolato su Comic Neue, e le due larghezze non coinciderebbero. */
+      @font-face {
+        font-family: "Comic Neue";
+        src: url("/fonts/ComicNeue-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-display: block;
+      }
       html, body, #root { height: 100%; margin: 0; }
       body { font-family: system-ui, sans-serif; }
       svg { max-width: 100%; height: auto; display: block; }

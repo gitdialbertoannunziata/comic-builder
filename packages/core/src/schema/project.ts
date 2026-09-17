@@ -104,6 +104,27 @@ export const BalloonStyleSchema = z.object({
 });
 export type BalloonStyle = z.infer<typeof BalloonStyleSchema>;
 
+/**
+ * Aspetto del layer bozza: quello che un pannello disegna finché non ha arte
+ * (§5.5, §6.2 — "per chi disegna, la camera è la specifica di disegno").
+ * Non è un segnaposto: è il foglio di spoglio da cui l'autore disegna, e
+ * sparisce da solo appena l'arte entra nel pannello.
+ */
+export const DraftStyleSchema = z.object({
+  /** Fondo del pannello non ancora disegnato: dice "qui manca l'arte" senza urlare. */
+  background: z.string().default("#f4f4f2"),
+  /** Testo dell'azione — è il contenuto, quindi il più leggibile dei tre. */
+  ink: z.string().default("#1b1b1b"),
+  /** Annotazioni di servizio: badge della camera, elenco personaggi. */
+  muted: z.string().default("#7a7a75"),
+  /** Corpo del testo dell'azione, in frazione di `lettering.base_size_px`. */
+  action_size_ratio: z.number().positive().default(0.85),
+  /** Corpo delle annotazioni di servizio, in frazione di `lettering.base_size_px`. */
+  annotation_size_ratio: z.number().positive().default(0.6),
+  padding: z.number().nonnegative().default(14),
+});
+export type DraftStyle = z.infer<typeof DraftStyleSchema>;
+
 export const FontDeclarationSchema = z.object({
   family: z.string(),
   path: z.string(),
@@ -125,6 +146,7 @@ export const ProjectSchema = z.object({
   lettering: LetteringConfigSchema,
   style: StyleConfigSchema,
   balloon_style: BalloonStyleSchema.default({}),
+  draft_style: DraftStyleSchema.default({}),
   fonts: z.array(FontDeclarationSchema).default([]),
   chapters: z.string(),
   scenes: z.string(),
