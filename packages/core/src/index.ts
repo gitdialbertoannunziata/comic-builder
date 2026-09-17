@@ -10,3 +10,4 @@ export * from "./script/beatCamera.js";
 export * from "./script/ids.js";
 export * from "./script/paginate.js";
 export * from "./script/buildPages.js";
+export * from "./script/mergeRerun.js";
