@@ -29,6 +29,17 @@ export const SUBJECT_PLACEMENT_OPTIONS = [
 ] as const;
 export const AXIS_SIDE_OPTIONS = ["A-left", "A-right"] as const;
 
+export const ANGLE_LABELS: Record<(typeof ANGLE_OPTIONS)[number], string> = {
+  eye: "inquadratura ad altezza occhi",
+  low: "dal basso",
+  high: "dall'alto",
+  birds: "a picco",
+  worms: "supina",
+  dutch: "olandese",
+  ots: "over-the-shoulder",
+  pov: "soggettiva",
+};
+
 export const SHOT_LABELS: Record<(typeof SHOT_OPTIONS)[number], string> = {
   EWS: "campo lunghissimo",
   LS: "campo lungo",

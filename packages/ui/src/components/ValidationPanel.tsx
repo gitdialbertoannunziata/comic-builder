@@ -4,63 +4,67 @@ import type { ValidationIssue } from "@comic-builder/core";
 interface Props {
   schemaIssues: ZodIssue[];
   docIssues: ValidationIssue[];
+  /** Consente di saltare al pannello che l'avviso riguarda, invece di cercarlo a mano. */
+  onSelectPanel: (panelId: string) => void;
+  knownPanelIds: Set<string>;
 }
 
-const LEVEL_COLOR: Record<string, string> = {
-  error: "#b3261e",
-  warning: "#8a6100",
-  info: "#3a5a99",
-};
-
-const LEVEL_BG: Record<string, string> = {
-  error: "#fdecea",
-  warning: "#fff6df",
-  info: "#eaf1fb",
-};
-
 /**
- * Stessa funzione di validazione degli altri due ingressi — output del
- * modello e apertura file (§7.1): qui applicata al documento modificato a
- * mano. Gli issue dello schema (parse fallito, es. un'ancora fuori [0,1])
- * sono sempre "errore"; quelli di validateDocument portano il proprio livello.
+ * Estrae l'id del pannello dal percorso dell'issue: il lint scrive percorsi
+ * come `panels[ep001-p001-03].camera`, e quell'id è ciò che rende l'avviso
+ * navigabile invece che solo leggibile.
  */
-export function ValidationPanel({ schemaIssues, docIssues }: Props) {
+function panelIdFrom(path: string, known: Set<string>): string | null {
+  const match = /panels\[([^\]]+)\]/.exec(path);
+  if (match?.[1] && known.has(match[1])) return match[1];
+
+  // Gli issue dello schema usano indici numerici (`panels.2.balloons...`):
+  // lì l'id non c'è, e saltare all'indice sbagliato sarebbe peggio di non saltare.
+  return null;
+}
+
+export function ValidationPanel({ schemaIssues, docIssues, onSelectPanel, knownPanelIds }: Props) {
   const total = schemaIssues.length + docIssues.length;
 
   if (total === 0) {
-    return <p style={{ color: "#2f8f5b", fontSize: 13 }}>Nessun problema — documento valido.</p>;
+    return <p className="all-clear">Nessun problema — documento valido.</p>;
   }
 
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+    <ul className="issues">
       {schemaIssues.map((issue, i) => (
-        <li
-          key={`schema-${i}`}
-          style={{
-            background: LEVEL_BG.error,
-            color: LEVEL_COLOR.error,
-            borderRadius: 4,
-            padding: "6px 8px",
-            fontSize: 12.5,
-          }}
-        >
-          <strong>schema</strong> — {issue.path.join(".")}: {issue.message}
+        <li key={`schema-${i}`}>
+          <div className="issue issue--error">
+            <span className="issue__code">schema</span>
+            <span className="issue__text">
+              {issue.path.join(".")}: {issue.message}
+            </span>
+          </div>
         </li>
       ))}
-      {docIssues.map((issue, i) => (
-        <li
-          key={`doc-${i}`}
-          style={{
-            background: LEVEL_BG[issue.level],
-            color: LEVEL_COLOR[issue.level],
-            borderRadius: 4,
-            padding: "6px 8px",
-            fontSize: 12.5,
-          }}
-        >
-          <strong>{issue.level}</strong> — {issue.code}: {issue.message}
-        </li>
-      ))}
+
+      {docIssues.map((issue, i) => {
+        const panelId = panelIdFrom(issue.path, knownPanelIds);
+        const className = `issue issue--${issue.level}${panelId ? " issue--clickable" : ""}`;
+        const content = (
+          <>
+            <span className="issue__code">{issue.code}</span>
+            <span className="issue__text">{issue.message}</span>
+          </>
+        );
+
+        return (
+          <li key={`doc-${i}`}>
+            {panelId ? (
+              <button type="button" className={className} onClick={() => onSelectPanel(panelId)}>
+                {content}
+              </button>
+            ) : (
+              <div className={className}>{content}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

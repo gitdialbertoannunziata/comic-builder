@@ -1,8 +1,10 @@
 import type { Camera } from "@comic-builder/core";
+import { Segmented } from "./Segmented.js";
 import {
   SHOT_OPTIONS,
   SHOT_LABELS,
   ANGLE_OPTIONS,
+  ANGLE_LABELS,
   LENS_MM_OPTIONS,
   DOF_OPTIONS,
   LIGHTING_OPTIONS,
@@ -17,8 +19,9 @@ interface Props {
   onChange: (camera: Camera) => void;
 }
 
-const fieldStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 2, fontSize: 13 };
-const labelStyle: React.CSSProperties = { fontWeight: 600, color: "#444" };
+function plain<T extends string | number>(values: readonly T[]) {
+  return values.map((value) => ({ value, label: String(value) }));
+}
 
 export function CameraForm({ camera, onChange }: Props) {
   function set<K extends keyof Camera>(key: K, value: Camera[K]) {
@@ -26,108 +29,69 @@ export function CameraForm({ camera, onChange }: Props) {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-      <label style={fieldStyle}>
-        <span style={labelStyle}>shot</span>
-        <select value={camera.shot} onChange={(e) => set("shot", e.target.value as Camera["shot"])}>
-          {SHOT_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s} — {SHOT_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="stack">
+      <Segmented
+        label="shot"
+        value={camera.shot}
+        onChange={(v) => set("shot", v)}
+        options={SHOT_OPTIONS.map((s) => ({
+          value: s,
+          label: s,
+          title: SHOT_LABELS[s],
+          // INSERT non sta sulla scala dal campo lunghissimo al primissimo piano:
+          // è un'altra cosa, e staccarlo lo dice senza spiegarlo.
+          detached: s === "INSERT",
+        }))}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>angle</span>
-        <select value={camera.angle} onChange={(e) => set("angle", e.target.value as Camera["angle"])}>
-          {ANGLE_OPTIONS.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="angle"
+        value={camera.angle}
+        onChange={(v) => set("angle", v)}
+        options={ANGLE_OPTIONS.map((a) => ({ value: a, label: a, title: ANGLE_LABELS[a] }))}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>lens_mm</span>
-        <select value={camera.lens_mm} onChange={(e) => set("lens_mm", Number(e.target.value) as Camera["lens_mm"])}>
-          {LENS_MM_OPTIONS.map((l) => (
-            <option key={l} value={l}>
-              {l}mm
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="lens"
+        value={camera.lens_mm}
+        onChange={(v) => set("lens_mm", v)}
+        options={LENS_MM_OPTIONS.map((l) => ({ value: l, label: `${l}` , title: `${l}mm` }))}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>dof</span>
-        <select value={camera.dof} onChange={(e) => set("dof", e.target.value as Camera["dof"])}>
-          {DOF_OPTIONS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented label="dof" value={camera.dof} onChange={(v) => set("dof", v)} options={plain(DOF_OPTIONS)} />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>lighting</span>
-        <select value={camera.lighting} onChange={(e) => set("lighting", e.target.value as Camera["lighting"])}>
-          {LIGHTING_OPTIONS.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="lighting"
+        value={camera.lighting}
+        onChange={(v) => set("lighting", v)}
+        options={plain(LIGHTING_OPTIONS)}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>mood</span>
-        <select value={camera.mood} onChange={(e) => set("mood", e.target.value as Camera["mood"])}>
-          {MOOD_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="motion"
+        value={camera.motion}
+        onChange={(v) => set("motion", v)}
+        options={plain(MOTION_OPTIONS)}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>motion</span>
-        <select value={camera.motion} onChange={(e) => set("motion", e.target.value as Camera["motion"])}>
-          {MOTION_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="soggetto"
+        value={camera.subject_placement}
+        onChange={(v) => set("subject_placement", v)}
+        options={plain(SUBJECT_PLACEMENT_OPTIONS)}
+      />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>subject_placement</span>
-        <select
-          value={camera.subject_placement}
-          onChange={(e) => set("subject_placement", e.target.value as Camera["subject_placement"])}
-        >
-          {SUBJECT_PLACEMENT_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* mood e axis_side non entrano mai nel prompt (§6.1): il primo governa
+          palette e composizione, il secondo serve al lint di continuità.
+          Stanno insieme in fondo perché sono metadati, non inquadratura. */}
+      <Segmented label="mood" value={camera.mood} onChange={(v) => set("mood", v)} options={plain(MOOD_OPTIONS)} />
 
-      <label style={fieldStyle}>
-        <span style={labelStyle}>axis_side</span>
-        <select value={camera.axis_side} onChange={(e) => set("axis_side", e.target.value as Camera["axis_side"])}>
-          {AXIS_SIDE_OPTIONS.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="asse di scena"
+        value={camera.axis_side}
+        onChange={(v) => set("axis_side", v)}
+        options={plain(AXIS_SIDE_OPTIONS)}
+      />
     </div>
   );
 }

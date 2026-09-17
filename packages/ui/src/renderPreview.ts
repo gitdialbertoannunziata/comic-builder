@@ -10,6 +10,7 @@ import {
   type Page,
   type ValidationIssue,
   type RenderConfig,
+  type Box,
 } from "@comic-builder/core";
 import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
 
@@ -33,6 +34,14 @@ const DRAFT_STYLE = DraftStyleSchema.parse({});
 export interface PreviewResult {
   svg: string | null;
   issues: ValidationIssue[];
+  /**
+   * Box dei pannelli nello stesso sistema di coordinate dell'SVG: servono alla
+   * UI per mettere sopra la pagina i bersagli cliccabili, così si seleziona un
+   * pannello indicandolo invece che cercandolo in un elenco.
+   */
+  boxes: Map<string, Box>;
+  width: number;
+  height: number;
 }
 
 /**
@@ -50,7 +59,7 @@ export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): Prev
   ];
 
   if (page.layout.mode !== "page") {
-    return { svg: null, issues };
+    return { svg: null, issues, boxes: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX };
   }
 
   const boxes = resolvePageLayout(
@@ -84,5 +93,11 @@ export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): Prev
     target: TARGET,
   };
 
-  return { svg: renderPageSvg(page, boxes, fits, config), issues };
+  return {
+    svg: renderPageSvg(page, boxes, fits, config),
+    issues,
+    boxes,
+    width: PAGE_WIDTH_PX,
+    height: PAGE_HEIGHT_PX,
+  };
 }

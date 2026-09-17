@@ -103,7 +103,11 @@ export function renderPanelDraft(input: DraftRenderInput): string {
       const line = fit.lines[i]!.map((token) => escapeXml(token.text)).join("");
       tspans += `<tspan x="${centerX}" y="${y}">${line}</tspan>`;
     }
-    out += `<text font-family="${escapeXml(fontFamily)}" font-size="${fit.fontSizePx}" fill="${style.ink}" text-anchor="middle">${tspans}</text>`;
+    // x/y espliciti anche sul `<text>`: senza, l'elemento eredita l'origine
+    // (0,0) del sistema di coordinate e si porta dietro un punto di ancoraggio
+    // fantasma che gonfia il suo bounding box — invisibile a schermo, ma
+    // sbagliato per chiunque interroghi la geometria (misurato nel browser).
+    out += `<text x="${centerX}" y="${top}" font-family="${escapeXml(fontFamily)}" font-size="${fit.fontSizePx}" fill="${style.ink}" text-anchor="middle">${tspans}</text>`;
   }
 
   // Cast, in basso a sinistra.
