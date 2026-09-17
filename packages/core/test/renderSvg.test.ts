@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { loadSampleFont, fitBalloonText, type LoadedFont } from "@comic-builder/lettering";
+import { fitBalloonText, type LoadedFont } from "@comic-builder/lettering";
+import { loadSampleFont } from "@comic-builder/lettering/sampleFont";
 import { samplePage } from "../src/fixtures/sample-page.js";
 import { resolvePageLayout, resolveStripFromPage } from "../src/layout/resolveLayout.js";
 import { renderPageSvg, renderStripSvg } from "../src/render/renderSvg.js";

@@ -8,7 +8,7 @@ import type { BalloonStyle } from "../schema/project.js";
  * una dipendenza da opentype.js nel Core (§11.2: unica dipendenza, zod).
  */
 export interface LetteringFit {
-  lines: Array<Array<{ text: string; em?: Emphasis }>>;
+  lines: Array<Array<{ text: string; em?: Emphasis | undefined }>>;
   fontSizePx: number;
   /** Altezza del solo blocco di testo, senza padding/margine — serve al renderer per centrarlo nel box. */
   blockHeight: number;
