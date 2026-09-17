@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { IdSchema } from "./common.js";
+import { IdSchema, SourceRefSchema } from "./common.js";
+import { BalloonTypeSchema } from "./balloon.js";
 
 /**
  * Funzione narrativa del beat (§5.3, §6.2): input della tabella beat→camera,
@@ -20,6 +21,29 @@ export const BeatSchema = z.object({
   id: IdSchema,
   function: BeatFunctionSchema,
   summary: z.string(),
+  /**
+   * Beat "intenso": seleziona la colonna variante della tabella beat→camera
+   * (§6.2). È l'unico grado di libertà che lo spoglio ha sull'inquadratura —
+   * tutto il resto è derivato, quindi verificabile.
+   */
+  intense: z.boolean().default(false),
+  /** Provenienza nello script (§10.1): da qui arriva al pannello che il beat genera. */
+  source: SourceRefSchema.nullable().default(null),
+  /**
+   * Battute del beat, se ne ha. Lo spoglio le estrae dallo script e il
+   * costruttore della pagina le trasforma in balloon: senza, un beat
+   * `dialogue` produrrebbe un pannello di dialogo senza dialogo.
+   * `speaker` è un ref di personaggio, oppure null per didascalie e voce fuori campo.
+   */
+  lines: z
+    .array(
+      z.object({
+        speaker: IdSchema.nullable(),
+        text: z.string(),
+        type: BalloonTypeSchema.default("speech"),
+      }),
+    )
+    .default([]),
 });
 export type Beat = z.infer<typeof BeatSchema>;
 

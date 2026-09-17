@@ -12,6 +12,22 @@ export const NormalizedPointSchema = z.object({
 });
 
 export const ReadingDirectionSchema = z.enum(["ltr", "rtl"]);
+export type ReadingDirection = z.infer<typeof ReadingDirectionSchema>;
+
 export const TextDirectionSchema = z.enum(["ltr", "rtl"]);
+export type TextDirection = z.infer<typeof TextDirectionSchema>;
 
 export const IsoDateTimeSchema = z.string().datetime({ offset: true });
+
+/**
+ * Provenienza nello script sorgente (§10.1). Sta fra i primitivi condivisi
+ * perché la portano sia il beat (che nasce dallo spoglio) sia il pannello
+ * (che nasce dal beat): è la catena che permette di sapere quali pannelli
+ * tocca una revisione dello sceneggiatore.
+ */
+export const SourceRefSchema = z.object({
+  file: z.string(),
+  from_line: z.number().int().positive(),
+  to_line: z.number().int().positive(),
+});
+export type SourceRef = z.infer<typeof SourceRefSchema>;

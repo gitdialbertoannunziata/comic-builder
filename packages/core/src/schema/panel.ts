@@ -1,14 +1,7 @@
 import { z } from "zod";
-import { IdSchema } from "./common.js";
+import { IdSchema, SourceRefSchema } from "./common.js";
 import { CameraSchema } from "./camera.js";
 import { BalloonSchema } from "./balloon.js";
-
-export const SourceRefSchema = z.object({
-  file: z.string(),
-  from_line: z.number().int().positive(),
-  to_line: z.number().int().positive(),
-});
-export type SourceRef = z.infer<typeof SourceRefSchema>;
 
 /**
  * Posizione nella griglia a tracce (§7.1): l'area deve tassellare, verificato da validateDocument.
