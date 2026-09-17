@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageSchema, type Page, type Panel, type Balloon } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { renderPreview } from "./renderPreview.js";
-import { initialPages } from "./samplePage.js";
+import { initialPages, initialScene } from "./samplePage.js";
 import { CameraForm } from "./components/CameraForm.js";
 import { BalloonEditor } from "./components/BalloonEditor.js";
 import { ValidationPanel } from "./components/ValidationPanel.js";
@@ -35,7 +35,7 @@ export function App() {
 
   const preview = useMemo(() => {
     if (!font) return null;
-    return renderPreview(lastValidPage, font);
+    return renderPreview(lastValidPage, font, initialScene);
   }, [lastValidPage, font]);
 
   const selectedPanel = page.panels.find((p) => p.id === selectedPanelId) ?? page.panels[0]!;

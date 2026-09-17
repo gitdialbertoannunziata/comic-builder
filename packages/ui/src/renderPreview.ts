@@ -2,6 +2,8 @@ import {
   resolvePageLayout,
   renderPageSvg,
   validateDocument,
+  lintPage,
+  type Scene,
   LetteringConfigSchema,
   BalloonStyleSchema,
   DraftStyleSchema,
@@ -38,8 +40,14 @@ export interface PreviewResult {
  * Stessa pipeline usata dai test golden del Core, qui eseguita nel browser
  * invece che in Node — nessun ramo di codice diverso fra i due.
  */
-export function renderPreview(page: Page, font: LoadedFont): PreviewResult {
-  const issues = validateDocument(page);
+export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): PreviewResult {
+  // Le due validazioni insieme: coerenza strutturale (§7.1) e qualità
+  // secondo l'Appendice A. Sono separate nel Core perché rispondono a
+  // domande diverse, ma per chi corregge una pagina sono un elenco solo.
+  const issues = [
+    ...validateDocument(page),
+    ...lintPage(page, { target: TARGET, ...(scene ? { scene } : {}) }),
+  ];
 
   if (page.layout.mode !== "page") {
     return { svg: null, issues };
