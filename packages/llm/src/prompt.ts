@@ -1,0 +1,57 @@
+/**
+ * Istruzioni di sistema per lo spoglio.
+ *
+ * Il piano è esplicito su cosa funziona: "la tabella beat→camera qui sotto è
+ * più efficace di qualsiasi istruzione in prosa" (§6.2). Qui la lezione è
+ * applicata al contrario — visto che la camera la deriviamo noi, al modello
+ * non si chiede nulla di cinematografico se non scegliere fra sette funzioni
+ * di beat, ognuna definita da cosa *fa* nella scena, non da come va ripresa.
+ */
+
+const BEAT_FUNCTIONS = [
+  ["establish", "stabilisce dove siamo: luogo, ora, atmosfera. Di solito apre una scena."],
+  ["entrance", "un personaggio entra in scena o si rivela presente."],
+  ["dialogue", "uno scambio di battute fra personaggi."],
+  ["reaction", "un personaggio reagisce senza parlare: capisce, ricorda, si spaventa."],
+  ["reveal", "emerge un'informazione che cambia la scena."],
+  ["action", "qualcuno fa qualcosa di fisico che sposta la situazione."],
+  ["close", "chiude la scena o le dà una pausa."],
+] as const;
+
+export function breakdownSystemPrompt(): string {
+  const functions = BEAT_FUNCTIONS.map(([id, meaning]) => `- ${id}: ${meaning}`).join("\n");
+
+  return [
+    "Sei uno spogliatore di sceneggiature per fumetti. Dividi il testo in scene e, dentro ogni scena, in beat.",
+    "",
+    "Un beat è la più piccola unità che merita una vignetta: un'azione, uno scambio, una reazione.",
+    "Non descrivere inquadrature, angoli o obiettivi: non è compito tuo, vengono derivati dalla funzione del beat.",
+    "",
+    "Funzioni di beat ammesse:",
+    functions,
+    "",
+    "Regole:",
+    "- Una scena è un blocco continuo di luogo e tempo. Se cambia il luogo o passa del tempo, è una scena nuova.",
+    "- Da 3 a 12 beat per scena. Se una scena ne richiede di più, dividila.",
+    "- `summary` descrive cosa si vede, in una frase, al presente. È la specifica per chi disegna.",
+    "- `lines` contiene solo le battute effettivamente pronunciate, con il testo esatto. Se il beat non ha dialogo, lascia la lista vuota.",
+    "- `speaker` è un ref breve e stabile dello stesso personaggio in tutte le scene: minuscolo, senza spazi né accenti (es. `marco`, `la_dottoressa`). Usa null per didascalie e voce fuori campo.",
+    "- `characters` elenca i ref di chi è presente nella scena, con la stessa forma usata in `speaker`.",
+    "- `intense` è true solo per i beat che sono il picco della scena. In una scena normale sono zero o uno.",
+    "- `from_line` e `to_line` sono le righe dello script da cui il beat nasce, numerate da 1.",
+    "",
+    "Rispondi esclusivamente con JSON conforme allo schema richiesto, senza commenti né testo attorno.",
+  ].join("\n");
+}
+
+export function breakdownUserPrompt(script: string): string {
+  const numbered = script
+    .split("\n")
+    .map((line, i) => `${i + 1}\t${line}`)
+    .join("\n");
+
+  // Le righe sono numerate nel prompt perché la provenienza (§10.1) chiede
+  // numeri di riga: chiederli su un testo non numerato è chiedere al modello
+  // di contare, che è il modo più sicuro per ottenerli sbagliati.
+  return `Spoglia questo capitolo. Le righe sono numerate per riferimento.\n\n${numbered}`;
+}
