@@ -20,6 +20,8 @@ interface Props {
   onServiceChange: (service: ServiceChoice) => void;
   ollamaModel: string;
   onOllamaModelChange: (model: string) => void;
+  ollamaHost: string;
+  onOllamaHostChange: (host: string) => void;
   onRun: () => void;
   running: boolean;
   error: string | null;
@@ -38,6 +40,8 @@ export function ScriptPanel({
   onServiceChange,
   ollamaModel,
   onOllamaModelChange,
+  ollamaHost,
+  onOllamaHostChange,
   onRun,
   running,
   error,
@@ -97,19 +101,31 @@ export function ScriptPanel({
           </div>
 
           {service === "ollama" && (
-            <label className="field">
-              <span className="field__label">modello</span>
-              <input
-                type="text"
-                value={ollamaModel}
-                onChange={(e) => onOllamaModelChange(e.target.value)}
-                placeholder="llama3.1:8b"
-              />
-              <span className="field__hint">
-                Richiede <code>ollama serve</code> sulla stessa macchina del browser. Se la richiesta viene
-                bloccata, avvia Ollama con <code>OLLAMA_ORIGINS=*</code>.
-              </span>
-            </label>
+            <>
+              <label className="field">
+                <span className="field__label">modello</span>
+                <input
+                  type="text"
+                  value={ollamaModel}
+                  onChange={(e) => onOllamaModelChange(e.target.value)}
+                  placeholder="mistral"
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">host</span>
+                <input
+                  type="text"
+                  value={ollamaHost}
+                  onChange={(e) => onOllamaHostChange(e.target.value)}
+                  placeholder="http://localhost:11434"
+                />
+                <span className="field__hint">
+                  La richiesta parte dal <strong>browser</strong>, non dal server che serve questa pagina: vale
+                  quindi il <code>localhost</code> della tua macchina. Se Ollama rifiuta, riavvialo con{" "}
+                  <code>OLLAMA_ORIGINS=*</code>.
+                </span>
+              </label>
+            </>
           )}
 
           <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>

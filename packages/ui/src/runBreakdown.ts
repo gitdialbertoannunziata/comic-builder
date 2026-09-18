@@ -7,6 +7,7 @@ export interface RunBreakdownInput {
   script: string;
   service: ServiceChoice;
   ollamaModel: string;
+  ollamaHost: string;
   chapterId: string;
 }
 
@@ -16,8 +17,8 @@ export interface RunBreakdownResult {
   summary: BreakdownSummary;
 }
 
-function serviceFor(choice: ServiceChoice, model: string): LlmService {
-  if (choice === "ollama") return new OllamaLlmService({ model });
+function serviceFor(choice: ServiceChoice, model: string, host: string): LlmService {
+  if (choice === "ollama") return new OllamaLlmService({ model, host });
   return new MockLlmService();
 }
 
@@ -28,7 +29,7 @@ function serviceFor(choice: ServiceChoice, model: string): LlmService {
  */
 export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdownResult> {
   const result = await breakdownScript({
-    llm: serviceFor(input.service, input.ollamaModel),
+    llm: serviceFor(input.service, input.ollamaModel, input.ollamaHost),
     script: input.script,
     scriptFile: "copione-incollato.md",
   });

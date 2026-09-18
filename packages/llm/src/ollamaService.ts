@@ -43,8 +43,16 @@ export class OllamaLlmService implements LlmService {
 
   constructor(private readonly options: OllamaOptions) {
     this.host = (options.host ?? "http://127.0.0.1:11434").replace(/\/$/, "");
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
-    if (!this.fetchImpl) {
+    if (options.fetchImpl) {
+      this.fetchImpl = options.fetchImpl;
+    } else if (globalThis.fetch) {
+      // `.bind` non è pignoleria: nel browser `fetch` vuole `window` come
+      // ricevente, e chiamarlo come metodo di quest'oggetto fa scattare
+      // "Illegal invocation". In Node non succede, quindi il baco è invisibile
+      // ai test e compare solo a pagina aperta — dove per giunta sembrava un
+      // problema di rete, perché il catch qui sotto lo inghiottiva.
+      this.fetchImpl = globalThis.fetch.bind(globalThis);
+    } else {
       throw new LlmError("Nessuna implementazione di fetch disponibile", this.name);
     }
   }
@@ -72,8 +80,14 @@ export class OllamaLlmService implements LlmService {
         }),
       });
     } catch (cause) {
+      // `fetch` fallisce allo stesso modo per due cause molto diverse: il
+      // server non c'è, oppure c'è ma il browser ha bloccato la richiesta per
+      // CORS. Distinguerle dal codice non si può — la specifica nasconde
+      // apposta i dettagli della risposta bloccata — quindi si nominano
+      // entrambe, invece di far cercare nel posto sbagliato.
       throw new LlmError(
-        `Ollama non raggiungibile su ${this.host}. È in esecuzione? (\`ollama serve\`)`,
+        `Ollama non raggiungibile su ${this.host}. Due possibilità: non è in esecuzione (\`ollama serve\`), ` +
+          `oppure è attivo ma rifiuta la richiesta di questa pagina — in quel caso riavvialo con \`OLLAMA_ORIGINS=*\`.`,
         this.name,
         cause,
       );

@@ -245,6 +245,32 @@ describe("OllamaLlmService — protocollo verificato senza un modello acceso", (
     expect(captured.options).toMatchObject({ temperature: 0.2 });
   });
 
+  it("lega fetch al suo ricevente, altrimenti nel browser è «Illegal invocation»", async () => {
+    // Riproduce in Node un baco che si vedeva solo a pagina aperta: `fetch`
+    // preso come riferimento nudo e invocato come metodo dell'adapter. Qui il
+    // finto `fetch` pretende `globalThis` come ricevente, esattamente come fa
+    // il browser — senza `.bind` questo test fallisce.
+    const original = globalThis.fetch;
+    let calledOnWindow = false;
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: function (this: unknown) {
+        if (this !== globalThis) throw new TypeError("Illegal invocation");
+        calledOnWindow = true;
+        return Promise.resolve(new Response(JSON.stringify({ message: { content: "{}" } })));
+      },
+    });
+
+    try {
+      const service = new OllamaLlmService({ model: "m" });
+      await service.complete({ system: "", user: "", schema: {}, schemaName: "S" });
+      expect(calledOnWindow).toBe(true);
+    } finally {
+      Object.defineProperty(globalThis, "fetch", { configurable: true, writable: true, value: original });
+    }
+  });
+
   it("dichiara di vincolare l'output con una grammatica", () => {
     expect(new OllamaLlmService({ model: "m", fetchImpl: fakeFetch(() => new Response("{}")) }).constraint).toBe(
       "grammar",
