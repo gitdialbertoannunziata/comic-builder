@@ -34,3 +34,5 @@ export * from "./revisions/revisionCommands.js";
 export * from "./revisions/lintRevisions.js";
 export * from "./revisions/readable.js";
 export * from "./revisions/scriptDiff.js";
+export * from "./revisions/findReplace.js";
+export * from "./editor/renameCharacter.js";

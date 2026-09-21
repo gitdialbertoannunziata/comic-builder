@@ -8,6 +8,9 @@ import { validateDocument } from "../validate/validateDocument.js";
 import { getTemplate } from "../templates/catalog.js";
 import { expandTemplate } from "../templates/expand.js";
 import { remapProvenance } from "../revisions/scriptDiff.js";
+import { findMatches, matchesAsRevisions, type FindOptions } from "../revisions/findReplace.js";
+import { refFromName } from "../revisions/readable.js";
+import { characterRefs, renameCharacterRefs } from "./renameCharacter.js";
 import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
 
 /**
@@ -44,7 +47,9 @@ export type Command =
   | { type: "revision.add"; chapterId: string; entries: NewRevision[]; by: string; at: string }
   | { type: "revision.apply"; chapterId: string; ids: string[]; by: string; at: string }
   | { type: "revision.reject"; chapterId: string; ids: string[]; by: string; at: string }
-  | { type: "script.set"; chapterId: string; text: string; sha: string };
+  | { type: "script.set"; chapterId: string; text: string; sha: string }
+  | { type: "text.replace"; chapterId: string; find: string; replace: string; options: FindOptions; by: string; at: string }
+  | { type: "character.rename"; from: string; to: string };
 
 export interface Point {
   x: number;
@@ -593,6 +598,25 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       }
     case "revision.reject":
       return rejectRevisions(doc, command.chapterId, command.ids, command.by, command.at);
+    case "text.replace": {
+      const matches = findMatches(doc, command.chapterId, command.find, command.replace, command.options);
+      if (matches.length === 0) throw new CommandError(`Nessuna occorrenza di «${command.find}» da sostituire`);
+      // Ogni sostituzione è una correzione tracciata, già applicata.
+      const before = new Set((doc.revisions[command.chapterId]?.entries ?? []).map((e) => e.id));
+      const added = addRevisions(doc, command.chapterId, matchesAsRevisions(matches), command.by, command.at);
+      const ids = (added.revisions[command.chapterId]?.entries ?? []).filter((e) => !before.has(e.id)).map((e) => e.id);
+      return applyRevisions(added, command.chapterId, ids, command.by, command.at, applyCommand);
+    }
+    case "character.rename": {
+      const to = refFromName(command.to);
+      if (!to) throw new CommandError("Il nome nuovo è vuoto");
+      if (to === command.from) throw new CommandError("Il nome è già quello");
+      const refs = characterRefs(doc);
+      if (!refs.has(command.from)) throw new CommandError(`Nessun personaggio «${command.from}» nel progetto`);
+      // Unire due personaggi è un'altra operazione: farla per sbaglio confonderebbe due persone.
+      if (refs.has(to)) throw new CommandError(`Esiste già un personaggio «${to}»`);
+      return renameCharacterRefs(doc, command.from, to);
+    }
     case "script.set": {
       // Il copione nuovo diventa il riferimento: le prossime revisioni si confrontano con questo.
       const revs = doc.revisions[command.chapterId] ?? emptyRevisions(command.chapterId);
@@ -661,5 +685,9 @@ export function describeCommand(command: Command): string {
       return command.ids.length === 1 ? "Rifiuta correzione" : `Rifiuta ${command.ids.length} correzioni`;
     case "script.set":
       return "Aggiorna il copione";
+    case "text.replace":
+      return `Sostituisci «${command.find}»`;
+    case "character.rename":
+      return `Rinomina ${command.from} in ${command.to}`;
   }
 }
