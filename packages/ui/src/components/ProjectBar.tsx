@@ -20,14 +20,29 @@ function statusText(status: SaveStatus, folder: string | null): string {
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl+";
 
-export function ProjectBar({ editor, title }: { editor: ProjectEditor; title: string }) {
+export function ProjectBar({ editor, chapterLabel }: { editor: ProjectEditor; chapterLabel: string }) {
   const { status, folder } = editor;
   const tone = status.kind === "error" || status.kind === "locked-out" ? "bar__status--error" : status.kind === "memory" ? "bar__status--warn" : "";
 
   return (
     <header className="bar">
       <div className="bar__project">
-        <strong>{title}</strong>
+        <span className="bar__title">
+          <input
+            className="bar__name"
+            value={editor.doc.project.title}
+            aria-label="Nome del progetto"
+            title="Clicca per rinominare il progetto"
+            size={Math.max(8, editor.doc.project.title.length)}
+            onChange={(e) => editor.run({ type: "project.rename", title: e.target.value }, { gesture: "project-rename" })}
+            onBlur={(e) => {
+              if (!e.target.value.trim()) editor.run({ type: "project.rename", title: "Senza titolo" }, { gesture: "project-rename" });
+              editor.endGesture();
+            }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+          <span className="bar__chapter">— {chapterLabel}</span>
+        </span>
         <span className="bar__folder">{folder ? `cartella: ${folder}` : "nessuna cartella"}</span>
       </div>
 
@@ -46,6 +61,22 @@ export function ProjectBar({ editor, title }: { editor: ProjectEditor; title: st
             Riapri «{editor.reopenable}»
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn--small"
+          onClick={() => {
+            const unsaved = !folder && editor.canUndo;
+            const title = window.prompt(
+              unsaved
+                ? "Nome del nuovo progetto?\n\nAttenzione: il progetto aperto non è salvato in una cartella e andrà perso."
+                : "Nome del nuovo progetto?",
+              "",
+            );
+            if (title !== null) void editor.newProject(title);
+          }}
+        >
+          Nuovo progetto…
+        </button>
         {editor.canOpenFolders ? (
           <>
             <button type="button" className="btn btn--small" onClick={() => void editor.openFolder()}>

@@ -293,3 +293,28 @@ export function projectDocFrom(input: {
     characters: {},
   };
 }
+
+/**
+ * Un'opera nuova e vuota: un capitolo 1 senza pagine, pronto per il copione.
+ * Formati, lettering e stile vengono da `base` (i default di un progetto),
+ * titolo e id dal nome scelto. L'id è derivato una volta e poi non cambia:
+ * rinominare il progetto cambia solo il titolo.
+ */
+export function emptyProjectDoc(base: Project, title: string, now = new Date()): ProjectDoc {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return {
+    project: { ...base, id: slug || `progetto-${now.getTime()}`, title: title.trim() || "Senza titolo", series_seed: now.getTime() % 2_147_483_647, created: now.toISOString() },
+    scenes: { schema: 1, scenes: [] },
+    chapters: { schema: 1, chapters: [{ id: "ep001", number: 1, title: "Capitolo 1", status: "planned", pages: [] }] },
+    pages: {},
+    revisions: {},
+    scripts: {},
+    characters: {},
+  };
+}

@@ -1465,3 +1465,41 @@ code {
 .chapter-fields input {
   width: 100%;
 }
+
+/* Il nome del progetto: si legge come un titolo, si modifica cliccandoci. */
+.bar__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bar__name {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  padding: 1px 4px;
+  margin-left: -5px;
+  max-width: 420px;
+}
+
+.bar__name:hover {
+  border-color: var(--border);
+}
+
+.bar__name:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  outline: none;
+}
+
+.bar__chapter {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

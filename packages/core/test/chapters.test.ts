@@ -70,3 +70,22 @@ describe("Contesto degli altri capitoli per lo spoglio", () => {
     expect(chapterContext(withSheet, "ep001").previously).toBeNull();
   });
 });
+
+describe("Nome e progetto nuovo", () => {
+  it("rinominare cambia il titolo, non l'id", async () => {
+    const next = applyCommand(doc, { type: "project.rename", title: "Il guardiano" });
+    expect(next.project.title).toBe("Il guardiano");
+    expect(next.project.id).toBe(doc.project.id);
+  });
+
+  it("un progetto nuovo è un'opera vuota con un capitolo pronto, e si può salvare", async () => {
+    const { emptyProjectDoc, saveProject, loadProject } = await import("../src/document/projectDoc.js");
+    const { MemoryProjectStore } = await import("../src/document/store.js");
+    const fresh = emptyProjectDoc(sampleProject, "La Città di Sale", new Date("2026-09-21T10:00:00Z"));
+    expect(fresh.project).toMatchObject({ id: "la-citta-di-sale", title: "La Città di Sale" });
+    expect(fresh.chapters.chapters).toEqual([{ id: "ep001", number: 1, title: "Capitolo 1", status: "planned", pages: [] }]);
+    const store = new MemoryProjectStore();
+    await saveProject(store, fresh, null);
+    expect((await loadProject(store)).doc.project.title).toBe("La Città di Sale");
+  });
+});

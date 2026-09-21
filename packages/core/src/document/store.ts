@@ -98,6 +98,11 @@ export class MemoryProjectStore implements ProjectStore {
     return Promise.resolve();
   }
 
+  /** Svuota lo store: un progetto nuovo non si porta dietro le immagini del precedente. */
+  clear(): void {
+    this.files.clear();
+  }
+
   /** Tutti i percorsi presenti: per i test. */
   paths(): string[] {
     return [...this.files.keys()].sort();

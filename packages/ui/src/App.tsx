@@ -105,9 +105,16 @@ export function App() {
 
   // Il copione che si sta scrivendo, per capitolo: finché non si spoglia è
   // una bozza della scheda; spogliato, diventa il copione del capitolo.
+  // Chiave per progetto e capitolo: un progetto nuovo non eredita la bozza del precedente.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const script = drafts[chapter.id] ?? doc.scripts[chapter.id] ?? "";
-  const setScript = (text: string) => setDrafts((d) => ({ ...d, [chapter.id]: text }));
+  const draftKey = `${doc.project.id}:${chapter.id}`;
+  const script = drafts[draftKey] ?? doc.scripts[chapter.id] ?? "";
+  const setScript = (text: string) => setDrafts((d) => ({ ...d, [draftKey]: text }));
+
+  // Il nome del progetto anche nella scheda del browser.
+  useEffect(() => {
+    document.title = `${doc.project.title} — comic-builder`;
+  }, [doc.project.title]);
   const [service, setService] = usePreference<ServiceChoice>(
     "service",
     prefilled.anthropicKeyFromEnv ? "anthropic" : prefilled.deepseekKeyFromEnv ? "deepseek" : "mock",
@@ -152,7 +159,7 @@ export function App() {
         run({ type: "chapter.update", chapterId: chapter.id, title: result.scenes[0]?.title ?? chapter.title }, { gesture });
       }
       endGesture();
-      setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([id]) => id !== chapter.id)));
+      setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([key]) => key !== draftKey)));
       setSummary(result.summary);
     } catch (error) {
       setBreakdownError(error instanceof Error ? error.message : String(error));
@@ -198,7 +205,7 @@ export function App() {
 
   return (
     <div className="shell">
-      <ProjectBar editor={editor} title={`${doc.project.title} — ${chapter.number}. ${chapter.title}`} />
+      <ProjectBar editor={editor} chapterLabel={`${chapter.number}. ${chapter.title}`} />
       {pages.length > 0 ? (
         <Workspace
           key={chapter.id}

@@ -8,6 +8,7 @@ import {
   canUndo,
   CommandError,
   createHistory,
+  emptyProjectDoc,
   endGesture as endHistoryGesture,
   execute,
   loadProject,
@@ -102,6 +103,8 @@ export interface ProjectEditor {
   /** Quando è stato ripristinato il lavoro non salvato di questa scheda, se è successo. */
   recoveredAt: Date | null;
   startOver: () => Promise<void>;
+  /** Un'opera nuova e vuota, col nome dato: parte in memoria, si salva poi in una cartella. */
+  newProject: (title: string) => Promise<void>;
   saveToFolder: () => Promise<void>;
   dismissNotice: () => void;
 }
@@ -275,6 +278,22 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     else setNotice(`Permesso negato per «${reopenHandle.name}»: aprilo da «Apri progetto…».`);
   }
 
+  async function newProject(title: string) {
+    const base = historyRef.current.present.project;
+    if (store) await releaseLock(store, session);
+    await forgetFolder();
+    await clearRecovery();
+    memory.clear();
+    setStore(null);
+    setSaved(null);
+    setLoadIssues([]);
+    setReopenHandle(null);
+    setRecoveredAt(null);
+    setStatus({ kind: "memory" });
+    // Formati e lettering del progetto di prima; lo stile no: è di quell'opera.
+    commit(() => createHistory(emptyProjectDoc({ ...base, style: { ...base.style, positive: [], negative: [] } }, title)));
+  }
+
   async function startOver() {
     await clearRecovery();
     window.location.reload();
@@ -387,6 +406,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     reopen,
     recoveredAt,
     startOver,
+    newProject,
     saveToFolder,
     dismissNotice: () => setNotice(null),
   };
