@@ -24,6 +24,7 @@ const GATE_RATIO = 0.2;
 const EXTRAS = [
   { key: "document", label: "documento", hint: "Il JSON rieditabile: griglia, balloon, camera come dati" },
   { key: "svg", label: "svg", hint: "Vettoriale della pagina canonica, col font incorporato" },
+  { key: "prompts", label: "istruzioni", hint: "Brief e prompt per un modello di immagini esterno, pannello per pannello" },
 ] as const;
 
 export function ExportPanel({

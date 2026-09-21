@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
+import { balloonBox, compilePageBrief, compilePanel, PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { pageTargets, renderPreview } from "./renderPreview.js";
 import { runBreakdown } from "./runBreakdown.js";
@@ -14,6 +14,7 @@ import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { StripView } from "./components/StripView.js";
 import { RevisionsPanel } from "./components/RevisionsPanel.js";
+import { PromptCard } from "./components/PromptCard.js";
 import { measureWith } from "@comic-builder/lettering";
 import { primaryTarget, styles as projectStyles } from "./project.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
@@ -151,12 +152,15 @@ export function App() {
     setExportOutcome(null);
     try {
       const choices = [...exportChoices].map((key) =>
-        key.startsWith("target:") ? { kind: "target" as const, id: key.slice("target:".length) } : { kind: key as "document" | "svg" },
+        key.startsWith("target:") ? { kind: "target" as const, id: key.slice("target:".length) } : { kind: key as "document" | "svg" | "prompts" },
       );
       if (choices.length === 0) throw new Error("Scegli almeno un formato.");
       const outcome = await exportChapter({
         pages,
         chapter: { id: chapter.id, number: chapter.number, title: chapter.title },
+        projectStyle: doc.project.style,
+        seriesSeed: doc.project.series_seed,
+        scenes: doc.scenes.scenes,
         font,
         fontBytes,
         choices,
@@ -251,6 +255,33 @@ export function App() {
   const editTarget = view === "scroll" ? stripTargetId : pageTargetId === primaryTarget.id ? null : pageTargetId;
   const shownPage = editTarget ? pageForTarget(page, editTarget) : page;
   const forTarget = editTarget ? { target: editTarget } : {};
+
+  // Istruzioni per un modello esterno (§9.1), compilate dalla pagina com'è nel
+  // formato mostrato: proporzioni e zone dei balloon sono quelle vere.
+  const briefs = useMemo(() => {
+    if (!preview || preview.shownPage.layout.mode !== "page") return null;
+    const shown = preview.shownPage;
+    const byId = new Map(shown.panels.map((p) => [p.id, p]));
+    const panels = shown.layout.mode === "page" ? shown.layout.reading_order.map((id) => byId.get(id)).filter((p): p is (typeof shown.panels)[number] => p !== undefined) : [];
+    const list = panels.flatMap((panel) => {
+      const panelBox = preview.boxes.get(panel.id);
+      if (!panelBox) return [];
+      const balloonBoxes = panel.balloons.flatMap((b) => {
+        const fit = preview.fits.get(b.id);
+        return fit ? [{ id: b.id, box: balloonBox(b, panelBox, fit) }] : [];
+      });
+      return [compilePanel({ project: doc.project, page: shown, panel, panelBox, balloonBoxes, targetId: preview.targetId, scene })];
+    });
+    const page = compilePageBrief({
+      page: shown,
+      pageBox: { x: 0, y: 0, width: preview.width, height: preview.height },
+      panels: list,
+      boxes: preview.boxes,
+      readingDirection: doc.project.reading_direction,
+    });
+    return { list, page };
+  }, [preview, doc.project, scene]);
+  const selectedBrief = briefs?.list.find((b) => b.panelId === selectedPanel.id) ?? null;
 
   /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
   function patchPanel(field: "action" | "setting", value: string) {
@@ -360,6 +391,18 @@ export function App() {
           </div>
 
           <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
+
+          {selectedBrief && briefs && (
+            <PromptCard
+              brief={selectedBrief}
+              pageBrief={briefs.page}
+              panel={selectedPanel}
+              pageId={page.id}
+              project={doc.project}
+              run={run}
+              endGesture={endGesture}
+            />
+          )}
 
           <ArtCard pageId={page.id} panel={selectedPanel} store={editor.store} url={art.urls.get(selectedPanel.id)} run={run} scan={art.scan} />
 

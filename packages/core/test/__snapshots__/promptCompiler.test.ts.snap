@@ -1,0 +1,16 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Compilatore pannello → istruzioni (§9.1) > il brief, per intero 1`] = `
+"Comic panel, aspect 5:4 (987×804 px). Draw the image only: no text, no speech balloons, no captions, no panel border.
+Framing: medium shot, waist up; low angle looking up, imposing; 35mm lens.
+Characters: alex (lead, head and torso, expression: teso).
+Composition: subject centered.
+Action: Alex spinge la porta del garage e si ferma
+Setting: garage, polvere sospesa, sera
+Props: porta basculante, auto coperta da un telo.
+Lighting: backlit, rim light.
+Tone (composition and palette, not a subject): tense: tight framing, strong diagonals, restrained palette.
+Continuity: giacca strappata al gomito sinistro dalla pagina precedente
+Keep the top center area free of important detail (x 22–52%, y 15–26%): a speech balloon goes there.
+Avoid: text, lettering, speech balloons, captions, watermark, signature, panel borders."
+`;

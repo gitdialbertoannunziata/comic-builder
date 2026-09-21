@@ -49,7 +49,8 @@ export type Command =
   | { type: "revision.reject"; chapterId: string; ids: string[]; by: string; at: string }
   | { type: "script.set"; chapterId: string; text: string; sha: string }
   | { type: "text.replace"; chapterId: string; find: string; replace: string; options: FindOptions; by: string; at: string }
-  | { type: "character.rename"; from: string; to: string };
+  | { type: "character.rename"; from: string; to: string }
+  | { type: "project.style"; positive: string[]; negative: string[] };
 
 export interface Point {
   x: number;
@@ -58,7 +59,7 @@ export interface Point {
 
 export type BalloonPatch = Partial<Pick<Balloon, "type" | "font_scale" | "speaker" | "size_mode" | "z">>;
 export type PanelPatch = Partial<
-  Pick<Panel, "action" | "setting" | "props" | "continuity_notes" | "characters" | "border" | "art" | "slice_avoid">
+  Pick<Panel, "action" | "setting" | "props" | "continuity_notes" | "characters" | "border" | "art" | "slice_avoid" | "prompt">
 >;
 
 export class CommandError extends Error {}
@@ -617,6 +618,11 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       if (refs.has(to)) throw new CommandError(`Esiste già un personaggio «${to}»`);
       return renameCharacterRefs(doc, command.from, to);
     }
+    case "project.style": {
+      // La bibbia di stile del progetto (§5.2): vale per ogni pannello, sotto il prompt dell'autore.
+      const clean = (list: string[]) => list.map((s) => s.trim()).filter((s) => s.length > 0);
+      return { ...doc, project: { ...doc.project, style: { ...doc.project.style, positive: clean(command.positive), negative: clean(command.negative) } } };
+    }
     case "script.set": {
       // Il copione nuovo diventa il riferimento: le prossime revisioni si confrontano con questo.
       const revs = doc.revisions[command.chapterId] ?? emptyRevisions(command.chapterId);
@@ -689,5 +695,7 @@ export function describeCommand(command: Command): string {
       return `Sostituisci «${command.find}»`;
     case "character.rename":
       return `Rinomina ${command.from} in ${command.to}`;
+    case "project.style":
+      return "Cambia lo stile del progetto";
   }
 }

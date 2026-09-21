@@ -36,3 +36,5 @@ export * from "./revisions/readable.js";
 export * from "./revisions/scriptDiff.js";
 export * from "./revisions/findReplace.js";
 export * from "./editor/renameCharacter.js";
+export * from "./compile/fragments.js";
+export * from "./compile/promptCompiler.js";

@@ -1,4 +1,12 @@
 import {
+  balloonBox,
+  compilePageBrief,
+  compilePanel,
+  pageForTarget,
+  resolvePageBoxesForTarget,
+  scaleStyles,
+  type PanelBrief,
+  type Scene,
   finishTargetExport,
   findTarget,
   pageFileNames,
@@ -10,7 +18,7 @@ import {
   type ValidationIssue,
 } from "@comic-builder/core";
 import { measureWith, type LoadedFont } from "@comic-builder/lettering";
-import { primaryTarget, project, styles } from "./project.js";
+import { primaryGeometry, primaryTarget, project, styles } from "./project.js";
 import { embedFont, svgToImageBlob } from "./platform/rasterize.js";
 
 /**
@@ -18,7 +26,7 @@ import { embedFont, svgToImageBlob } from "./platform/rasterize.js";
  * che non sono formati di pubblicazione — il documento rieditabile e l'SVG
  * vettoriale della pagina canonica.
  */
-export type ExportChoice = { kind: "target"; id: string } | { kind: "document" } | { kind: "svg" };
+export type ExportChoice = { kind: "target"; id: string } | { kind: "document" } | { kind: "svg" } | { kind: "prompts" };
 
 export function choiceKey(choice: ExportChoice): string {
   return choice.kind === "target" ? `target:${choice.id}` : choice.kind;
@@ -27,6 +35,10 @@ export function choiceKey(choice: ExportChoice): string {
 export interface ExportInput {
   pages: readonly Page[];
   chapter: { id: string; title?: string; number?: number };
+  /** Per le istruzioni: stile corrente del progetto e scene (luogo e ora di ripiego). */
+  projectStyle?: typeof project.style;
+  seriesSeed?: number;
+  scenes?: readonly Scene[];
   font: LoadedFont;
   fontBytes: Uint8Array;
   choices: readonly ExportChoice[];
@@ -103,6 +115,53 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
         files.push({ name: `documento/${names[i]!}`, data: JSON.stringify(page, null, 2), mediaType: "application/json" }),
       );
       summaries.push({ targetId: "documento", label: "Documento JSON", files: input.pages.length });
+      continue;
+    }
+
+    if (choice.kind === "prompts") {
+      // Istruzioni per un modello esterno (§9.1), nel formato canonico: le
+      // stesse che l'editor mostra pannello per pannello.
+      const measure = measureWith(input.font);
+      const scaled = scaleStyles(styles, primaryGeometry.letteringScale);
+      const all: PanelBrief[] = [];
+      const names = pageFileNames(input.pages, "md");
+      input.pages.forEach((original, i) => {
+        if (original.layout.mode !== "page") return;
+        const page = pageForTarget(original, primaryTarget.id);
+        const boxes = resolvePageBoxesForTarget(page, primaryGeometry);
+        const fits = measure({ page, boxes, lettering: scaled.lettering, draftStyle: scaled.draftStyle, target: primaryTarget.id, draft: false });
+        const byId = new Map(page.panels.map((p) => [p.id, p]));
+        const order = page.layout.mode === "page" ? page.layout.reading_order : [];
+        const briefs = order.flatMap((id) => {
+          const panel = byId.get(id);
+          const panelBox = boxes.get(id);
+          if (!panel || !panelBox) return [];
+          const balloonBoxes = panel.balloons.flatMap((b) => {
+            const fit = fits.get(b.id);
+            return fit ? [{ id: b.id, box: balloonBox(b, panelBox, fit) }] : [];
+          });
+          const scene = input.scenes?.find((s) => s.id === panel.scene_id);
+          return [
+            compilePanel({
+              project: { style: input.projectStyle ?? project.style, series_seed: input.seriesSeed ?? project.series_seed },
+              page,
+              panel,
+              panelBox,
+              balloonBoxes,
+              targetId: primaryTarget.id,
+              ...(scene ? { scene } : {}),
+            }),
+          ];
+        });
+        all.push(...briefs);
+        files.push({
+          name: `istruzioni/${names[i]!}`,
+          data: compilePageBrief({ page, pageBox: { x: 0, y: 0, width: primaryGeometry.width, height: primaryGeometry.height }, panels: briefs, boxes, readingDirection: project.reading_direction }),
+          mediaType: "text/markdown",
+        });
+      });
+      files.push({ name: `istruzioni/${input.chapter.id}-prompts.json`, data: JSON.stringify(all, null, 2), mediaType: "application/json" });
+      summaries.push({ targetId: "istruzioni", label: "Istruzioni per modelli esterni", files: input.pages.length + 1 });
       continue;
     }
 
