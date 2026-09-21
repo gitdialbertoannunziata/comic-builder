@@ -1,4 +1,4 @@
-import { LlmError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 export interface OllamaOptions {
   /** Modello già scaricato in Ollama (`ollama pull ...`). */
@@ -19,6 +19,8 @@ interface OllamaChatResponse {
   message?: { content?: string };
   model?: string;
   error?: string;
+  /** `length` se la generazione si è fermata al limite di token. */
+  done_reason?: string;
 }
 
 /**
@@ -103,6 +105,9 @@ export class OllamaLlmService implements LlmService {
     const payload = (await response.json()) as OllamaChatResponse;
     if (payload.error) throw new LlmError(`Ollama: ${payload.error}`, this.name);
 
+    if (payload.done_reason === "length") {
+      throw new LlmTruncatedError("Risposta di Ollama troncata dal limite di token (num_predict o contesto del modello).", this.name);
+    }
     const content = payload.message?.content;
     if (!content) throw new LlmError("Ollama ha risposto senza contenuto", this.name);
 

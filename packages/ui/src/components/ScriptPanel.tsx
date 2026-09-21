@@ -34,6 +34,8 @@ interface Props {
   deepseekKeyFromEnv: boolean;
   onRun: () => void;
   running: boolean;
+  /** «parte 2 di 4» mentre lo spoglio procede a parti. */
+  progress?: { done: number; total: number } | null;
   error: string | null;
   summary: BreakdownSummary | null;
 }
@@ -64,6 +66,7 @@ export function ScriptPanel({
   deepseekKeyFromEnv,
   onRun,
   running,
+  progress,
   error,
   summary,
 }: Props) {
@@ -227,7 +230,11 @@ export function ScriptPanel({
           )}
 
           <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
-            {running ? "Spoglio in corso…" : "Spoglia il capitolo"}
+            {running
+              ? progress && progress.total > 1
+                ? `Spoglio… parte ${Math.min(progress.done + 1, progress.total)} di ${progress.total}`
+                : "Spoglio in corso…"
+              : "Spoglia il capitolo"}
           </button>
 
           {error && <p className="issue issue--error script__result">{error}</p>}

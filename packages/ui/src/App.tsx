@@ -85,6 +85,7 @@ export function App() {
   const [deepseekKey, setDeepseekKey] = useState(prefilled.deepseekKey);
   const [deepseekModel, setDeepseekModel] = useState(prefilled.deepseekModel);
   const [running, setRunning] = useState(false);
+  const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
 
@@ -117,6 +118,7 @@ export function App() {
         deepseekKey,
         deepseekModel,
         chapterId: "ep001",
+        onProgress: setBreakdownProgress,
       });
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
       // Un nuovo spoglio sostituisce il capitolo, ma resta un passo della
@@ -140,6 +142,7 @@ export function App() {
       setSummary(null);
     } finally {
       setRunning(false);
+      setBreakdownProgress(null);
     }
   }
 
@@ -354,6 +357,7 @@ export function App() {
           deepseekKeyFromEnv={prefilled.deepseekKeyFromEnv}
           onRun={() => void onRunBreakdown()}
           running={running}
+          progress={breakdownProgress}
           error={breakdownError}
           summary={summary}
         />

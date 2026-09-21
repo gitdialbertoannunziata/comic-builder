@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { LlmError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 /**
  * Modello di riferimento. Si cambia dalla configurazione: l'interfaccia esiste
@@ -92,7 +92,7 @@ export class AnthropicLlmService implements LlmService {
       }
 
       if (response.stop_reason === "max_tokens") {
-        throw new LlmError(
+        throw new LlmTruncatedError(
           `Risposta troncata a ${this.maxTokens} token: il capitolo è troppo lungo per una sola richiesta. Spezzalo, o alza il limite.`,
           this.name,
         );

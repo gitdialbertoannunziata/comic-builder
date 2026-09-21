@@ -59,3 +59,15 @@ export class LlmError extends Error {
     this.name = "LlmError";
   }
 }
+
+/**
+ * La risposta è stata tagliata dal limite di token del fornitore. È un
+ * errore a parte perché ha un rimedio che chi chiama può applicare da solo:
+ * chiedere meno testo per volta (vedi lo spoglio a parti in `breakdown`).
+ */
+export class LlmTruncatedError extends LlmError {
+  constructor(message: string, service: string) {
+    super(message, service);
+    this.name = "LlmTruncatedError";
+  }
+}

@@ -1,4 +1,4 @@
-import { LlmError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 export const DEFAULT_DEEPSEEK_MODEL = "deepseek-flash";
 
@@ -116,7 +116,7 @@ export class DeepSeekLlmService implements LlmService {
     const choice = payload.choices?.[0];
 
     if (choice?.finish_reason === "length") {
-      throw new LlmError(
+      throw new LlmTruncatedError(
         "Risposta troncata: il capitolo produce più testo del limite impostato. Spezzalo, o alza il limite di token.",
         this.name,
       );

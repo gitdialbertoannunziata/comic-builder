@@ -12,6 +12,8 @@ import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.j
 
 export interface RunBreakdownInput {
   script: string;
+  /** Avanzamento dello spoglio a parti: un capitolo lungo richiede più richieste. */
+  onProgress?: (progress: { done: number; total: number }) => void;
   service: ServiceChoice;
   ollamaModel: string;
   ollamaHost: string;
@@ -56,6 +58,7 @@ export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdo
     llm: serviceFor(input.service, input),
     script: input.script,
     scriptFile: "copione-incollato.md",
+    ...(input.onProgress ? { onProgress: input.onProgress } : {}),
   });
 
   const pages: Page[] = [];

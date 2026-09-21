@@ -49,14 +49,35 @@ export function breakdownSystemPrompt(): string {
   ].join("\n");
 }
 
-export function breakdownUserPrompt(script: string): string {
+export interface UserPromptOptions {
+  /** Numero della prima riga nel copione intero: una parte mantiene i numeri originali. */
+  firstLine?: number;
+  /** Ref dei personaggi già incontrati nelle parti precedenti: si riusano, non si reinventano. */
+  knownCharacters?: readonly string[];
+  /** Quale parte del capitolo è, se è stato diviso. */
+  part?: { index: number; total: number; continuation: boolean };
+}
+
+export function breakdownUserPrompt(script: string, options: UserPromptOptions = {}): string {
+  const first = options.firstLine ?? 1;
   const numbered = script
     .split("\n")
-    .map((line, i) => `${i + 1}\t${line}`)
+    .map((line, i) => `${first + i}\t${line}`)
     .join("\n");
 
   // Le righe sono numerate nel prompt perché la provenienza (§10.1) chiede
   // numeri di riga: chiederli su un testo non numerato è chiedere al modello
   // di contare, che è il modo più sicuro per ottenerli sbagliati.
-  return `Spoglia questo capitolo. Le righe sono numerate per riferimento.\n\n${numbered}`;
+  const header: string[] = [];
+  if (options.part && options.part.total > 1) {
+    header.push(
+      `Questa è la parte ${options.part.index + 1} di ${options.part.total} del capitolo.` +
+        (options.part.continuation ? " Continua la scena della parte precedente: non ripetere ciò che c'era prima." : ""),
+    );
+  }
+  if (options.knownCharacters && options.knownCharacters.length > 0) {
+    header.push(`Personaggi già incontrati, da chiamare con questi ref se ricompaiono: ${options.knownCharacters.join(", ")}.`);
+  }
+  const intro = header.length > 0 ? `${header.join("\n")}\n\n` : "";
+  return `${intro}Spoglia questo capitolo. Le righe sono numerate per riferimento.\n\n${numbered}`;
 }
