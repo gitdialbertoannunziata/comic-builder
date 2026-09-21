@@ -8,6 +8,7 @@ import {
   type ValidationIssue,
   type RenderConfig,
   type Box,
+  type LetteringFit,
 } from "@comic-builder/core";
 import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
 import { primaryGeometry, primaryTarget, styles } from "./project.js";
@@ -29,6 +30,8 @@ export interface PreviewResult {
    * pannello indicandolo invece che cercandolo in un elenco.
    */
   boxes: Map<string, Box>;
+  /** Misure del lettering: dicono quanto è grande ogni balloon, per afferrarlo dove si vede. */
+  fits: Map<string, LetteringFit>;
   width: number;
   height: number;
 }
@@ -59,7 +62,7 @@ export function renderPreview(
   ];
 
   if (page.layout.mode !== "page") {
-    return { svg: null, issues, boxes: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX };
+    return { svg: null, issues, boxes: new Map(), fits: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX };
   }
 
   const boxes = resolvePageBoxesForTarget(page, primaryGeometry);
@@ -92,6 +95,7 @@ export function renderPreview(
     svg: renderPageSvg(page, boxes, fits, config),
     issues,
     boxes,
+    fits,
     width: PAGE_WIDTH_PX,
     height: PAGE_HEIGHT_PX,
   };

@@ -166,9 +166,13 @@ button {
 }
 
 .page-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
   font-family: var(--mono);
   font-size: 11px;
-  padding: 5px 9px;
+  padding: 5px 7px;
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -779,4 +783,170 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+/* Manipolazione diretta sulla pagina. */
+.preview--dragging,
+.preview--dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+.preview__selected {
+  pointer-events: none;
+}
+
+.balloon-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 3;
+  cursor: grab;
+}
+
+.balloon-hit:hover {
+  stroke: var(--accent);
+  stroke-dasharray: 6 4;
+}
+
+.balloon-hit--selected {
+  stroke: var(--accent);
+}
+
+.tail-handle {
+  fill: var(--accent);
+  fill-opacity: 0.85;
+  stroke: #fff;
+  stroke-width: 3;
+  cursor: grab;
+}
+
+/* Il tratto visibile è sottile, l'area da afferrare no. */
+.gutter-handle {
+  stroke: transparent;
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+
+.gutter-handle:hover {
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+}
+
+.gutter-handle--cols {
+  cursor: col-resize;
+}
+
+.gutter-handle--rows {
+  cursor: row-resize;
+}
+
+/* Inquadratura rapida. */
+.shots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.shot[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.shot-icon {
+  width: 30px;
+  height: 22px;
+}
+
+.shot-icon__frame {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.shot-icon__fig {
+  fill: currentColor;
+  fill-opacity: 0.55;
+}
+
+.shot-icon__eye {
+  fill: var(--surface);
+}
+
+.card__title--gap {
+  margin-top: 14px;
+}
+
+.tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* Template: si sceglie guardando, non leggendo. */
+.template-thumb {
+  width: 20px;
+  height: 30px;
+}
+
+.template-thumb rect {
+  fill: currentColor;
+  fill-opacity: 0.35;
+}
+
+.page-chip--add {
+  justify-content: center;
+  min-width: 34px;
+  font-size: 16px;
+}
+
+.template-picker {
+  margin: 8px 0;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.template-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.template-choice:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.template-choice .template-thumb {
+  width: 32px;
+  height: 48px;
 }

@@ -6,6 +6,7 @@ import type { BalloonStyle, BalloonVisualStyle } from "../schema/project.js";
 import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
 import { panelNeedsDraft, renderPanelDraft } from "./renderDraft.js";
+import { balloonBox, tailPoint } from "./geometry.js";
 
 function escapeXml(text: string): string {
   return text
@@ -106,10 +107,7 @@ function renderTextLines(fit: LetteringFit, centerX: number, topY: number, lineH
  * fissa esplicitamente) — coerente con l'esempio di §5.6.
  */
 function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, config: RenderConfig): string {
-  const x = containerBox.x + balloon.anchor.x * containerBox.width;
-  const y = containerBox.y + balloon.anchor.y * containerBox.height;
-  const w = fit.balloonWidth;
-  const h = fit.balloonHeight;
+  const { x, y, width: w, height: h } = balloonBox(balloon, containerBox, fit);
   const centerX = x + w / 2;
   const centerY = y + h / 2;
 
@@ -134,12 +132,7 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
     // vignetta e incrocia le code degli altri balloon (§8.2 vuole che la coda
     // non attraversi il testo). Resta comunque un ripiego: `tail.target`
     // esplicito è ciò che risolve davvero l'ambiguità.
-    const target = balloon.tail.target
-      ? {
-          x: containerBox.x + balloon.tail.target.x * containerBox.width,
-          y: containerBox.y + balloon.tail.target.y * containerBox.height,
-        }
-      : { x: centerX, y: y + h + containerBox.height * 0.1 };
+    const target = tailPoint(balloon, containerBox, { x, y, width: w, height: h });
     tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx, visual);
   }
 

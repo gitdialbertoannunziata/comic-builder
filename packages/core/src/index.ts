@@ -28,3 +28,4 @@ export * from "./document/projectDoc.js";
 export * from "./document/lock.js";
 export * from "./editor/commands.js";
 export * from "./editor/history.js";
+export * from "./render/geometry.js";

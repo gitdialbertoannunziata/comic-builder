@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { PageSchema, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { renderPreview } from "./renderPreview.js";
@@ -7,7 +7,9 @@ import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { CameraForm } from "./components/CameraForm.js";
 import { BalloonEditor } from "./components/BalloonEditor.js";
 import { ValidationPanel } from "./components/ValidationPanel.js";
-import { SvgPreview } from "./components/SvgPreview.js";
+import { PageEditor } from "./components/PageEditor.js";
+import { PanelTools } from "./components/PanelTools.js";
+import { PageList } from "./components/PageList.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { ExportPanel } from "./components/ExportPanel.js";
 import { exportChapter, type ExportOutcome } from "./exportPages.js";
@@ -59,7 +61,6 @@ export function App() {
   // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
   const [pageId, setPageId] = useState<string>(pages[0]!.id);
   const page = doc.pages[pageId] ?? pages[0]!;
-  const pageIndex = pages.findIndex((p) => p.id === page.id);
   const [selectedPanelId, setSelectedPanelId] = useState<string>(page.panels[0]!.id);
   const scene = doc.scenes.scenes.find((s) => s.id === page.panels[0]?.scene_id) ?? doc.scenes.scenes[0] ?? initialScene;
   const [script, setScript] = useState(SAMPLE_SCRIPT);
@@ -182,11 +183,23 @@ export function App() {
 
   const selectedPanel = page.panels.find((p) => p.id === selectedPanelId) ?? page.panels[0]!;
 
-  function goToPage(index: number) {
-    const target = pages[index]!;
-    setPageId(target.id);
-    setSelectedPanelId(target.panels[0]!.id);
-  }
+  const [selectedBalloonId, setSelectedBalloonId] = useState<string | null>(null);
+
+  const goToPage = useCallback(
+    (id: string) => {
+      const target = doc.pages[id];
+      if (!target) return;
+      setPageId(id);
+      setSelectedPanelId(target.panels[0]!.id);
+      setSelectedBalloonId(null);
+    },
+    [doc.pages],
+  );
+
+  const selectPanel = useCallback((id: string) => {
+    setSelectedPanelId(id);
+    setSelectedBalloonId(null);
+  }, []);
 
   /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
   function patchPanel(field: "action" | "setting", value: string) {
@@ -224,22 +237,16 @@ export function App() {
         />
 
         <p className="eyebrow eyebrow-gap">Pagine</p>
-        <div className="pages">
-          {pages.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              className="page-chip"
-              aria-pressed={i === pageIndex}
-              onClick={() => goToPage(i)}
-            >
-              {p.id}
-            </button>
-          ))}
-        </div>
+        <PageList
+          chapterId={chapter.id}
+          pages={pages}
+          currentPageId={page.id}
+          sceneId={scene.id}
+          onSelectPage={goToPage}
+          run={run}
+        />
         <p className="page-meta">
-          <strong>{page.layout.mode === "page" ? page.layout.template_id : "strip"}</strong>, scelto dal catalogo
-          sui beat della scena
+          <strong>{page.layout.mode === "page" ? page.layout.template_id : "strip"}</strong> · {page.panels.length} pannelli
         </p>
 
         <p className="eyebrow">Pannelli</p>
@@ -252,7 +259,7 @@ export function App() {
                   type="button"
                   className="panel-row"
                   aria-current={panel.id === selectedPanelId}
-                  onClick={() => setSelectedPanelId(panel.id)}
+                  onClick={() => selectPanel(panel.id)}
                 >
                   <span>
                     <span className="panel-row__shot">
@@ -301,6 +308,8 @@ export function App() {
             </div>
           </div>
 
+          <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
+
           <div className="card">
             <p className="card__title">camera</p>
             <CameraForm
@@ -331,11 +340,34 @@ export function App() {
       </section>
 
       <section className="col">
-        <p className="eyebrow">Validazione</p>
+        <p className="eyebrow">Pagina {page.order}</p>
+        {preview && (
+          <PageEditor
+            page={page}
+            svg={preview.svg}
+            boxes={preview.boxes}
+            fits={preview.fits}
+            width={preview.width}
+            height={preview.height}
+            selectedPanelId={selectedPanel.id}
+            selectedBalloonId={selectedBalloonId}
+            onSelectPanel={selectPanel}
+            onSelectBalloon={(balloonId, panelId) => {
+              setSelectedPanelId(panelId);
+              setSelectedBalloonId(balloonId);
+            }}
+            run={run}
+            endGesture={endGesture}
+            staleNote={schemaIssues.length > 0}
+          />
+        )}
+        <p className="field__hint">Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla.</p>
+
+        <p className="eyebrow eyebrow-gap">Validazione</p>
         <ValidationPanel
           schemaIssues={schemaIssues}
           docIssues={[...editor.loadIssues, ...issues]}
-          onSelectPanel={setSelectedPanelId}
+          onSelectPanel={selectPanel}
           knownPanelIds={panelIds}
         />
 
@@ -359,18 +391,6 @@ export function App() {
           pageCount={pages.length}
         />
 
-        <p className="eyebrow eyebrow-gap">Anteprima</p>
-        {preview && (
-          <SvgPreview
-            svg={preview.svg}
-            boxes={preview.boxes}
-            width={preview.width}
-            height={preview.height}
-            selectedPanelId={selectedPanelId}
-            onSelectPanel={setSelectedPanelId}
-            staleNote={schemaIssues.length > 0}
-          />
-        )}
       </section>
     </div>
     </div>
