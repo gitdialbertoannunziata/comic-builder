@@ -6,3 +6,4 @@ export * from "./pageFits.js";
 // browser (packages/ui) che importa "@comic-builder/lettering" non deve
 // trascinarselo dentro. Disponibile solo al sotto-percorso dedicato,
 // vedi package.json "exports"./sampleFont — pensato per Node (test, demo).
+export * from "./fitCache.js";

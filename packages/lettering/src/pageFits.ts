@@ -9,7 +9,7 @@ import {
   type MeasureFits,
 } from "@comic-builder/core";
 import type { LoadedFont } from "./font.js";
-import { fitBalloonText } from "./fitBalloon.js";
+import { fitBalloonTextCached } from "./fitCache.js";
 
 export interface ComputePageFitsInput {
   page: Page;
@@ -41,7 +41,7 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
 
     if (withDraft && panelNeedsDraft(panel, target) && panel.action.trim().length > 0) {
       const fontSizePx = draftActionFontSizePx(draftStyle, lettering.base_size_px);
-      const result = fitBalloonText({
+      const result = fitBalloonTextCached({
         runs: [{ t: panel.action }],
         font,
         baseFontSizePx: fontSizePx,
@@ -72,7 +72,7 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
     }
 
     for (const balloon of panel.balloons) {
-      const result = fitBalloonText({
+      const result = fitBalloonTextCached({
         runs: balloon.text,
         font,
         baseFontSizePx: lettering.base_size_px,
