@@ -65,5 +65,12 @@ export const PageSchema = z.object({
   panels: z.array(PanelSchema).default([]),
   /** Balloon/cartigli a livello di pagina, per ciò che le ancore al pannello non esprimono (§5.4). */
   overlays: z.array(BalloonSchema).default([]),
+  /**
+   * Indice più alto mai assegnato a un pannello della pagina. Gli id non si riusano (§5.3):
+   * senza questo contatore, cancellare l'ultimo pannello e crearne uno nuovo ne
+   * riprodurrebbe l'id, e una voce di changelog scritta per il vecchio
+   * finirebbe sul nuovo (§10.2). Assente nei documenti vecchi: vale il massimo presente.
+   */
+  panel_seq: z.number().int().nonnegative().optional(),
 });
 export type Page = z.infer<typeof PageSchema>;

@@ -11,6 +11,13 @@ export const ChapterSchema = z.object({
   due: z.string().nullable().optional(),
   /** Ordine di lettura delle pagine (§5.3): inserire/rinumerare pagine è normale. */
   pages: z.array(IdSchema).default([]),
+  /**
+   * Indice più alto mai assegnato a un pagina del capitolo. Gli id non si riusano (§5.3):
+   * senza questo contatore, cancellare l'ultimo la pagina e crearne uno nuovo ne
+   * riprodurrebbe l'id, e una voce di changelog scritta per il vecchio
+   * finirebbe sul nuovo (§10.2). Assente nei documenti vecchi: vale il massimo presente.
+   */
+  page_seq: z.number().int().nonnegative().optional(),
 });
 export type Chapter = z.infer<typeof ChapterSchema>;
 

@@ -26,3 +26,5 @@ export * from "./document/store.js";
 export * from "./document/migrate.js";
 export * from "./document/projectDoc.js";
 export * from "./document/lock.js";
+export * from "./editor/commands.js";
+export * from "./editor/history.js";

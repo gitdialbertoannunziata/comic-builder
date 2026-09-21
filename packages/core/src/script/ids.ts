@@ -48,12 +48,27 @@ function highestIndex(existingIds: readonly string[], prefix: string): number {
   return highest;
 }
 
+/**
+ * Prossimo indice libero: oltre il più alto presente *e* oltre il più alto mai
+ * assegnato (`seq`, salvato nel documento). Il solo massimo dei presenti non
+ * basta: cancellato l'ultimo, il successivo ne riprenderebbe l'id.
+ */
+export function nextIndex(existingIds: readonly string[], prefix: string, seq = 0): number {
+  return Math.max(highestIndex(existingIds, prefix), seq) + 1;
+}
+
 /** Id per un nuovo pannello in una pagina che ne ha già altri. Non riusa mai un id cancellato. */
-export function nextPanelId(pageIdValue: string, existingIds: readonly string[]): string {
-  return panelId(pageIdValue, highestIndex(existingIds, `${pageIdValue}-`) + 1);
+export function nextPanelId(pageIdValue: string, existingIds: readonly string[], seq = 0): string {
+  return panelId(pageIdValue, nextIndex(existingIds, `${pageIdValue}-`, seq));
 }
 
 /** Id per un nuovo balloon in un pannello che ne ha già altri. Stessa regola. */
-export function nextBalloonId(panelIdValue: string, existingIds: readonly string[]): string {
-  return balloonId(panelIdValue, highestIndex(existingIds, `${panelIdValue}-b`) + 1);
+export function nextBalloonId(panelIdValue: string, existingIds: readonly string[], seq = 0): string {
+  return balloonId(panelIdValue, nextIndex(existingIds, `${panelIdValue}-b`, seq));
+}
+
+/** L'indice numerico in coda a un id (`ep001-p003-07` → 7), per aggiornare i contatori. */
+export function trailingIndex(id: string): number {
+  const match = /(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
 }

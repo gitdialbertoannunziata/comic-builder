@@ -101,5 +101,12 @@ export const PanelSchema = z.object({
   render: z.record(z.string(), RenderRecordSchema.nullable()).default({}),
   balloons: z.array(BalloonSchema).default([]),
   slice_avoid: z.array(SliceBandSchema).default([]),
+  /**
+   * Indice più alto mai assegnato a un balloon del pannello. Gli id non si riusano (§5.3):
+   * senza questo contatore, cancellare l'ultimo balloon e crearne uno nuovo ne
+   * riprodurrebbe l'id, e una voce di changelog scritta per il vecchio
+   * finirebbe sul nuovo (§10.2). Assente nei documenti vecchi: vale il massimo presente.
+   */
+  balloon_seq: z.number().int().nonnegative().optional(),
 });
 export type Panel = z.infer<typeof PanelSchema>;
