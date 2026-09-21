@@ -155,3 +155,35 @@ export function dragTrackBoundary(
   next[index + 1] = pairWeight - next[index]!;
   return next;
 }
+
+/**
+ * Dove sta l'arte dentro il pannello (§7.4): il rettangolo in cui si disegna
+ * l'immagine intera, prima del ritaglio sul bordo del pannello.
+ *
+ * `cover` la adatta a riempire il pannello, `contain` a entrarci intera; lo
+ * zoom moltiplica quell'adattamento; il punto `focus` dell'immagine finisce
+ * al centro del pannello. Senza le dimensioni dell'immagine non si può
+ * calcolare nulla: il chiamante ripiega sul riempimento centrato.
+ */
+export interface ArtFrameLike {
+  fit?: "cover" | "contain";
+  zoom?: number;
+  focus_x?: number;
+  focus_y?: number;
+}
+
+export function artPlacement(panelBox: Box, size: { width: number; height: number }, frame: ArtFrameLike = {}): Box {
+  const fitScale =
+    (frame.fit ?? "cover") === "cover"
+      ? Math.max(panelBox.width / size.width, panelBox.height / size.height)
+      : Math.min(panelBox.width / size.width, panelBox.height / size.height);
+  const scale = fitScale * (frame.zoom ?? 1);
+  const width = size.width * scale;
+  const height = size.height * scale;
+  return {
+    x: panelBox.x + panelBox.width / 2 - (frame.focus_x ?? 0.5) * width,
+    y: panelBox.y + panelBox.height / 2 - (frame.focus_y ?? 0.5) * height,
+    width,
+    height,
+  };
+}

@@ -1,5 +1,6 @@
-import { useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
+  artPlacement,
   anchorFor,
   balloonBox,
   dragTrackBoundary,
@@ -32,6 +33,8 @@ interface Props {
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
   staleNote?: boolean;
+  /** Pannello di cui si sta inquadrando l'arte: trascinare la sposta, la rotella la ingrandisce. */
+  framingPanelId?: string | null;
   /** Immagini trascinate sulla pagina: con il pannello su cui sono cadute, se ce n'è uno. */
   onDropFiles?: (files: File[], panelId: string | null) => void;
 }
@@ -39,7 +42,8 @@ interface Props {
 type Drag =
   | { kind: "balloon"; balloonId: string; panelBox: Box; dx: number; dy: number; gesture: string }
   | { kind: "tail"; balloonId: string; panelBox: Box; gesture: string }
-  | { kind: "gutter"; handle: GutterHandle; gesture: string };
+  | { kind: "gutter"; handle: GutterHandle; gesture: string }
+  | { kind: "art"; panelId: string; startX: number; startY: number; focusX: number; focusY: number; width: number; height: number; gesture: string };
 
 let gestureCounter = 0;
 
@@ -57,6 +61,39 @@ export function PageEditor(props: Props) {
   const overlay = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [dropPanel, setDropPanel] = useState<string | null | undefined>(undefined);
+
+  // Il pannello in inquadratura, con la sua arte e dove sta ora.
+  const framed = (() => {
+    const id = props.framingPanelId;
+    if (!id) return null;
+    const panel = page.panels.find((p) => p.id === id);
+    const box = boxes.get(id);
+    if (!panel?.art.source || !panel.art.size || !box) return null;
+    const frame = { fit: "cover" as const, zoom: 1, focus_x: 0.5, focus_y: 0.5, ...panel.art.frame };
+    return { panel, box, frame, placement: artPlacement(box, panel.art.size, frame) };
+  })();
+
+  // La rotella serve un ascoltatore non passivo, o la colonna scorre mentre
+  // si ingrandisce. Le ultime informazioni passano da un ref.
+  const framedRef = useRef(framed);
+  framedRef.current = framed;
+  useEffect(() => {
+    const el = overlay.current;
+    if (!el || !props.framingPanelId) return;
+    const onWheel = (event: WheelEvent) => {
+      const current = framedRef.current;
+      if (!current) return;
+      event.preventDefault();
+      const zoom = Math.min(10, Math.max(0.1, current.frame.zoom * Math.exp(-event.deltaY * 0.0015)));
+      // Un giro di rotella è un passo di undo: i passi vicini nel tempo si fondono.
+      run(
+        { type: "panel.update", pageId: page.id, panelId: current.panel.id, patch: { art: { ...current.panel.art, frame: { ...current.frame, zoom } } } },
+        { gesture: `art-wheel-${current.panel.id}-${Math.floor(Date.now() / 700)}` },
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [props.framingPanelId, page.id, run, svg]);
 
   if (!svg) return <p className="muted">Nessuna anteprima: il lay-out non è in modalità "page".</p>;
 
@@ -80,6 +117,14 @@ export function PageEditor(props: Props) {
     if (drag.kind === "balloon") {
       const anchor = anchorFor(p.x - drag.dx, p.y - drag.dy, drag.panelBox);
       run({ type: "balloon.move", pageId: page.id, balloonId: drag.balloonId, anchor, ...forTarget }, { gesture: drag.gesture });
+    } else if (drag.kind === "art") {
+      const panel = page.panels.find((x) => x.id === drag.panelId);
+      if (!panel) return;
+      // Spostare il disegno a destra vuol dire portare al centro un punto più a sinistra.
+      const focus_x = Math.min(1, Math.max(0, drag.focusX - (p.x - drag.startX) / drag.width));
+      const focus_y = Math.min(1, Math.max(0, drag.focusY - (p.y - drag.startY) / drag.height));
+      const frame = { fit: "cover" as const, zoom: 1, ...panel.art.frame, focus_x, focus_y };
+      run({ type: "panel.update", pageId: page.id, panelId: panel.id, patch: { art: { ...panel.art, frame } } }, { gesture: drag.gesture });
     } else if (drag.kind === "tail") {
       const point = { x: (p.x - drag.panelBox.x) / drag.panelBox.width, y: (p.y - drag.panelBox.y) / drag.panelBox.height };
       const clamped = { x: Math.min(1, Math.max(0, point.x)), y: Math.min(1, Math.max(0, point.y)) };
@@ -119,7 +164,7 @@ export function PageEditor(props: Props) {
   const selected = boxes.get(selectedPanelId);
   // La griglia si ritocca solo sul formato principale (§4.1 regola 2): negli
   // altri deriva, e trascinarne i gutter cambierebbe tutti i formati insieme.
-  const handles = primary ? gutterHandles(page, boxes) : [];
+  const handles = primary && !framed ? gutterHandles(page, boxes) : [];
   const tuned = new Set(page.panels.flatMap((p) => p.balloons).filter((b) => b.per_target[targetId]).map((b) => b.id));
   const balloons = shownPage.panels.flatMap((panel) => {
     const panelBox = boxes.get(panel.id);
@@ -197,7 +242,36 @@ export function PageEditor(props: Props) {
             </line>
           ))}
 
-          {balloons.map(({ balloon, panel, panelBox, box }) => (
+          {framed && (
+            <>
+              <rect className="art-frame-outline" x={framed.placement.x} y={framed.placement.y} width={framed.placement.width} height={framed.placement.height} />
+              <rect
+                className="art-frame-hit"
+                x={framed.box.x}
+                y={framed.box.y}
+                width={framed.box.width}
+                height={framed.box.height}
+                onPointerDown={(e) => {
+                  const p = toPage(e);
+                  begin(e, {
+                    kind: "art",
+                    panelId: framed.panel.id,
+                    startX: p.x,
+                    startY: p.y,
+                    focusX: framed.frame.focus_x,
+                    focusY: framed.frame.focus_y,
+                    width: framed.placement.width,
+                    height: framed.placement.height,
+                    gesture: `art-pan-${++gestureCounter}`,
+                  });
+                }}
+              >
+                <title>Trascina per spostare il disegno, rotella per ingrandire</title>
+              </rect>
+            </>
+          )}
+
+          {!framed && balloons.map(({ balloon, panel, panelBox, box }) => (
             <rect
               key={balloon.id}
               className={`balloon-hit${balloon.id === selectedBalloonId ? " balloon-hit--selected" : ""}${!primary && tuned.has(balloon.id) ? " balloon-hit--tuned" : ""}`}
@@ -216,7 +290,7 @@ export function PageEditor(props: Props) {
             </rect>
           ))}
 
-          {active && hasTail(active.balloon.type) && active.balloon.tail.mode !== "none" && (
+          {!framed && active && hasTail(active.balloon.type) && active.balloon.tail.mode !== "none" && (
             <circle
               className="tail-handle"
               cx={active.tail.x}

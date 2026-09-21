@@ -44,11 +44,31 @@ export type PanelCharacter = z.infer<typeof PanelCharacterSchema>;
 
 export const ArtStatusSchema = z.enum(["missing", "sketch", "inked", "colored", "final"]);
 
+/**
+ * Come l'arte sta nel pannello (§7.4: `crop_anchor`). Il pannello è una
+ * finestra; qui si dice quanto è grande il disegno dietro e quale punto ne
+ * sta al centro. Senza, un disegno di proporzioni diverse dal pannello
+ * perde sempre lo stesso pezzo — di solito le teste.
+ */
+export const ArtFrameSchema = z.object({
+  /** `cover`: riempie il pannello (e taglia); `contain`: si vede intero (e lascia margini). */
+  fit: z.enum(["cover", "contain"]).default("cover"),
+  /** Moltiplicatore sopra l'adattamento: 1 = esattamente cover o contain. */
+  zoom: z.number().min(0.1).max(10).default(1),
+  /** Punto dell'immagine (normalizzato) che sta al centro del pannello. */
+  focus_x: z.number().min(0).max(1).default(0.5),
+  focus_y: z.number().min(0).max(1).default(0.5),
+});
+export type ArtFrame = z.infer<typeof ArtFrameSchema>;
+
 export const ArtSchema = z.object({
   source: z.string().nullable(),
   status: ArtStatusSchema,
   /** sha del file d'arte al momento della composizione (§9.2): equivalente della staleness nel ramo manuale. */
   sha: z.string().nullable().optional(),
+  /** Dimensioni in pixel dell'immagine: servono all'inquadratura. Registrate al collegamento. */
+  size: z.object({ width: z.number().positive(), height: z.number().positive() }).nullable().optional(),
+  frame: ArtFrameSchema.optional(),
 });
 export type Art = z.infer<typeof ArtSchema>;
 

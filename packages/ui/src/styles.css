@@ -1503,3 +1503,36 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Inquadratura dell'arte: il contorno dell'immagine intera, anche fuori dal pannello. */
+.art-frame-outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-dasharray: 16 10;
+  pointer-events: none;
+}
+
+.art-frame-hit {
+  fill: var(--accent);
+  fill-opacity: 0.04;
+  stroke: var(--accent);
+  stroke-width: 6;
+  cursor: move;
+}
+
+.preview__overlay {
+  overflow: visible;
+}
+
+.art-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.art-frame input[type="range"] {
+  flex: 1;
+}

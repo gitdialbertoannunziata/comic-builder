@@ -335,6 +335,8 @@ function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, si
   const [selectedBalloonId, setSelectedBalloonId] = useState<string | null>(null);
   const [view, setView] = useState<"page" | "scroll">("page");
   const [dropNote, setDropNote] = useState<string | null>(null);
+  // Inquadratura dell'arte sulla pagina: vale per il pannello selezionato, finché non la si chiude.
+  const [framing, setFraming] = useState(false);
   const stripTargetId = doc.project.targets.find((t) => t.kind === "strip")?.id ?? null;
 
   // Il contesto della striscia cambia solo quando cambia il documento: la
@@ -381,6 +383,7 @@ function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, si
 
   const selectPanel = useCallback((id: string) => {
     setSelectedPanelId(id);
+    setFraming(false);
     setSelectedBalloonId(null);
   }, []);
 
@@ -541,7 +544,13 @@ function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, si
             inMemory={editor.store === null}
             url={art.urls.get(selectedPanel.id)}
             run={run}
+            endGesture={endGesture}
             scan={art.scan}
+            framing={framing}
+            onToggleFraming={() => {
+              setFraming((v) => !v);
+              setView("page");
+            }}
           />
 
           <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
@@ -659,6 +668,7 @@ function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, si
             endGesture={endGesture}
             staleNote={schemaIssues.length > 0}
             onDropFiles={(files, panelId) => void dropArt(files, panelId)}
+            framingPanelId={framing ? selectedPanel.id : null}
           />
         )}
         {view === "page" && dropNote && <p className="issue issue--info">{dropNote}</p>}

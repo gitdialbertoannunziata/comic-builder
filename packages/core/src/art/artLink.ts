@@ -40,6 +40,8 @@ export interface ArtFile {
   /** Percorso relativo al progetto, es. `art/ep001-p001-03.png`. */
   path: string;
   sha: string;
+  /** Dimensioni in pixel, se l'host le conosce: servono all'inquadratura (§7.4). */
+  size?: { width: number; height: number };
 }
 
 /**
@@ -85,8 +87,17 @@ export function artCommands(doc: ProjectDoc, files: readonly ArtFile[]): Command
 
     const linked = bySource.get(file.path);
     if (linked) {
-      if (linked.panel.art.sha !== file.sha) {
-        commands.push({ type: "panel.update", pageId: linked.pageId, panelId: linked.panel.id, patch: { art: { ...linked.panel.art, sha: file.sha } } });
+      const art = linked.panel.art;
+      const sizeChanged = file.size !== undefined && (art.size?.width !== file.size.width || art.size?.height !== file.size.height);
+      if (art.sha !== file.sha || sizeChanged) {
+        // L'inquadratura resta: è una scelta dell'autore, e un disegno
+        // ritoccato ha di solito le stesse proporzioni.
+        commands.push({
+          type: "panel.update",
+          pageId: linked.pageId,
+          panelId: linked.panel.id,
+          patch: { art: { ...art, sha: file.sha, ...(file.size ? { size: file.size } : {}) } },
+        });
         touched.add(linked.panel.id);
       }
       continue;
@@ -99,7 +110,14 @@ export function artCommands(doc: ProjectDoc, files: readonly ArtFile[]): Command
       type: "panel.update",
       pageId: byName.pageId,
       panelId: byName.panel.id,
-      patch: { art: { source: file.path, status: byName.panel.art.status === "missing" ? "sketch" : byName.panel.art.status, sha: file.sha } },
+      patch: {
+        art: {
+          source: file.path,
+          status: byName.panel.art.status === "missing" ? "sketch" : byName.panel.art.status,
+          sha: file.sha,
+          ...(file.size ? { size: file.size } : {}),
+        },
+      },
     });
   }
   return commands;

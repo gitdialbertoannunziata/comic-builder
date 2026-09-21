@@ -6,7 +6,7 @@ import type { BalloonStyle, BalloonVisualStyle } from "../schema/project.js";
 import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
 import { panelNeedsDraft, renderPanelDraft } from "./renderDraft.js";
-import { balloonBox, tailPoint } from "./geometry.js";
+import { artPlacement, balloonBox, tailPoint } from "./geometry.js";
 
 function escapeXml(text: string): string {
   return text
@@ -158,8 +158,18 @@ function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
   const clipId = `cb-clip-${panel.id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
   const radius = panel.border.radius * (config.strokeScale ?? 1);
   if (href) {
+    const clip = `<clipPath id="${clipId}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}"/></clipPath>`;
+    // Con le dimensioni dell'immagine si applica l'inquadratura dell'autore;
+    // senza, il ripiego è il riempimento centrato di sempre.
+    if (panel.art.size) {
+      const at = artPlacement(box, panel.art.size, panel.art.frame);
+      return (
+        clip +
+        `<image href="${escapeXml(href)}" x="${at.x}" y="${at.y}" width="${at.width}" height="${at.height}" preserveAspectRatio="none" clip-path="url(#${clipId})"/>`
+      );
+    }
     return (
-      `<clipPath id="${clipId}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}"/></clipPath>` +
+      clip +
       `<image href="${escapeXml(href)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`
     );
   }

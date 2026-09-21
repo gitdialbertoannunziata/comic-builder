@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { Command, Panel, ProjectStore } from "@comic-builder/core";
+import type { ArtFrame, Command, Panel, ProjectStore } from "@comic-builder/core";
 import { importArt } from "../editor/importArt.js";
 
 interface Props {
@@ -10,9 +10,15 @@ interface Props {
   /** Vero se il progetto non è ancora in una cartella: le immagini stanno in memoria. */
   inMemory: boolean;
   url: string | undefined;
-  run: (command: Command) => boolean;
+  run: (command: Command, options?: { gesture?: string }) => boolean;
+  endGesture: () => void;
   scan: () => Promise<void>;
+  /** Inquadratura col mouse sulla pagina: trascina per spostare, rotella per lo zoom. */
+  framing: boolean;
+  onToggleFraming: () => void;
 }
+
+export const DEFAULT_FRAME: ArtFrame = { fit: "cover", zoom: 1, focus_x: 0.5, focus_y: 0.5 };
 
 const STATUSES = ["missing", "sketch", "inked", "colored", "final"] as const;
 const STATUS_LABELS: Record<(typeof STATUSES)[number], string> = {
@@ -30,7 +36,10 @@ const STATUS_LABELS: Record<(typeof STATUSES)[number], string> = {
  * prima di scegliere una cartella: l'immagine resta in memoria, e al
  * salvataggio viene copiata in `art/`.
  */
-export function ArtCard({ pageId, panel, store, inMemory, url, run, scan }: Props) {
+export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, scan, framing, onToggleFraming }: Props) {
+  const frame = { ...DEFAULT_FRAME, ...panel.art.frame };
+  const setFrame = (patch: Partial<ArtFrame>, gesture?: string) =>
+    run({ type: "panel.update", pageId, panelId: panel.id, patch: { art: { ...panel.art, frame: { ...frame, ...patch } } } }, gesture ? { gesture } : {});
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +111,48 @@ export function ArtCard({ pageId, panel, store, inMemory, url, run, scan }: Prop
               </select>
             </label>
           </div>
+          {panel.art.source && url && (
+            <div className="art-frame">
+              <span className="field__label">inquadratura</span>
+              {!panel.art.size ? (
+                <p className="field__hint">Leggo le dimensioni dell'immagine…</p>
+              ) : (
+                <>
+                  <div className="tool-row">
+                    <span className="segmented">
+                      <button type="button" className="seg" aria-pressed={frame.fit === "cover"} onClick={() => setFrame({ fit: "cover" })} title="L'immagine riempie il pannello: i bordi in più si tagliano">
+                        riempie
+                      </button>
+                      <button type="button" className="seg" aria-pressed={frame.fit === "contain"} onClick={() => setFrame({ fit: "contain" })} title="L'immagine si vede intera: dove non arriva resta il fondo">
+                        intera
+                      </button>
+                    </span>
+                    <button type="button" className="btn btn--small" aria-pressed={framing} onClick={onToggleFraming}>
+                      {framing ? "Fine inquadratura" : "Inquadra sulla pagina"}
+                    </button>
+                    <button type="button" className="link-btn" onClick={() => setFrame(DEFAULT_FRAME)}>
+                      reimposta
+                    </button>
+                  </div>
+                  <label className="field field--inline">
+                    <span className="field__label">zoom</span>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={4}
+                      step={0.01}
+                      value={frame.zoom}
+                      onChange={(e) => setFrame({ zoom: Number(e.target.value) }, `${panel.id}:art-zoom`)}
+                      onPointerUp={endGesture}
+                      onKeyUp={endGesture}
+                    />
+                    <span className="muted">{Math.round(frame.zoom * 100)}%</span>
+                  </label>
+                  {framing && <p className="field__hint">Sulla pagina: trascina dentro il pannello per spostare il disegno, rotella per ingrandire.</p>}
+                </>
+              )}
+            </div>
+          )}
           {error && <p className="issue issue--error">{error}</p>}
       </div>
     </div>

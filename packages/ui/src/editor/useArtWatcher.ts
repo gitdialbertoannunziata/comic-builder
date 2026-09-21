@@ -18,6 +18,20 @@ interface Seen {
   size: number;
   sha: string;
   url: string;
+  /** Dimensioni in pixel dell'immagine: servono all'inquadratura (§7.4). */
+  pixels?: { width: number; height: number };
+}
+
+/** Dimensioni di un'immagine, decodificandola; null se il browser non la sa leggere. */
+export async function imageSize(blob: Blob): Promise<{ width: number; height: number } | null> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return null;
+  }
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -62,8 +76,10 @@ export function useArtWatcher(
         const bytes = await store.readBytes(path);
         if (!bytes) continue;
         if (previous) URL.revokeObjectURL(previous.url);
-        const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: artMediaType(path) ?? "application/octet-stream" }));
-        seen.current.set(path, { lastModified: entry.lastModified ?? 0, size: entry.size ?? bytes.length, sha: await sha256(bytes), url });
+        const blob = new Blob([bytes as BlobPart], { type: artMediaType(path) ?? "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const pixels = await imageSize(blob);
+        seen.current.set(path, { lastModified: entry.lastModified ?? 0, size: entry.size ?? bytes.length, sha: await sha256(bytes), url, ...(pixels ? { pixels } : {}) });
         changed = true;
       }
       for (const [path, info] of seen.current) {
@@ -76,7 +92,7 @@ export function useArtWatcher(
       setVersion((v) => v + 1);
 
       // Tutti i collegamenti di un giro sono un solo passo di undo.
-      const files: ArtFile[] = [...seen.current].map(([path, info]) => ({ path, sha: info.sha }));
+      const files: ArtFile[] = [...seen.current].map(([path, info]) => ({ path, sha: info.sha, ...(info.pixels ? { size: info.pixels } : {}) }));
       const commands = artCommands(docRef.current, files);
       if (commands.length > 0) {
         const gesture = `art-sync-${++sync.current}`;

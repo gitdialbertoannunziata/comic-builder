@@ -1,3 +1,4 @@
+import { imageSize } from "./useArtWatcher.js";
 import { artPathFor, extensionOf, isArtFile, type Command, type Panel, type ProjectDoc, type ProjectStore } from "@comic-builder/core";
 
 /**
@@ -16,12 +17,14 @@ export async function importArt(
   if (!isArtFile(file.name)) return `«${file.name}»: formati accettati PNG, JPEG, WebP. Esporta da lì il file sorgente (PSD, CLIP, KRA).`;
   const path = artPathFor(panel.id, extensionOf(file.name));
   await store.writeBytes(path, new Uint8Array(await file.arrayBuffer()));
-  // Collegamento esplicito: vince su qualunque collegamento per nome precedente.
+  const size = await imageSize(file);
+  // Collegamento esplicito: vince su qualunque collegamento per nome
+  // precedente. Un'immagine nuova riparte dall'inquadratura di base.
   run({
     type: "panel.update",
     pageId,
     panelId: panel.id,
-    patch: { art: { source: path, status: panel.art.status === "missing" ? "sketch" : panel.art.status, sha: null } },
+    patch: { art: { source: path, status: panel.art.status === "missing" ? "sketch" : panel.art.status, sha: null, ...(size ? { size } : {}) } },
   });
   return null;
 }
