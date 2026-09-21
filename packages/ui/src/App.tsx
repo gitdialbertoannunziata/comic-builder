@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { PageSchema, type Page, type Panel, type Balloon, type Scene, type ValidationIssue } from "@comic-builder/core";
+import { useMemo, useState } from "react";
+import { PageSchema, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { renderPreview } from "./renderPreview.js";
 import { runBreakdown } from "./runBreakdown.js";
@@ -13,6 +13,9 @@ import { ExportPanel } from "./components/ExportPanel.js";
 import { exportChapter, type ExportOutcome } from "./exportPages.js";
 import { BrowserPlatformService } from "./platform/browserPlatform.js";
 import { prefilledConfig } from "./devConfig.js";
+import { project } from "./project.js";
+import { useProjectEditor } from "./editor/useProjectEditor.js";
+import { ProjectBar } from "./components/ProjectBar.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
@@ -20,13 +23,16 @@ const platform = new BrowserPlatformService();
 /** Valori di partenza, eventualmente da .env.local in sviluppo. */
 const prefilled = prefilledConfig();
 
-function updatePanel(page: Page, panelId: string, updater: (panel: Panel) => Panel): Page {
-  return { ...page, panels: page.panels.map((p) => (p.id === panelId ? updater(p) : p)) };
-}
-
-function updateBalloon(panel: Panel, balloonId: string, updater: (balloon: Balloon) => Balloon): Panel {
-  return { ...panel, balloons: panel.balloons.map((b) => (b.id === balloonId ? updater(b) : b)) };
-}
+/**
+ * Documento di partenza finché non si apre una cartella: il capitolo che lo
+ * spoglio produce dalla scena d'esempio, dentro il progetto d'esempio.
+ */
+const initialDoc = projectDocFrom({
+  project,
+  scenes: [initialScene],
+  chapter: { id: "ep001", number: 1, title: initialScene.title },
+  pages: initialPages,
+});
 
 /** Livello più grave fra gli issue che riguardano un pannello, per il pallino nell'elenco. */
 function worstLevelByPanel(issues: ValidationIssue[]): Map<string, ValidationIssue["level"]> {
@@ -44,12 +50,18 @@ function worstLevelByPanel(issues: ValidationIssue[]): Map<string, ValidationIss
 }
 
 export function App() {
-  const [pages, setPages] = useState<Page[]>(initialPages);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(initialPages[0]!.panels[0]!.id);
-  const [lastValidPage, setLastValidPage] = useState<Page>(initialPages[0]!);
+  const editor = useProjectEditor(initialDoc);
+  const { doc, run, endGesture } = editor;
+  const chapter = doc.chapters.chapters[0]!;
+  const pages = chapter.pages.map((id) => doc.pages[id]).filter((p): p is Page => p !== undefined);
 
-  const [scene, setScene] = useState<Scene>(initialScene);
+  // La selezione non è documento: non entra nella cronologia né nel file.
+  // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
+  const [pageId, setPageId] = useState<string>(pages[0]!.id);
+  const page = doc.pages[pageId] ?? pages[0]!;
+  const pageIndex = pages.findIndex((p) => p.id === page.id);
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(page.panels[0]!.id);
+  const scene = doc.scenes.scenes.find((s) => s.id === page.panels[0]?.scene_id) ?? doc.scenes.scenes[0] ?? initialScene;
   const [script, setScript] = useState(SAMPLE_SCRIPT);
   const [service, setService] = useState<ServiceChoice>(
     prefilled.anthropicKeyFromEnv ? "anthropic" : prefilled.deepseekKeyFromEnv ? "deepseek" : "mock",
@@ -78,7 +90,6 @@ export function App() {
   const [exportError, setExportError] = useState<string | null>(null);
 
   const { font, bytes: fontBytes, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
-  const page = pages[pageIndex]!;
 
   async function onRunBreakdown() {
     setRunning(true);
@@ -96,12 +107,19 @@ export function App() {
         chapterId: "ep001",
       });
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
-      setPages(result.pages);
-      setPageIndex(0);
+      // Un nuovo spoglio sostituisce il capitolo, ma resta un passo della
+      // cronologia: un Ctrl+Z riporta il lavoro di prima.
+      editor.replace(
+        projectDocFrom({
+          project: doc.project,
+          scenes: result.scenes,
+          chapter: { id: chapter.id, number: chapter.number, title: result.scenes[0]?.title ?? chapter.title },
+          pages: result.pages,
+        }),
+        "Nuovo spoglio",
+      );
+      setPageId(result.pages[0]!.id);
       setSelectedPanelId(result.pages[0]!.panels[0]!.id);
-      // La scena serve al lint per le regole di contenuto (personaggi assenti
-      // dalla pagina): senza aggiornarla, resterebbe quella dell'esempio.
-      setScene(result.scenes[0] ?? initialScene);
       setSummary(result.summary);
     } catch (error) {
       setBreakdownError(error instanceof Error ? error.message : String(error));
@@ -128,7 +146,7 @@ export function App() {
       if (choices.length === 0) throw new Error("Scegli almeno un formato.");
       const outcome = await exportChapter({
         pages,
-        chapter: { id: page.chapter_id, title: scene.title },
+        chapter: { id: chapter.id, number: chapter.number, title: chapter.title },
         font,
         fontBytes,
         choices,
@@ -148,17 +166,15 @@ export function App() {
     }
   }
 
+  // I comandi tengono valida la griglia; lo schema resta un controllo in più
+  // sui campi liberi, e se fallisce l'anteprima non si aggiorna.
   const parsed = useMemo(() => PageSchema.safeParse(page), [page]);
   const schemaIssues = parsed.success ? [] : parsed.error.issues;
 
-  useEffect(() => {
-    if (parsed.success) setLastValidPage(parsed.data);
-  }, [parsed]);
-
   const preview = useMemo(() => {
-    if (!font) return null;
-    return renderPreview(lastValidPage, font, scene);
-  }, [lastValidPage, font, scene]);
+    if (!font || !parsed.success) return null;
+    return renderPreview(parsed.data, font, scene);
+  }, [parsed, font, scene]);
 
   const issues = preview?.issues ?? [];
   const badges = useMemo(() => worstLevelByPanel(issues), [issues]);
@@ -166,16 +182,20 @@ export function App() {
 
   const selectedPanel = page.panels.find((p) => p.id === selectedPanelId) ?? page.panels[0]!;
 
-  function patchSelectedPanel(updater: (panel: Panel) => Panel) {
-    setPages((prev) => prev.map((p, i) => (i === pageIndex ? updatePanel(p, selectedPanel.id, updater) : p)));
+  function goToPage(index: number) {
+    const target = pages[index]!;
+    setPageId(target.id);
+    setSelectedPanelId(target.panels[0]!.id);
   }
 
-  function goToPage(index: number) {
-    setPageIndex(index);
-    setSelectedPanelId(pages[index]!.panels[0]!.id);
+  /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
+  function patchPanel(field: "action" | "setting", value: string) {
+    run({ type: "panel.update", pageId: page.id, panelId: selectedPanel.id, patch: { [field]: value } }, { gesture: `${selectedPanel.id}:${field}` });
   }
 
   return (
+    <div className="shell">
+    <ProjectBar editor={editor} title={`${doc.project.title} — ${chapter.title}`} />
     <div className="app">
       <aside className="col">
         <ScriptPanel
@@ -263,10 +283,8 @@ export function App() {
                 <textarea
                   value={selectedPanel.action}
                   rows={2}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    patchSelectedPanel((panel) => ({ ...panel, action: value }));
-                  }}
+                  onChange={(e) => patchPanel("action", e.target.value)}
+                  onBlur={endGesture}
                 />
                 <span className="field__hint">Per chi disegna è la specifica del pannello, non una nota.</span>
               </label>
@@ -276,10 +294,8 @@ export function App() {
                 <input
                   type="text"
                   value={selectedPanel.setting}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    patchSelectedPanel((panel) => ({ ...panel, setting: value }));
-                  }}
+                  onChange={(e) => patchPanel("setting", e.target.value)}
+                  onBlur={endGesture}
                 />
               </label>
             </div>
@@ -289,7 +305,7 @@ export function App() {
             <p className="card__title">camera</p>
             <CameraForm
               camera={selectedPanel.camera}
-              onChange={(camera) => patchSelectedPanel((panel) => ({ ...panel, camera }))}
+              onChange={(camera) => run({ type: "panel.camera", pageId: page.id, panelId: selectedPanel.id, camera })}
             />
           </div>
 
@@ -297,9 +313,20 @@ export function App() {
             <BalloonEditor
               key={balloon.id}
               balloon={balloon}
-              onChange={(updated) => patchSelectedPanel((panel) => updateBalloon(panel, balloon.id, () => updated))}
+              onText={(text) => run({ type: "balloon.text", pageId: page.id, balloonId: balloon.id, text }, { gesture: `${balloon.id}:text` })}
+              onAnchor={(anchor) => run({ type: "balloon.move", pageId: page.id, balloonId: balloon.id, anchor }, { gesture: `${balloon.id}:anchor` })}
+              onTail={(tail) => run({ type: "balloon.tail", pageId: page.id, balloonId: balloon.id, tail }, { gesture: `${balloon.id}:tail` })}
+              onRemove={() => run({ type: "balloon.remove", pageId: page.id, balloonId: balloon.id })}
+              onCommit={endGesture}
             />
           ))}
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={() => run({ type: "balloon.add", pageId: page.id, panelId: selectedPanel.id, text: [{ t: "Nuovo balloon" }] })}
+          >
+            + balloon
+          </button>
         </div>
       </section>
 
@@ -307,7 +334,7 @@ export function App() {
         <p className="eyebrow">Validazione</p>
         <ValidationPanel
           schemaIssues={schemaIssues}
-          docIssues={issues}
+          docIssues={[...editor.loadIssues, ...issues]}
           onSelectPanel={setSelectedPanelId}
           knownPanelIds={panelIds}
         />
@@ -345,6 +372,7 @@ export function App() {
           />
         )}
       </section>
+    </div>
     </div>
   );
 }
