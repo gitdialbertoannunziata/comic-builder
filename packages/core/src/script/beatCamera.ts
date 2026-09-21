@@ -18,8 +18,17 @@ export interface BeatCameraContext {
    * fra botta e risposta, che è il supporto alla regola dei 180° (§6.4).
    */
   dialogueTurn?: number;
-  /** Tono della scena: non entra mai nel prompt, governa palette e composizione (§6.1). */
+  /**
+   * Tono esplicito del beat: ha la precedenza su tutto. Non entra mai nel
+   * prompt, governa palette e composizione (§6.1).
+   */
   mood?: Camera["mood"];
+  /**
+   * Tono della scena: vale solo dove né il beat né la tabella dicono altro.
+   * Sta sotto il tono che la tabella lega alla funzione (un beat d'azione è
+   * `action` anche in una scena `tense`), sopra il default neutro.
+   */
+  sceneMood?: Camera["mood"];
   lighting?: Camera["lighting"];
 }
 
@@ -30,6 +39,15 @@ const BASE: Omit<Camera, "shot" | "angle" | "lens_mm"> = {
   motion: "static",
   subject_placement: "center",
   axis_side: "A-left",
+};
+
+/**
+ * Toni che la tabella lega alla funzione del beat. Dichiarati qui, in un punto
+ * solo, invece che sparsi nei rami dello switch: è ciò che rende leggibile la
+ * precedenza beat → tabella → scena.
+ */
+const FUNCTION_MOOD: Partial<Record<BeatFunction, Camera["mood"]>> = {
+  action: "action",
 };
 
 function alternatingAxis(turn: number): AxisSide {
@@ -100,7 +118,6 @@ export function cameraForBeat(fn: BeatFunction, context: BeatCameraContext = {})
           angle: "low",
           lens_mm: 24,
           motion: intense ? "implied" : "static",
-          mood: "action",
         };
 
       // Chiusura o pausa: LS/EWS, static — intenso: pannello vuoto, senza personaggi.
@@ -116,11 +133,12 @@ export function cameraForBeat(fn: BeatFunction, context: BeatCameraContext = {})
     }
   })();
 
-  // mood e lighting arrivano dalla scena, non dalla funzione del beat: la
-  // tabella governa l'inquadratura, non il tono e la luce del luogo.
+  // La tabella governa l'inquadratura; il tono ha una precedenza sua, e la
+  // luce appartiene al luogo, non alla funzione del beat.
+  const mood = context.mood ?? FUNCTION_MOOD[fn] ?? context.sceneMood ?? BASE.mood;
   return {
     ...camera,
-    ...(context.mood ? { mood: context.mood } : {}),
+    mood,
     ...(context.lighting ? { lighting: context.lighting } : {}),
   };
 }

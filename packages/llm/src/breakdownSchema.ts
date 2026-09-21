@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BeatFunctionSchema } from "@comic-builder/core";
+import { BeatFunctionSchema, BalloonTypeSchema, MoodSchema, LightingSchema } from "@comic-builder/core";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 /**
@@ -19,6 +19,18 @@ export const BreakdownLineSchema = z.object({
   /** Ref del personaggio che parla, oppure null per didascalie e voce fuori campo. */
   speaker: z.string().nullable(),
   text: z.string(),
+  /**
+   * Tipo di balloon, nel vocabolario chiuso di §8.2. Senza, ogni battuta
+   * diventava `speech` e sussurri, urla, didascalie e voci al telefono si
+   * perdevano, anche se il resto della catena sa disegnarli diversamente.
+   */
+  type: BalloonTypeSchema,
+});
+
+export const BreakdownCharacterSchema = z.object({
+  ref: z.string(),
+  /** Espressione del personaggio in questa vignetta. Stringa vuota se il testo non la suggerisce. */
+  expression: z.string(),
 });
 
 export const BreakdownBeatSchema = z.object({
@@ -27,6 +39,16 @@ export const BreakdownBeatSchema = z.object({
   /** Seleziona la colonna "variante" della tabella beat→camera (§6.2). */
   intense: z.boolean(),
   lines: z.array(BreakdownLineSchema),
+  /**
+   * Chi è in vignetta. `[]` è un'informazione: nessuno, come in un campo
+   * lungo su un luogo vuoto. `null` vuol dire "non lo so", e solo allora il
+   * pannello eredita il cast della scena.
+   */
+  characters: z.array(BreakdownCharacterSchema).nullable(),
+  /** Tono del beat se si discosta da quello della scena, altrimenti null. */
+  mood: MoodSchema.nullable(),
+  /** Oggetti che la vignetta deve mostrare: parte della specifica di disegno (§5.5). */
+  props: z.array(z.string()),
   /**
    * Righe dello script da cui il beat nasce (§10.1). Un modello sbaglia spesso
    * i numeri di riga: qui è un'indicazione, e chi riceve la valida contro la
@@ -42,6 +64,9 @@ export const BreakdownSceneSchema = z.object({
   time_of_day: z.string(),
   /** Ref dei personaggi presenti: minuscolo, senza spazi, stabile fra le scene. */
   characters: z.array(z.string()),
+  /** Tono e luce della scena, vocabolario chiuso di §6.1: il modello sceglie, non inventa. */
+  mood: MoodSchema,
+  lighting: LightingSchema,
   beats: z.array(BreakdownBeatSchema).min(1),
 });
 

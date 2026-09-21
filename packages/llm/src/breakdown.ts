@@ -62,6 +62,26 @@ function toScene(
       );
     }
 
+    // Chi parla in vignetta deve esserci: il lint lo tratta come errore
+    // (Appendice A), salvo le battute fuori campo e le didascalie, che per
+    // definizione non hanno un corpo nell'inquadratura.
+    let characters = beat.characters?.map((c) => ({ ref: c.ref.trim(), expression: c.expression.trim() })) ?? null;
+    if (characters) {
+      for (const line of beat.lines) {
+        if (!line.speaker || line.type === "offpanel" || line.type === "caption") continue;
+        if (characters.some((c) => c.ref === line.speaker)) continue;
+        characters = [...characters, { ref: line.speaker, expression: "" }];
+        issues.push(
+          issue(
+            "info",
+            "breakdown.speaker-in-panel",
+            `"${line.speaker}" parla in vignetta ma non era fra i presenti del beat: aggiunto`,
+            `${path}.characters`,
+          ),
+        );
+      }
+    }
+
     return {
       id: beatId(id, beatIndex + 1),
       function: beat.function,
@@ -71,8 +91,11 @@ function toScene(
       lines: beat.lines.map((line) => ({
         speaker: line.speaker,
         text: line.text.trim(),
-        type: "speech" as const,
+        type: line.type,
       })),
+      characters,
+      mood: beat.mood,
+      props: beat.props.map((p) => p.trim()).filter((p) => p.length > 0),
     };
   });
 
@@ -80,19 +103,17 @@ function toScene(
   // documento invalido a valle (il lint lo segnala come errore, Appendice A):
   // si aggiunge invece di lasciare che esploda dopo.
   const declared = new Set(raw.characters.map((c) => c.trim()).filter((c) => c.length > 0));
+  const declare = (ref: string, why: string) => {
+    if (declared.has(ref)) return;
+    declared.add(ref);
+    issues.push(issue("info", "breakdown.speaker-added", `"${ref}" ${why}: aggiunto`, `scenes[${id}].characters`));
+  };
   for (const beat of beats) {
     for (const line of beat.lines) {
-      if (line.speaker && !declared.has(line.speaker)) {
-        declared.add(line.speaker);
-        issues.push(
-          issue(
-            "info",
-            "breakdown.speaker-added",
-            `"${line.speaker}" parla ma non era fra i personaggi della scena: aggiunto`,
-            `scenes[${id}].characters`,
-          ),
-        );
-      }
+      if (line.speaker) declare(line.speaker, "parla ma non era fra i personaggi della scena");
+    }
+    for (const character of beat.characters ?? []) {
+      declare(character.ref, "compare in una vignetta ma non era fra i personaggi della scena");
     }
   }
 
@@ -102,6 +123,8 @@ function toScene(
     location: raw.location.trim() || "non specificato",
     time_of_day: raw.time_of_day.trim() || "non specificata",
     characters: [...declared],
+    mood: raw.mood,
+    lighting: raw.lighting,
     style_ref: null,
     beats,
   });

@@ -44,8 +44,8 @@ describe("MockLlmService — spoglio euristico, offline e deterministico (§11.1
     const dialogue = result.scenes[0]!.beats.find((b) => b.lines.length > 0);
     expect(dialogue?.function).toBe("dialogue");
     expect(dialogue?.lines).toEqual([
-      { speaker: "sara", text: "È spenta da quanto?" },
-      { speaker: "elio", text: "Dalle due. Ho provato di tutto." },
+      { speaker: "sara", text: "È spenta da quanto?", type: "speech" },
+      { speaker: "elio", text: "Dalle due. Ho provato di tutto.", type: "speech" },
     ]);
   });
 
@@ -122,9 +122,9 @@ describe("breakdownScript — dal capitolo alle scene del progetto", () => {
               title: "T",
               location: "L",
               time_of_day: "sera",
-              characters: ["sara"],
+              characters: ["sara"], mood: "calm", lighting: "flat",
               beats: [
-                { function: "establish", summary: "s", intense: false, lines: [], from_line: 900, to_line: 950 },
+                { function: "establish", summary: "s", intense: false, lines: [], characters: null, mood: null, props: [], from_line: 900, to_line: 950 },
               ],
             },
           ],
@@ -149,13 +149,16 @@ describe("breakdownScript — dal capitolo alle scene del progetto", () => {
               title: "T",
               location: "L",
               time_of_day: "sera",
-              characters: [],
+              characters: [], mood: "calm", lighting: "flat",
               beats: [
                 {
                   function: "dialogue",
                   summary: "parlano",
                   intense: false,
-                  lines: [{ speaker: "elio", text: "ciao" }],
+                  lines: [{ speaker: "elio", text: "ciao", type: "speech" }],
+                  characters: null,
+                  mood: null,
+                  props: [],
                   from_line: 1,
                   to_line: 2,
                 },

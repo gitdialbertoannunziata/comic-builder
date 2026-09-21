@@ -40,16 +40,23 @@ function framingForShot(shot: Shot): PanelCharacter["framing"] {
   }
 }
 
-function charactersForPanel(scene: Scene, camera: Camera, empty: boolean): PanelCharacter[] {
+function charactersForPanel(scene: Scene, beat: Beat, camera: Camera, empty: boolean): PanelCharacter[] {
   if (empty) return [];
-  return scene.characters.map((ref, index) => ({
+
+  // Chi è davvero in vignetta, se lo spoglio lo dice; tutto il cast della
+  // scena solo quando non lo dice. Prima valeva sempre il secondo caso, e un
+  // campo lungo su un luogo vuoto chiedeva di disegnarci due persone.
+  const present: Array<{ ref: string; expression: string }> =
+    beat.characters ?? scene.characters.map((ref) => ({ ref, expression: "" }));
+
+  return present.map(({ ref, expression }, index) => ({
     ref,
     weight: index === 0 ? 0.7 : 0.4,
     role: index === 0 ? ("lead" as const) : ("support" as const),
     framing: framingForShot(camera.shot),
-    // Lasciata vuota apposta: l'espressione è una scelta di regia che lo
-    // spoglio non può dedurre dal testo senza inventarsela.
-    expression: "",
+    // Vuota se lo spoglio non l'ha dedotta: un modello la ricava dal testo,
+    // l'euristico no, e inventarla sarebbe peggio che lasciarla all'autore.
+    expression,
     wardrobe: "default",
   }));
 }
@@ -120,6 +127,9 @@ export function buildPagesFromScene(input: BuildPagesInput): Page[] {
       const camera = cameraForBeat(beat.function, {
         intense: beat.intense,
         ...(beat.function === "dialogue" ? { dialogueTurn: dialogueTurn++ } : {}),
+        ...(beat.mood ? { mood: beat.mood } : {}),
+        ...(scene.mood ? { sceneMood: scene.mood } : {}),
+        ...(scene.lighting ? { lighting: scene.lighting } : {}),
       });
       const area = areas[i]!;
       const id = panelIds[i]!;
@@ -134,9 +144,9 @@ export function buildPagesFromScene(input: BuildPagesInput): Page[] {
         camera,
         action: beat.summary,
         setting: `${scene.location}, ${scene.time_of_day}`,
-        props: [],
+        props: [...beat.props],
         continuity_notes: "",
-        characters: charactersForPanel(scene, camera, beatWantsEmptyPanel(beat.function, beat.intense)),
+        characters: charactersForPanel(scene, beat, camera, beatWantsEmptyPanel(beat.function, beat.intense)),
         art: { source: null, status: "missing" },
         prompt: { override: null, negative_override: null },
         control_image: null,

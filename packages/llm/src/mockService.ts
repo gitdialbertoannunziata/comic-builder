@@ -93,6 +93,13 @@ function splitScenes(script: string): RawScene[] {
   return scenes.filter((s) => s.blocks.length > 0);
 }
 
+/** Luce dedotta dalle stesse parole dell'ora: grezza, ma meglio di `flat` ovunque. */
+function lightingFor(time: string): BreakdownScene["lighting"] {
+  if (time === "alba" || time === "tramonto") return "golden";
+  if (time === "notte") return "night";
+  return "flat";
+}
+
 function timeOfDay(text: string): string {
   const lower = text.toLowerCase();
   const found = TIME_WORDS.find((word) => lower.includes(word));
@@ -106,7 +113,7 @@ function beatFrom(block: RawBlock, index: number, total: number): BreakdownBeat 
   for (const line of block.lines) {
     const match = DIALOGUE.exec(line);
     if (match?.[1] && match[2]) {
-      lines.push({ speaker: refFor(match[1]), text: match[2].trim() });
+      lines.push({ speaker: refFor(match[1]), text: match[2].trim(), type: "speech" });
     } else {
       prose.push(line.trim());
     }
@@ -135,6 +142,12 @@ function beatFrom(block: RawBlock, index: number, total: number): BreakdownBeat 
     summary: summary.slice(0, 300),
     intense: false,
     lines,
+    // L'euristica sa chi c'è solo quando parla: in quel caso lo dice, altrimenti
+    // `null` ("non lo so") e il pannello erediterà il cast della scena. Mai `[]`,
+    // che affermerebbe una vignetta vuota senza saperlo.
+    characters: speakers.length > 0 ? speakers.map((ref) => ({ ref, expression: "" })) : null,
+    mood: null,
+    props: [],
     from_line: block.from,
     to_line: block.to,
   };
@@ -147,11 +160,14 @@ function sceneFrom(raw: RawScene, index: number): BreakdownScene {
     (ref): ref is string => ref !== null,
   );
 
+  const time = timeOfDay(`${raw.heading ?? ""} ${allText}`);
   return {
     title: raw.heading ?? `Scena ${index + 1}`,
     location: raw.heading ?? "non specificato",
-    time_of_day: timeOfDay(`${raw.heading ?? ""} ${allText}`),
+    time_of_day: time,
     characters,
+    mood: "calm",
+    lighting: lightingFor(time),
     beats,
   };
 }
@@ -193,12 +209,17 @@ export function heuristicBreakdown(input: string): Breakdown {
         location: "non specificato",
         time_of_day: "non specificata",
         characters: [],
+        mood: "calm",
+        lighting: "flat",
         beats: [
           {
             function: "establish",
             summary: script.trim().slice(0, 300) || "(script vuoto)",
             intense: false,
             lines: [],
+            characters: null,
+            mood: null,
+            props: [],
             from_line: 1,
             to_line: Math.max(1, script.split("\n").length),
           },

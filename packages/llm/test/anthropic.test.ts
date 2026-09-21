@@ -11,9 +11,9 @@ const BREAKDOWN = {
       title: "Il faro",
       location: "scogliera",
       time_of_day: "alba",
-      characters: ["sara"],
+      characters: ["sara"], mood: "calm", lighting: "flat",
       beats: [
-        { function: "establish", summary: "Il faro spento.", intense: false, lines: [], from_line: 1, to_line: 2 },
+        { function: "establish", summary: "Il faro spento.", intense: false, lines: [], characters: null, mood: null, props: [], from_line: 1, to_line: 2 },
       ],
     },
   ],
