@@ -33,3 +33,4 @@ export * from "./art/artLink.js";
 export * from "./revisions/revisionCommands.js";
 export * from "./revisions/lintRevisions.js";
 export * from "./revisions/readable.js";
+export * from "./revisions/scriptDiff.js";

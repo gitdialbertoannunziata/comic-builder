@@ -7,6 +7,7 @@ import { nextBalloonId, nextIndex, nextPanelId, pageId as derivePageId, panelId 
 import { validateDocument } from "../validate/validateDocument.js";
 import { getTemplate } from "../templates/catalog.js";
 import { expandTemplate } from "../templates/expand.js";
+import { remapProvenance } from "../revisions/scriptDiff.js";
 import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
 
 /**
@@ -595,8 +596,11 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
     case "script.set": {
       // Il copione nuovo diventa il riferimento: le prossime revisioni si confrontano con questo.
       const revs = doc.revisions[command.chapterId] ?? emptyRevisions(command.chapterId);
+      // Le righe si spostano: la provenienza di pannelli e beat segue, o la
+      // prossima revisione confronterebbe numeri di riga sbagliati.
+      const remapped = remapProvenance(doc, command.chapterId, command.text);
       return {
-        ...doc,
+        ...remapped,
         scripts: { ...doc.scripts, [command.chapterId]: command.text },
         revisions: { ...doc.revisions, [command.chapterId]: { ...revs, script: { file: `script/${command.chapterId}.md`, sha: command.sha } } },
       };
