@@ -21,3 +21,8 @@ export * from "./targets/regions.js";
 export * from "./targets/exportPlan.js";
 export * from "./package/zip.js";
 export * from "./package/cbz.js";
+export * from "./util/utf8.js";
+export * from "./document/store.js";
+export * from "./document/migrate.js";
+export * from "./document/projectDoc.js";
+export * from "./document/lock.js";

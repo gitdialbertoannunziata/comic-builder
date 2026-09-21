@@ -1,3 +1,7 @@
+import { utf8 } from "../util/utf8.js";
+
+export { utf8 };
+
 /**
  * Scrittore ZIP minimo, solo metodo STORE (nessuna compressione).
  *
@@ -13,22 +17,6 @@
 export interface ZipEntry {
   name: string;
   data: Uint8Array;
-}
-
-/**
- * UTF-8 senza `TextEncoder`: il Core compila senza le librerie DOM né i tipi
- * di Node (§11.2), e questa è l'unica codifica che gli serve.
- */
-export function utf8(text: string): Uint8Array {
-  const out: number[] = [];
-  for (const char of text) {
-    const code = char.codePointAt(0)!;
-    if (code < 0x80) out.push(code);
-    else if (code < 0x800) out.push(0xc0 | (code >> 6), 0x80 | (code & 63));
-    else if (code < 0x10000) out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
-    else out.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
-  }
-  return Uint8Array.from(out);
 }
 
 let crcTable: Uint32Array | null = null;
