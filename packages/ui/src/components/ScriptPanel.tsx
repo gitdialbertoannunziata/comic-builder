@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ValidationIssue } from "@comic-builder/core";
 
-export type ServiceChoice = "mock" | "ollama";
+export type ServiceChoice = "mock" | "ollama" | "anthropic";
 
 export interface BreakdownSummary {
   scenes: number;
@@ -22,6 +22,10 @@ interface Props {
   onOllamaModelChange: (model: string) => void;
   ollamaHost: string;
   onOllamaHostChange: (host: string) => void;
+  anthropicKey: string;
+  onAnthropicKeyChange: (key: string) => void;
+  anthropicModel: string;
+  onAnthropicModelChange: (model: string) => void;
   onRun: () => void;
   running: boolean;
   error: string | null;
@@ -42,6 +46,10 @@ export function ScriptPanel({
   onOllamaModelChange,
   ollamaHost,
   onOllamaHostChange,
+  anthropicKey,
+  onAnthropicKeyChange,
+  anthropicModel,
+  onAnthropicModelChange,
   onRun,
   running,
   error,
@@ -97,6 +105,15 @@ export function ScriptPanel({
               >
                 ollama
               </button>
+              <button
+                type="button"
+                className="seg"
+                aria-pressed={service === "anthropic"}
+                onClick={() => onServiceChange("anthropic")}
+                title="API di Anthropic: il modello più capace, ma il copione esce verso terzi"
+              >
+                claude
+              </button>
             </div>
           </div>
 
@@ -124,6 +141,33 @@ export function ScriptPanel({
                   quindi il <code>localhost</code> della tua macchina. Se Ollama rifiuta, riavvialo con{" "}
                   <code>OLLAMA_ORIGINS=*</code>.
                 </span>
+              </label>
+            </>
+          )}
+
+          {service === "anthropic" && (
+            <>
+              <label className="field">
+                <span className="field__label">chiave API</span>
+                <input
+                  type="password"
+                  value={anthropicKey}
+                  onChange={(e) => onAnthropicKeyChange(e.target.value)}
+                  placeholder="sk-ant-..."
+                />
+                <span className="field__hint">
+                  Resta in questa scheda e non viene salvata. <strong>Il copione esce verso terzi</strong>: per
+                  una serie inedita, valuta se è quello che vuoi — lo spoglio locale non lo fa.
+                </span>
+              </label>
+              <label className="field">
+                <span className="field__label">modello</span>
+                <input
+                  type="text"
+                  value={anthropicModel}
+                  onChange={(e) => onAnthropicModelChange(e.target.value)}
+                  placeholder="claude-opus-5"
+                />
               </label>
             </>
           )}

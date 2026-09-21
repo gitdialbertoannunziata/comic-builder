@@ -50,6 +50,8 @@ export function App() {
   const [service, setService] = useState<ServiceChoice>("mock");
   const [ollamaModel, setOllamaModel] = useState("mistral");
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [anthropicModel, setAnthropicModel] = useState("claude-opus-5");
   const [running, setRunning] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
@@ -70,7 +72,15 @@ export function App() {
     setRunning(true);
     setBreakdownError(null);
     try {
-      const result = await runBreakdown({ script, service, ollamaModel, ollamaHost, chapterId: "ep001" });
+      const result = await runBreakdown({
+        script,
+        service,
+        ollamaModel,
+        ollamaHost,
+        anthropicKey,
+        anthropicModel,
+        chapterId: "ep001",
+      });
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
       setPages(result.pages);
       setPageIndex(0);
@@ -156,6 +166,10 @@ export function App() {
           onOllamaModelChange={setOllamaModel}
           ollamaHost={ollamaHost}
           onOllamaHostChange={setOllamaHost}
+          anthropicKey={anthropicKey}
+          onAnthropicKeyChange={setAnthropicKey}
+          anthropicModel={anthropicModel}
+          onAnthropicModelChange={setAnthropicModel}
           onRun={() => void onRunBreakdown()}
           running={running}
           error={breakdownError}

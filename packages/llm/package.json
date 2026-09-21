@@ -17,7 +17,8 @@
   "dependencies": {
     "@comic-builder/core": "workspace:*",
     "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.23.5"
+    "zod-to-json-schema": "^3.23.5",
+    "@anthropic-ai/sdk": "^0.127.0"
   },
   "devDependencies": {
     "vitest": "^2.1.5",

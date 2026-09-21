@@ -1,5 +1,11 @@
 import { buildPagesFromScene, type Page, type Scene, type ValidationIssue } from "@comic-builder/core";
-import { MockLlmService, OllamaLlmService, breakdownScript, type LlmService } from "@comic-builder/llm";
+import {
+  MockLlmService,
+  OllamaLlmService,
+  AnthropicLlmService,
+  breakdownScript,
+  type LlmService,
+} from "@comic-builder/llm";
 import { TARGET } from "./renderPreview.js";
 import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.js";
 
@@ -8,6 +14,8 @@ export interface RunBreakdownInput {
   service: ServiceChoice;
   ollamaModel: string;
   ollamaHost: string;
+  anthropicKey: string;
+  anthropicModel: string;
   chapterId: string;
 }
 
@@ -17,8 +25,18 @@ export interface RunBreakdownResult {
   summary: BreakdownSummary;
 }
 
-function serviceFor(choice: ServiceChoice, model: string, host: string): LlmService {
-  if (choice === "ollama") return new OllamaLlmService({ model, host });
+function serviceFor(choice: ServiceChoice, input: RunBreakdownInput): LlmService {
+  if (choice === "ollama") return new OllamaLlmService({ model: input.ollamaModel, host: input.ollamaHost });
+  if (choice === "anthropic") {
+    return new AnthropicLlmService({
+      apiKey: input.anthropicKey,
+      model: input.anthropicModel,
+      // La chiave vive nel browser: è una scelta consapevole per uno strumento
+      // locale a utente singolo, e l'interfaccia lo dice. Con il packaging
+      // desktop (§14.4) passerà all'archivio sicuro dell'host.
+      allowBrowser: true,
+    });
+  }
   return new MockLlmService();
 }
 
@@ -29,7 +47,7 @@ function serviceFor(choice: ServiceChoice, model: string, host: string): LlmServ
  */
 export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdownResult> {
   const result = await breakdownScript({
-    llm: serviceFor(input.service, input.ollamaModel, input.ollamaHost),
+    llm: serviceFor(input.service, input),
     script: input.script,
     scriptFile: "copione-incollato.md",
   });
