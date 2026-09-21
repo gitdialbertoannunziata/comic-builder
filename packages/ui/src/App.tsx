@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   balloonBox,
   chapterContext,
@@ -27,6 +27,17 @@ import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher, type ArtWatcher } from "./editor/useArtWatcher.js";
 import { ChapterBar } from "./components/ChapterBar.js";
+import { loadPreference, savePreference } from "./platform/session.js";
+
+/**
+ * Uno stato che sopravvive a un F5 (localStorage). Solo preferenze
+ * dell'interfaccia: mai chiavi API, che digitate nella UI non si salvano.
+ */
+function usePreference<T>(key: string, initial: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => loadPreference(key, initial));
+  useEffect(() => savePreference(key, value), [key, value]);
+  return [value, setValue];
+}
 import { importArt, panelForFileName } from "./editor/importArt.js";
 import { StripView } from "./components/StripView.js";
 import { RevisionsPanel } from "./components/RevisionsPanel.js";
@@ -87,7 +98,8 @@ export function App() {
   const { doc, run, endGesture } = editor;
   const art = useArtWatcher(editor.assets, doc, run, endGesture);
   const chapters = doc.chapters.chapters;
-  const [chapterId, setChapterId] = useState(chapters[0]!.id);
+  // Il capitolo aperto, per progetto: dopo un F5 si riparte da lì.
+  const [chapterId, setChapterId] = usePreference(`chapter:${doc.project.id}`, chapters[0]!.id);
   const chapter = chapters.find((c) => c.id === chapterId) ?? chapters[0]!;
   const pages = chapter.pages.map((id) => doc.pages[id]).filter((p): p is Page => p !== undefined);
 
@@ -96,15 +108,16 @@ export function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const script = drafts[chapter.id] ?? doc.scripts[chapter.id] ?? "";
   const setScript = (text: string) => setDrafts((d) => ({ ...d, [chapter.id]: text }));
-  const [service, setService] = useState<ServiceChoice>(
+  const [service, setService] = usePreference<ServiceChoice>(
+    "service",
     prefilled.anthropicKeyFromEnv ? "anthropic" : prefilled.deepseekKeyFromEnv ? "deepseek" : "mock",
   );
-  const [ollamaModel, setOllamaModel] = useState(prefilled.ollamaModel);
-  const [ollamaHost, setOllamaHost] = useState(prefilled.ollamaHost);
+  const [ollamaModel, setOllamaModel] = usePreference("ollamaModel", prefilled.ollamaModel);
+  const [ollamaHost, setOllamaHost] = usePreference("ollamaHost", prefilled.ollamaHost);
   const [anthropicKey, setAnthropicKey] = useState(prefilled.anthropicKey);
-  const [anthropicModel, setAnthropicModel] = useState(prefilled.anthropicModel);
+  const [anthropicModel, setAnthropicModel] = usePreference("anthropicModel", prefilled.anthropicModel);
   const [deepseekKey, setDeepseekKey] = useState(prefilled.deepseekKey);
-  const [deepseekModel, setDeepseekModel] = useState(prefilled.deepseekModel);
+  const [deepseekModel, setDeepseekModel] = usePreference("deepseekModel", prefilled.deepseekModel);
   const [running, setRunning] = useState(false);
   const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
@@ -241,10 +254,10 @@ function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, si
 
   // Di default i tre formati del criterio d'uscita di F2.1: pagina digitale,
   // stampa e striscia, dallo stesso documento in un clic.
-  const [exportChoices, setExportChoices] = useState<ReadonlySet<string>>(
-    () => new Set(["target:digital-page", "target:print-b5", "target:webtoon-strip"]),
-  );
-  const [exportDraft, setExportDraft] = useState(true);
+  const [exportChoiceList, setExportChoiceList] = usePreference<string[]>("exportChoices", ["target:digital-page", "target:print-b5", "target:webtoon-strip"]);
+  const exportChoices = useMemo(() => new Set(exportChoiceList), [exportChoiceList]);
+  const setExportChoices = (choices: ReadonlySet<string>) => setExportChoiceList([...choices]);
+  const [exportDraft, setExportDraft] = usePreference("exportDraft", true);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [destination, setDestination] = useState<string | null>(null);

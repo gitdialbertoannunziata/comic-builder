@@ -41,6 +41,11 @@ export function ProjectBar({ editor, title }: { editor: ProjectEditor; title: st
       </div>
 
       <div className="bar__actions">
+        {editor.reopenable && (
+          <button type="button" className="btn btn--small btn--primary" onClick={() => void editor.reopen()} title="Il browser chiede di nuovo il permesso per la cartella">
+            Riapri «{editor.reopenable}»
+          </button>
+        )}
         {editor.canOpenFolders ? (
           <>
             <button type="button" className="btn btn--small" onClick={() => void editor.openFolder()}>
@@ -59,6 +64,15 @@ export function ProjectBar({ editor, title }: { editor: ProjectEditor; title: st
 
       <p className={`bar__status ${tone}`} role="status">
         {statusText(status, folder)}
+        {editor.recoveredAt && !folder && (
+          <>
+            {" "}
+            Ripristinato il lavoro di questa scheda ({editor.recoveredAt.toLocaleString()}).{" "}
+            <button type="button" className="link-btn" onClick={() => void editor.startOver()}>
+              ricomincia da capo
+            </button>
+          </>
+        )}
       </p>
 
       {editor.notice && (

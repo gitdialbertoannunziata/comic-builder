@@ -26,7 +26,18 @@ import {
   type ProjectStore,
   type ValidationIssue,
 } from "@comic-builder/core";
-import { BrowserProjectStore, canOpenFolders, pickFolder } from "../platform/browserProjectStore.js";
+import { BrowserProjectStore, canOpenFolders, pickFolder, type DirectoryHandle } from "../platform/browserProjectStore.js";
+import {
+  clearRecovery,
+  folderRestoreCrashed,
+  forgetFolder,
+  loadRecovery,
+  markFolderRestore,
+  rememberedFolder,
+  rememberFolder,
+  saveRecovery,
+  tabSession,
+} from "../platform/session.js";
 
 /**
  * Lo stato dell'editor: il documento con la sua cronologia, la cartella su
@@ -48,7 +59,9 @@ export type SaveStatus =
 const AUTOSAVE_DELAY_MS = 700;
 const LOCK_REFRESH_MS = 45_000;
 
-const session = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Math.random());
+// Stabile fra un F5 e l'altro nella stessa scheda: il lock riconosce la propria scheda ricaricata.
+const session = tabSession();
+const RECOVERY_DELAY_MS = 1000;
 const holder = (() => {
   const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
   const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : "browser";
@@ -83,6 +96,12 @@ export interface ProjectEditor {
   canRedo: boolean;
   replace: (doc: ProjectDoc, label: string) => void;
   openFolder: () => Promise<void>;
+  /** La cartella dell'ultima sessione, se il browser chiede di nuovo il permesso: basta un clic. */
+  reopenable: string | null;
+  reopen: () => Promise<void>;
+  /** Quando è stato ripristinato il lavoro non salvato di questa scheda, se è successo. */
+  recoveredAt: Date | null;
+  startOver: () => Promise<void>;
   saveToFolder: () => Promise<void>;
   dismissNotice: () => void;
 }
@@ -91,6 +110,8 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   const [history, setHistory] = useState<History>(() => createHistory(initial));
   const [store, setStore] = useState<ProjectStore | null>(null);
   const [memory] = useState(() => new MemoryProjectStore("questa scheda"));
+  const [reopenHandle, setReopenHandle] = useState<DirectoryHandle | null>(null);
+  const [recoveredAt, setRecoveredAt] = useState<Date | null>(null);
   const [saved, setSaved] = useState<ProjectDoc | null>(null);
   const [status, setStatus] = useState<SaveStatus>({ kind: "memory" });
   const [loadIssues, setLoadIssues] = useState<ValidationIssue[]>([]);
@@ -221,9 +242,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     return true;
   }
 
-  async function openFolder() {
-    const handle = await pickFolder();
-    if (!handle) return;
+  async function openHandle(handle: DirectoryHandle) {
     const next = new BrowserProjectStore(handle);
     try {
       const result = await loadProject(next);
@@ -234,10 +253,83 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       setStore(next);
       setLoadIssues(result.issues);
       setStatus({ kind: "saved", at: new Date() });
+      setReopenHandle(null);
+      setRecoveredAt(null);
+      void rememberFolder(handle);
+      void clearRecovery();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
   }
+
+  async function openFolder() {
+    const handle = await pickFolder();
+    if (handle) await openHandle(handle);
+  }
+
+  async function reopen() {
+    if (!reopenHandle) return;
+    // Il permesso si chiede dentro un clic: il browser non lo concede fuori da un gesto.
+    const state = (await reopenHandle.requestPermission?.({ mode: "readwrite" })) ?? "granted";
+    if (state === "granted") await openHandle(reopenHandle);
+    else setNotice(`Permesso negato per «${reopenHandle.name}»: aprilo da «Apri progetto…».`);
+  }
+
+  async function startOver() {
+    await clearRecovery();
+    window.location.reload();
+  }
+
+  // --- Dopo un F5: la cartella di prima, o il lavoro non salvato della scheda ---
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    void (async () => {
+      // Se l'ultima riapertura automatica ha fatto cadere la scheda (vedi
+      // `markFolderRestore`), non la si ritenta: si dimentica la cartella.
+      if (folderRestoreCrashed()) {
+        await forgetFolder();
+        setNotice("La riapertura automatica dell'ultimo progetto non è riuscita: aprilo da «Apri progetto…».");
+      }
+      markFolderRestore(true);
+      const handle = await rememberedFolder();
+      markFolderRestore(false);
+      if (handle) {
+        // Senza API dei permessi (cartelle private del browser) non c'è nulla da chiedere.
+        const state = (await handle.queryPermission?.({ mode: "readwrite" })) ?? "granted";
+        if (state === "granted") {
+          await openHandle(handle);
+          return;
+        }
+        setReopenHandle(handle);
+        return;
+      }
+      const recovery = await loadRecovery();
+      if (!recovery) return;
+      for (const asset of recovery.assets) await memory.writeBytes(asset.path, asset.data);
+      commit(() => createHistory(recovery.doc));
+      setRecoveredAt(new Date(recovery.at));
+    })();
+    // Una volta sola, all'avvio.
+  }, []);
+
+  // --- Progetto non ancora in una cartella: il lavoro della scheda resta in IndexedDB ---
+  useEffect(() => {
+    if (store) return;
+    if (history.past.length === 0 && memory.paths().length === 0 && !recoveredAt) return;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const assets = [];
+        for (const path of memory.paths()) {
+          const data = await memory.readBytes(path);
+          if (data) assets.push({ path, data });
+        }
+        await saveRecovery({ doc: history.present, assets, at: new Date().toISOString() });
+      })();
+    }, RECOVERY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [history, store, memory, recoveredAt]);
 
   async function saveToFolder() {
     const handle = await pickFolder();
@@ -259,6 +351,9 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       for (const directory of ASSET_DIRECTORIES) await copyTree(store ?? memory, next, directory);
       await saveProject(next, doc, null);
       if (store) await releaseLock(store, session);
+      void rememberFolder(handle);
+      void clearRecovery();
+      setRecoveredAt(null);
       setStore(next);
       setSaved(doc);
       setLoadIssues([]);
@@ -288,6 +383,10 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     canRedo: canRedo(history),
     replace,
     openFolder,
+    reopenable: reopenHandle?.name ?? null,
+    reopen,
+    recoveredAt,
+    startOver,
     saveToFolder,
     dismissNotice: () => setNotice(null),
   };
