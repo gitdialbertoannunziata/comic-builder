@@ -989,3 +989,118 @@ code {
   align-items: center;
   gap: 6px;
 }
+
+/* Vista scroll: la striscia come la leggerà il telefono, con i tagli sopra. */
+.view-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.strip-view__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.strip-view__strip {
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  background: #fff;
+}
+
+/* Ogni slice ritaglia il suo contenuto: un pannello a cavallo di un taglio
+   compare in due slice, e senza ritaglio la metà di sopra sbordava in quella
+   sotto e ne intercettava i clic. */
+.strip-chunk {
+  position: relative;
+  overflow: hidden;
+}
+
+.strip-chunk__art,
+.strip-chunk__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.strip-chunk__art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.strip-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.strip-hit:hover {
+  fill: var(--accent);
+  fill-opacity: 0.06;
+}
+
+.strip-hit--selected {
+  stroke: var(--accent);
+  stroke-width: 6;
+}
+
+.strip-hit--band {
+  cursor: crosshair;
+}
+
+.strip-band {
+  fill: var(--warning);
+  fill-opacity: 0.18;
+  stroke: var(--warning);
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+}
+
+.strip-band--drawing {
+  pointer-events: none;
+}
+
+.strip-cut {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.strip-cut span {
+  position: absolute;
+  right: 8px;
+  top: -18px;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid currentColor;
+}
+
+.strip-cut--gutter {
+  background: var(--ok);
+  color: var(--ok);
+}
+
+.strip-cut--panel {
+  background: var(--warning);
+  color: var(--warning);
+}
+
+.strip-cut--obstacle {
+  background: var(--error);
+  color: var(--error);
+  height: 3px;
+}

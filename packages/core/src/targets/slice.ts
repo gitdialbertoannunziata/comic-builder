@@ -14,9 +14,15 @@ import type { EpisodeStrip, Obstacle } from "./strip.js";
  * - **attraverso un balloon o una banda**: costo proibitivo, scelto solo se
  *   non esiste alternativa (un balloon più alto di una slice).
  *
- * A parità di costo vince la soluzione con meno immagini. Il vincolo di
- * altezza è rigido: ogni slice sta in [min, max], salvo l'ultima
- * dell'episodio, che può essere più bassa perché lì la storia finisce.
+ * A parità di costo vince la soluzione con meno immagini. Il massimo è
+ * rigido (è il limite della piattaforma). Il minimo no: una slice sotto il
+ * minimo costa 0,5 — meno di un taglio nell'arte, più di uno nel gutter.
+ * Da vincolo rigido produceva il caso peggiore: un pannello basso fra due
+ * alti (545 px fra due da 1280) non stava in nessuna slice ammessa, e
+ * l'unica soluzione era tagliare dentro l'arte — misurato su un episodio di
+ * 12 pagine, il 33% delle pagine da ritoccare. Una slice corta è innocua;
+ * un taglio nell'arte è lavoro a mano. L'ultima slice dell'episodio può
+ * essere bassa senza costo: lì la storia finisce.
  */
 
 export type CutKind = "gutter" | "panel" | "obstacle";
@@ -37,6 +43,8 @@ export interface Slice {
   height: number;
   /** Altezza dell'immagine: `height` più la sovrapposizione, salvo l'ultima. */
   imageHeight: number;
+  /** Sotto l'altezza minima (e non è l'ultima): ammessa per non tagliare l'arte, ma dichiarata. */
+  short: boolean;
 }
 
 export interface SlicePlan {
@@ -54,6 +62,8 @@ export interface SlicePlan {
     pagesWithBrokenBalloons: string[];
     /** `pagesToCheck.length / pages`: il gate chiede meno del 20%. */
     checkRatio: number;
+    /** Slice sotto il minimo scelte per evitare un taglio nell'arte. */
+    shortSlices: number;
   };
 }
 
@@ -66,6 +76,8 @@ export interface SliceOptions {
 }
 
 const COST: Record<CutKind, number> = { gutter: 0, panel: 1, obstacle: 1000 };
+/** Una slice sotto il minimo: preferibile a un taglio nell'arte, non a un taglio nel gutter. */
+const SHORT_SLICE = 0.5;
 /** Costo di ogni immagine in più: rompe i pareggi a favore di meno slice, senza mai battere un taglio migliore. */
 const PER_SLICE = 0.001;
 
@@ -140,14 +152,14 @@ export function sliceStrip(strip: EpisodeStrip, obstacles: readonly Obstacle[], 
   for (let i = 1; i <= last; i++) {
     const point = points[i]!;
     const isEnd = i === last;
-    const lowest = isEnd ? 1 : minHeight;
     while (lo < i && point.y - points[lo]!.y > maxHeight) lo++;
     const cost = isEnd ? 0 : COST[point.kind];
 
     for (let j = lo; j < i; j++) {
       const height = point.y - points[j]!.y;
-      if (height < lowest) break;
-      const candidate = best[j]! + cost + PER_SLICE;
+      if (height <= 0) break;
+      const short = !isEnd && height < minHeight ? SHORT_SLICE : 0;
+      const candidate = best[j]! + cost + short + PER_SLICE;
       if (candidate < best[i]!) {
         best[i] = candidate;
         from[i] = j;
@@ -176,7 +188,7 @@ export function sliceStrip(strip: EpisodeStrip, obstacles: readonly Obstacle[], 
     const y = bounds[k]!;
     const height = bounds[k + 1]! - y;
     const isLast = k === bounds.length - 2;
-    slices.push({ index: k, y, height, imageHeight: isLast ? height : Math.min(height + overlapPx, total - y) });
+    slices.push({ index: k, y, height, imageHeight: isLast ? height : Math.min(height + overlapPx, total - y), short: !isLast && height < minHeight });
   }
 
   const toCheck = new Set<string>();
@@ -196,6 +208,7 @@ export function sliceStrip(strip: EpisodeStrip, obstacles: readonly Obstacle[], 
       pagesToCheck: [...toCheck],
       pagesWithBrokenBalloons: [...broken],
       checkRatio: pages === 0 ? 0 : toCheck.size / pages,
+      shortSlices: slices.filter((s) => s.short).length,
     },
   };
 }

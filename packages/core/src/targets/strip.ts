@@ -118,6 +118,24 @@ function balloonExtent(balloon: Balloon, box: Box, fit: LetteringFit): { top: nu
 }
 
 /**
+ * Fin dove arriva in verticale ciò che un pannello disegna: il suo box, più i
+ * balloon e le code che ne escono. Serve a disegnare una finestra della
+ * striscia con dentro solo i pannelli che la toccano davvero.
+ */
+export function placementExtent(placement: StripPlacement, fits: Map<string, LetteringFit>): { top: number; bottom: number } {
+  let top = placement.box.y;
+  let bottom = placement.box.y + placement.box.height;
+  for (const balloon of placement.panel.balloons) {
+    const fit = fits.get(balloon.id);
+    if (!fit) continue;
+    const extent = balloonExtent(balloon, placement.box, fit);
+    top = Math.min(top, extent.top);
+    bottom = Math.max(bottom, extent.bottom);
+  }
+  return { top, bottom };
+}
+
+/**
  * Tutto ciò che un taglio non deve attraversare: i balloon (con la coda),
  * misurati col fit reale del lettering, e le bande che l'autore ha segnato
  * sui pannelli (§7.2 — i volti, in v1).

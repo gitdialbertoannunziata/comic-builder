@@ -12,6 +12,9 @@ import { PanelTools } from "./components/PanelTools.js";
 import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
+import { StripView } from "./components/StripView.js";
+import { measureWith } from "@comic-builder/lettering";
+import { styles as projectStyles } from "./project.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { ExportPanel } from "./components/ExportPanel.js";
 import { exportChapter, type ExportOutcome } from "./exportPages.js";
@@ -188,6 +191,27 @@ export function App() {
   const selectedPanel = page.panels.find((p) => p.id === selectedPanelId) ?? page.panels[0]!;
 
   const [selectedBalloonId, setSelectedBalloonId] = useState<string | null>(null);
+  const [view, setView] = useState<"page" | "scroll">("page");
+  const stripTargetId = doc.project.targets.find((t) => t.kind === "strip")?.id ?? null;
+
+  // Il contesto della striscia cambia solo quando cambia il documento: la
+  // vista scroll ricalcola tagli e misure lì, non a ogni render.
+  const stripContext = useMemo(
+    () =>
+      font
+        ? {
+            project: doc.project,
+            pages,
+            chapter: { id: chapter.id },
+            styles: projectStyles,
+            measure: measureWith(font),
+            draft: true,
+            art: art.urls,
+          }
+        : null,
+    // `pages` deriva da `doc`: basta `doc` a dire quando è cambiato.
+    [doc, font, art.urls],
+  );
 
   const goToPage = useCallback(
     (id: string) => {
@@ -346,8 +370,31 @@ export function App() {
       </section>
 
       <section className="col">
-        <p className="eyebrow">Pagina {page.order}</p>
-        {preview && (
+        <div className="view-head">
+          <p className="eyebrow">{view === "page" ? `Pagina ${page.order}` : "Striscia dell'episodio"}</p>
+          <div className="segmented" role="tablist" aria-label="Vista">
+            <button type="button" className="seg" aria-pressed={view === "page"} onClick={() => setView("page")}>
+              pagina
+            </button>
+            <button type="button" className="seg" aria-pressed={view === "scroll"} onClick={() => setView("scroll")} disabled={!stripTargetId}>
+              scroll
+            </button>
+          </div>
+        </div>
+        {view === "scroll" && stripContext && stripTargetId && (
+          <StripView
+            context={stripContext}
+            targetId={stripTargetId}
+            selectedPanelId={selectedPanel.id}
+            onSelect={(targetPageId, panelId) => {
+              setPageId(targetPageId);
+              setSelectedPanelId(panelId);
+              setSelectedBalloonId(null);
+            }}
+            run={run}
+          />
+        )}
+        {view === "page" && preview && (
           <PageEditor
             page={page}
             svg={preview.svg}
@@ -367,7 +414,9 @@ export function App() {
             staleNote={schemaIssues.length > 0}
           />
         )}
-        <p className="field__hint">Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla.</p>
+        {view === "page" && (
+          <p className="field__hint">Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla.</p>
+        )}
 
         <p className="eyebrow eyebrow-gap">Validazione</p>
         <ValidationPanel

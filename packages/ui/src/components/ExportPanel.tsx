@@ -122,7 +122,7 @@ export function ExportPanel({
                 <strong>{s.label}</strong> — {s.files} file
                 {s.slicePlan && report && (
                   <div className="export-report__slice">
-                    {s.slicePlan.slices.length} slice · {s.slicePlan.cuts.filter((c) => c.kind === "gutter").length} di{" "}
+                    {s.slicePlan.slices.length} slice{report.shortSlices > 0 ? ` (${report.shortSlices} corte)` : ""} · {s.slicePlan.cuts.filter((c) => c.kind === "gutter").length} di{" "}
                     {s.slicePlan.cuts.length} tagli nei gutter · pagine da controllare {report.pagesToCheck.length}/
                     {report.pages} ({Math.round(report.checkRatio * 100)}%){" "}
                     <span className={report.checkRatio < GATE_RATIO ? "gate gate--ok" : "gate gate--ko"}>

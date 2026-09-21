@@ -31,14 +31,15 @@ function balloon(y: number, height: number, pageId = "p1", id = "b"): Obstacle {
 }
 
 /** Invarianti che valgono per qualunque piano: copertura esatta, altezze nei limiti. */
-function expectValid(plan: SlicePlan, s: EpisodeStrip) {
+function expectValid(plan: SlicePlan, s: EpisodeStrip, options: { allowShort?: boolean } = {}) {
   const total = Math.round(s.height);
   expect(plan.slices[0]!.y).toBe(0);
   let y = 0;
   plan.slices.forEach((slice, i) => {
     expect(slice.y).toBe(y);
     expect(slice.height).toBeLessThanOrEqual(POLICY.maxHeight);
-    if (i < plan.slices.length - 1) expect(slice.height).toBeGreaterThanOrEqual(POLICY.minHeight);
+    if (i < plan.slices.length - 1 && !options.allowShort) expect(slice.height).toBeGreaterThanOrEqual(POLICY.minHeight);
+    expect(slice.short).toBe(i < plan.slices.length - 1 && slice.height < POLICY.minHeight);
     y += slice.height;
   });
   expect(y).toBe(total);
@@ -68,6 +69,16 @@ describe("sliceStrip — tagli nei gutter (§7.2)", () => {
 });
 
 describe("sliceStrip — casi limite chiesti dal piano (§7.2)", () => {
+  it("un pannello basso fra due alti: una slice corta, non un taglio nell'arte", () => {
+    // 545 da solo è sotto il minimo; con un vicino supera il massimo.
+    const s = strip([[1280, 545, 1280]]);
+    const plan = sliceStrip(s, [], POLICY);
+    expectValid(plan, s, { allowShort: true });
+    expect(plan.cuts.every((c) => c.kind === "gutter")).toBe(true);
+    expect(plan.report.shortSlices).toBe(1);
+    expect(plan.slices.find((x) => x.short)?.height).toBe(545);
+  });
+
   it("pannello più alto di una slice: taglia dentro, e lo segnala da controllare", () => {
     const s = strip([[3000]]);
     const plan = sliceStrip(s, [], POLICY);
@@ -87,7 +98,7 @@ describe("sliceStrip — casi limite chiesti dal piano (§7.2)", () => {
   it("pagina con un solo pannello più basso di una slice: un'immagine sola", () => {
     const s = strip([[900]]);
     const plan = sliceStrip(s, [], POLICY);
-    expect(plan.slices).toEqual([{ index: 0, y: 0, height: 900, imageHeight: 900 }]);
+    expect(plan.slices).toEqual([{ index: 0, y: 0, height: 900, imageHeight: 900, short: false }]);
     expect(plan.cuts).toEqual([]);
   });
 

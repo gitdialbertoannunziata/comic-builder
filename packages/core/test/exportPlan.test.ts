@@ -150,3 +150,18 @@ describe("Striscia: tetto all'altezza del pannello", () => {
     expect(planTargetExport(ctx, "webtoon-strip").slicePlan!.report.checkRatio).toBeLessThan(0.2);
   });
 });
+
+describe("Gate di F2.1 su un episodio vario (12 pagine, 5 template)", () => {
+  it("meno del 20% di pagine con tagli da controllare, e nessun balloon tagliato", async () => {
+    const { projectDocFrom } = await import("../src/document/projectDoc.js");
+    const { applyCommand } = await import("../src/editor/commands.js");
+    let doc = projectDocFrom({ project: sampleProject, scenes: [sampleScene], chapter: { id: "ep001", number: 1, title: "t" }, pages });
+    const templates = ["classic-6", "top-splash-3", "t-layout", "sidebar-2", "strip-4"];
+    for (let i = 0; i < 10; i++) doc = applyCommand(doc, { type: "page.add", chapterId: "ep001", templateId: templates[i % 5]!, sceneId: sampleScene.id });
+    const plan = planTargetExport({ ...ctx, pages: Object.values(doc.pages) }, "webtoon-strip").slicePlan!;
+    expect(plan.report.pages).toBe(12);
+    // Col minimo rigido era il 33%: un pannello basso fra due alti costringeva a tagliare l'arte.
+    expect(plan.report.checkRatio).toBeLessThan(0.2);
+    expect(plan.report.pagesWithBrokenBalloons).toEqual([]);
+  });
+});

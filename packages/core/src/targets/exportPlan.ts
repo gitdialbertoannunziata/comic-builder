@@ -1,7 +1,7 @@
 import type { Box } from "../layout/resolveLayout.js";
 import type { Page } from "../schema/page.js";
 import type { DraftStyle, LetteringConfig, OutputTarget, PageTarget, Project, StripTarget } from "../schema/project.js";
-import type { LetteringFit } from "../render/types.js";
+import type { LetteringFit, RenderConfig } from "../render/types.js";
 import { renderEpisodeStripSvg, renderPageSvg } from "../render/renderSvg.js";
 import type { ExportFile } from "../platform/platformService.js";
 import { pageFileNames } from "../platform/exportNames.js";
@@ -10,7 +10,7 @@ import { createCbz } from "../package/cbz.js";
 import { findTarget, resolvePageTargetGeometry, type PageTargetGeometry } from "./geometry.js";
 import { pageForTarget, pageRenderConfig, resolvePageBoxesForTarget, scaleStyles, type TargetStyles } from "./pageTarget.js";
 import { pageRegions, type PageRegions } from "./regions.js";
-import { resolveEpisodeStrip, stripObstacles } from "./strip.js";
+import { placementExtent, resolveEpisodeStrip, stripObstacles, type EpisodeStrip } from "./strip.js";
 import { sliceStrip, type SlicePlan } from "./slice.js";
 
 /**
@@ -169,7 +169,22 @@ function planRegions(ctx: ExportContext, target: Extract<OutputTarget, { kind: "
   };
 }
 
-function planStrip(ctx: ExportContext, target: StripTarget, folder: string): TargetExportPlan {
+/** Tutto ciò che serve per mostrare o esportare la striscia di un episodio, senza ancora un pixel. */
+export interface PreparedStrip {
+  target: StripTarget;
+  strip: EpisodeStrip;
+  fits: Map<string, LetteringFit>;
+  plan: SlicePlan;
+  issues: ValidationIssue[];
+  /** Configurazione di render della striscia intera; una finestra ne cambia solo il viewport. */
+  config: RenderConfig;
+  /** Estensione verticale di ogni pannello, balloon compresi: per disegnare solo ciò che una finestra tocca. */
+  extents: Array<{ top: number; bottom: number }>;
+}
+
+export function prepareStrip(ctx: ExportContext, targetId: string): PreparedStrip {
+  const target = findTarget(ctx.project, targetId);
+  if (!target || target.kind !== "strip") throw new Error(`"${targetId}" non è un target striscia.`);
   const canonical = resolvePageTargetGeometry(primaryPageTarget(ctx.project), ctx.project);
   const pages = byOrder(ctx.pages).filter((p) => p.layout.mode === "page").map((p) => pageForTarget(p, target.id));
   const strip = resolveEpisodeStrip(pages, target, canonical);
@@ -209,7 +224,6 @@ function planStrip(ctx: ExportContext, target: StripTarget, folder: string): Tar
     );
   }
 
-  // Un solo disegno per tutta la striscia; ogni slice ne è una finestra.
   const stripGeometry: PageTargetGeometry = {
     targetId: target.id,
     width: strip.width,
@@ -221,16 +235,49 @@ function planStrip(ctx: ExportContext, target: StripTarget, folder: string): Tar
     letteringScale: strip.letteringScale,
     color: "srgb",
   };
-  const stripConfig = { ...pageRenderConfig(stripGeometry, styles, { draft, artTarget: primary.id }), ...(ctx.art ? { art: ctx.art } : {}) };
+  const config = { ...pageRenderConfig(stripGeometry, styles, { draft, artTarget: primary.id }), ...(ctx.art ? { art: ctx.art } : {}) };
+
+  return { target, strip, fits, plan, issues, config, extents: strip.placements.map((p) => placementExtent(p, fits)) };
+}
+
+/** Il più spesso fra i tratti che possono uscire dal box di un pannello, più un pixel di antialiasing. */
+function strokeMargin(prepared: PreparedStrip): number {
+  const scale = prepared.config.strokeScale ?? 1;
+  const borders = prepared.strip.placements.map((p) => p.panel.border.width * scale);
+  const style = prepared.config.balloonStyle;
+  const balloons = [style.base.stroke_width, ...Object.values(style.by_type).map((v) => v?.stroke_width ?? 0)];
+  return Math.max(0, ...borders, ...balloons) + 1;
+}
+
+/**
+ * Una finestra della striscia, come SVG autonomo: dentro solo i pannelli che
+ * la toccano (balloon compresi). È una slice dell'export, ed è ciò che la
+ * vista scroll monta solo quando entra nello schermo — una striscia di
+ * sessanta pagine non diventa un unico SVG da decine di migliaia di pixel.
+ */
+export function renderStripWindow(prepared: PreparedStrip, y: number, height: number): string {
+  // Un tratto è centrato sul contorno: il bordo di un pannello che inizia
+  // esattamente al taglio sporge di mezzo spessore nella slice sopra.
+  // Verificato dal test pixel per pixel delle giunzioni, che senza questo
+  // margine trovava diversa l'ultima riga di ogni slice.
+  const margin = strokeMargin(prepared);
+  const placements = prepared.strip.placements.filter((_, i) => {
+    const extent = prepared.extents[i]!;
+    return extent.bottom + margin > y && extent.top - margin < y + height;
+  });
+  return renderEpisodeStripSvg(placements, prepared.fits, { ...prepared.config, viewport: { x: 0, y, width: prepared.strip.width, height } });
+}
+
+function planStrip(ctx: ExportContext, target: StripTarget, folder: string): TargetExportPlan {
+  const prepared = prepareStrip(ctx, target.id);
+  const { strip, plan, issues } = prepared;
 
   const width = Math.max(3, String(plan.slices.length).length);
   const ext = extension(target.format);
   const jobs = plan.slices.map((slice): RenderJob => {
-    const viewport = { x: 0, y: slice.y, width: strip.width, height: slice.imageHeight };
-    const config = { ...stripConfig, viewport };
     return {
       name: `${folder}${ctx.chapter.id}-${String(slice.index + 1).padStart(width, "0")}.${ext}`,
-      svg: renderEpisodeStripSvg(strip.placements, fits, config),
+      svg: renderStripWindow(prepared, slice.y, slice.imageHeight),
       width: strip.width,
       height: slice.imageHeight,
       format: target.format,
