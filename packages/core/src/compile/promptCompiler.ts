@@ -3,6 +3,8 @@ import type { Page } from "../schema/page.js";
 import type { Panel } from "../schema/panel.js";
 import type { Project } from "../schema/project.js";
 import type { Scene } from "../schema/scenes.js";
+import type { CharacterSheet } from "../schema/characters.js";
+import type { PanelCharacter } from "../schema/panel.js";
 import {
   ANGLE_FRAGMENT,
   BASE_NEGATIVE,
@@ -63,6 +65,8 @@ export interface CompilePanelInput {
   balloonBoxes?: ReadonlyArray<{ id: string; box: Box }>;
   targetId: string;
   scene?: Scene;
+  /** Schede personaggio (§5.1): senza, il modello conosce solo un nome e ogni pannello lo reinventa. */
+  characters?: Readonly<Record<string, CharacterSheet>>;
 }
 
 const ASPECTS: Array<[string, number]> = [
@@ -107,14 +111,55 @@ function where(x: number, y: number, w: number, h: number): string {
   return vertical === "middle" && horizontal === "center" ? "center" : `${vertical} ${horizontal}`;
 }
 
-function characterLine(panel: Panel): string[] {
-  const order = { lead: 0, support: 1, background: 2 } as const;
-  return [...panel.characters]
-    .sort((a, b) => order[a.role] - order[b.role] || b.weight - a.weight)
-    .map((c) => {
-      const details = [FRAMING_FRAGMENT[c.framing], c.expression ? `expression: ${c.expression}` : null, c.wardrobe !== "default" ? `wearing ${c.wardrobe}` : null];
-      return `${c.ref} (${[c.role, ...details].filter(Boolean).join(", ")})`;
-    });
+const ROLE_ORDER = { lead: 0, support: 1, background: 2 } as const;
+
+function orderedCharacters(panel: Panel): PanelCharacter[] {
+  return [...panel.characters].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || b.weight - a.weight);
+}
+
+/** L'aspetto in forma breve: i campi compilati, nell'ordine in cui si guarda una persona. */
+export function appearanceText(sheet: CharacterSheet): string {
+  const a = sheet.appearance;
+  return [a.age, a.build, a.face, a.hair, a.eyes, a.skin, a.distinguishing].map((v) => v.trim()).filter(Boolean).join(", ");
+}
+
+/** Il costume del pannello: la variante dichiarata nella scheda, o il nome così com'è se la scheda non la conosce. */
+export function wardrobeText(sheet: CharacterSheet | undefined, wardrobe: string): string | null {
+  const described = sheet?.wardrobe[wardrobe];
+  if (described) return described;
+  return wardrobe !== "default" ? wardrobe : null;
+}
+
+function characterLine(panel: Panel, sheets: Readonly<Record<string, CharacterSheet>>): string[] {
+  return orderedCharacters(panel).map((c) => {
+    const sheet = sheets[c.ref];
+    const wearing = wardrobeText(sheet, c.wardrobe);
+    const look = sheet ? appearanceText(sheet) : "";
+    const details = [
+      look || null,
+      FRAMING_FRAGMENT[c.framing],
+      c.expression ? `expression: ${c.expression}` : null,
+      wearing ? `wearing ${wearing}` : null,
+    ];
+    return `${c.ref} (${[c.role, ...details].filter(Boolean).join(", ")})`;
+  });
+}
+
+/** Una riga di brief per personaggio con scheda: chi è, com'è, cosa indossa, i riferimenti da allegare. */
+function characterBriefLines(panel: Panel, sheets: Readonly<Record<string, CharacterSheet>>): string[] {
+  return orderedCharacters(panel).map((c) => {
+    const sheet = sheets[c.ref];
+    const head = `- ${c.ref}${sheet?.name ? ` «${sheet.name}»` : ""} (${[c.role, FRAMING_FRAGMENT[c.framing], c.expression ? `expression: ${c.expression}` : null].filter(Boolean).join("; ")})`;
+    if (!sheet) return `${head}: no character sheet — appearance not specified.`;
+    const wearing = wardrobeText(sheet, c.wardrobe);
+    const parts = [
+      appearanceText(sheet) || null,
+      wearing ? `wearing ${wearing}` : null,
+      sheet.palette ? `palette: ${sheet.palette}` : null,
+      sheet.references.length > 0 ? `reference images: ${sheet.references.map((r) => r.path).join(", ")}` : null,
+    ].filter(Boolean);
+    return `${head}: ${parts.join("; ") || "sheet present but empty"}.`;
+  });
 }
 
 export function compilePanel(input: CompilePanelInput): PanelBrief {
@@ -126,7 +171,9 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
   const [aspect] = nearestByRatio(ratio, ASPECTS, ([, r]) => r);
   const [sw, sh] = nearestByRatio(ratio, SDXL_BUCKETS, ([w, h]) => w / h);
 
-  const characters = characterLine(panel);
+  const sheets = input.characters ?? {};
+  const characters = characterLine(panel, sheets);
+  const withSheets = panel.characters.some((c) => sheets[c.ref]);
   const setting = panel.setting || (scene ? `${scene.location}, ${scene.time_of_day}` : "");
   const compiled = [
     SHOT_FRAGMENT[cam.shot],
@@ -162,8 +209,10 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
   const lines: string[] = [
     `Comic panel, aspect ${aspect} (${width}×${height} px). Draw the image only: no text, no speech balloons, no captions, no panel border.`,
     `Framing: ${[SHOT_FRAGMENT[cam.shot], ANGLE_FRAGMENT[cam.angle], LENS_FRAGMENT[cam.lens_mm], DOF_FRAGMENT[cam.dof]].filter(Boolean).join("; ")}.`,
-    characters.length > 0 ? `Characters: ${characters.join("; ")}.` : "No characters in frame.",
   ];
+  if (panel.characters.length === 0) lines.push("No characters in frame.");
+  else if (withSheets) lines.push("Characters (keep each one consistent with this description in every panel):", ...characterBriefLines(panel, sheets));
+  else lines.push(`Characters: ${characters.join("; ")}.`);
   if (PLACEMENT_FRAGMENT[cam.subject_placement]) lines.push(`Composition: ${PLACEMENT_FRAGMENT[cam.subject_placement]}.`);
   if (panel.action) lines.push(`Action: ${panel.action}`);
   if (setting) lines.push(`Setting: ${setting}`);

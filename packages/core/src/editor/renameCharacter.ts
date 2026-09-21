@@ -68,5 +68,6 @@ export function characterRefs(doc: ProjectDoc): Set<string> {
     }
   }
   for (const scene of doc.scenes.scenes) scene.characters.forEach((c) => refs.add(c));
+  for (const ref of Object.keys(doc.characters)) refs.add(ref);
   return refs;
 }

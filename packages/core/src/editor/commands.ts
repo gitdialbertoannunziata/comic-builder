@@ -11,6 +11,7 @@ import { remapProvenance } from "../revisions/scriptDiff.js";
 import { findMatches, matchesAsRevisions, type FindOptions } from "../revisions/findReplace.js";
 import { refFromName } from "../revisions/readable.js";
 import { characterRefs, renameCharacterRefs } from "./renameCharacter.js";
+import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.js";
 import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
 
 /**
@@ -50,7 +51,11 @@ export type Command =
   | { type: "script.set"; chapterId: string; text: string; sha: string }
   | { type: "text.replace"; chapterId: string; find: string; replace: string; options: FindOptions; by: string; at: string }
   | { type: "character.rename"; from: string; to: string }
-  | { type: "project.style"; positive: string[]; negative: string[] };
+  | { type: "project.style"; positive: string[]; negative: string[] }
+  | { type: "character.upsert"; ref: string; patch: CharacterPatch }
+  | { type: "character.remove"; ref: string };
+
+export type CharacterPatch = Partial<Omit<CharacterSheet, "schema" | "id" | "appearance">> & { appearance?: Partial<CharacterSheet["appearance"]> };
 
 export interface Point {
   x: number;
@@ -616,7 +621,25 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       if (!refs.has(command.from)) throw new CommandError(`Nessun personaggio «${command.from}» nel progetto`);
       // Unire due personaggi è un'altra operazione: farla per sbaglio confonderebbe due persone.
       if (refs.has(to)) throw new CommandError(`Esiste già un personaggio «${to}»`);
-      return renameCharacterRefs(doc, command.from, to);
+      const renamed = renameCharacterRefs(doc, command.from, to);
+      // La scheda segue il personaggio: rinominare senza portarsi dietro
+      // l'aspetto sarebbe perderlo in silenzio.
+      const sheet = doc.characters[command.from];
+      if (!sheet) return renamed;
+      const characters = Object.fromEntries(Object.entries(renamed.characters).filter(([ref]) => ref !== command.from));
+      return { ...renamed, characters: { ...characters, [to]: { ...sheet, id: to } } };
+    }
+    case "character.upsert": {
+      const ref = refFromName(command.ref);
+      if (!ref || ref !== command.ref) throw new CommandError(`«${command.ref}» non è un ref valido: minuscolo, senza spazi né accenti (es. ${ref || "sara"})`);
+      const current = doc.characters[ref] ?? CharacterSheetSchema.parse({ schema: 1, id: ref });
+      const { appearance, ...rest } = command.patch;
+      const next: CharacterSheet = { ...current, ...rest, appearance: { ...current.appearance, ...appearance }, schema: 1, id: ref };
+      return { ...doc, characters: { ...doc.characters, [ref]: next } };
+    }
+    case "character.remove": {
+      if (!doc.characters[command.ref]) throw new CommandError(`Nessuna scheda per «${command.ref}»`);
+      return { ...doc, characters: Object.fromEntries(Object.entries(doc.characters).filter(([ref]) => ref !== command.ref)) };
     }
     case "project.style": {
       // La bibbia di stile del progetto (§5.2): vale per ogni pannello, sotto il prompt dell'autore.
@@ -697,5 +720,9 @@ export function describeCommand(command: Command): string {
       return `Rinomina ${command.from} in ${command.to}`;
     case "project.style":
       return "Cambia lo stile del progetto";
+    case "character.upsert":
+      return `Scheda di ${command.ref}`;
+    case "character.remove":
+      return `Togli la scheda di ${command.ref}`;
   }
 }
