@@ -13,6 +13,7 @@ import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { StripView } from "./components/StripView.js";
+import { RevisionsPanel } from "./components/RevisionsPanel.js";
 import { measureWith } from "@comic-builder/lettering";
 import { primaryTarget, styles as projectStyles } from "./project.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
@@ -122,6 +123,8 @@ export function App() {
           scenes: result.scenes,
           chapter: { id: chapter.id, number: chapter.number, title: result.scenes[0]?.title ?? chapter.title },
           pages: result.pages,
+          // Il copione spogliato diventa il riferimento delle revisioni (§10.1).
+          script,
         }),
         "Nuovo spoglio",
       );
@@ -221,6 +224,18 @@ export function App() {
       if (!target) return;
       setPageId(id);
       setSelectedPanelId(target.panels[0]!.id);
+      setSelectedBalloonId(null);
+    },
+    [doc.pages],
+  );
+
+  /** Seleziona un pannello ovunque sia nel capitolo, spostandosi sulla sua pagina. */
+  const revealPanel = useCallback(
+    (panelId: string) => {
+      const owner = Object.values(doc.pages).find((p) => p.panels.some((x) => x.id === panelId));
+      if (!owner) return;
+      setPageId(owner.id);
+      setSelectedPanelId(panelId);
       setSelectedBalloonId(null);
     },
     [doc.pages],
@@ -465,6 +480,16 @@ export function App() {
 
         {fontError && <p className="preview__note">Font non caricato: {fontError}</p>}
         {!font && !fontError && <p className="muted">Carico il font…</p>}
+        <p className="eyebrow eyebrow-gap">Revisioni</p>
+        <RevisionsPanel
+          doc={doc}
+          chapterId={chapter.id}
+          run={run}
+          endGesture={endGesture}
+          onSelectPanel={revealPanel}
+          write={async (files) => (await platform.write(files)).destination}
+        />
+
         <p className="eyebrow eyebrow-gap">Export</p>
         <ExportPanel
           choices={exportChoices}

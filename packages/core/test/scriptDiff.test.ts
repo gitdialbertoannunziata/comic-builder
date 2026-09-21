@@ -61,7 +61,7 @@ describe("Diff per righe", () => {
 describe("Impatto di una nuova versione del copione (§10.1, passo 1)", () => {
   const NEW = OLD.replace("ELIO: Dalle due.", "ELIO: Dalle due, più o meno.\nSARA: E nessuno ha visto niente?")
     .replace("Il faro sulla scogliera, all'alba.", "Il faro sulla scogliera, nella nebbia dell'alba.")
-    .concat("Arriva una barca.\n");
+    .concat("\nArriva una barca.\n");
   const impact = scriptImpact(doc, "ep001", NEW);
 
   it("dice quali pannelli sono toccati, e solo quelli", () => {
@@ -88,6 +88,13 @@ describe("Impatto di una nuova versione del copione (§10.1, passo 1)", () => {
 
   it("materiale nuovo fuori da ogni pannello resta da impaginare, e lo si dice", () => {
     expect(impact.unassigned).toHaveLength(1);
+  });
+
+  it("una battuta aggiunta subito dopo l'ultima riga di un blocco va al pannello di quel blocco", () => {
+    const appended = OLD.replace("ELIO: Dalle due.", "ELIO: Dalle due.\nSARA: E nessuno ha visto niente?");
+    const result = scriptImpact(doc, "ep001", appended);
+    expect(result.unassigned).toEqual([]);
+    expect(result.corrections).toEqual([expect.objectContaining({ kind: "add", panel: dialoguePanel.id, speaker: "sara", to: "E nessuno ha visto niente?" })]);
   });
 
   it("nessuna correzione duplicata", () => {

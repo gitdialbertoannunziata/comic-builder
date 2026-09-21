@@ -1133,3 +1133,110 @@ code {
   stroke-dasharray: 10 6;
   pointer-events: none;
 }
+
+/* Revisioni: il 赤字 strutturato. */
+.revisions textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.revisions__message {
+  margin: 0;
+  font-size: 12px;
+}
+
+.impact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.impact p {
+  margin: 0;
+}
+
+.impact__panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.revision-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.revision {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.revision--conflict {
+  border-color: var(--warning);
+}
+
+.revision__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.revision__kind {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-text);
+}
+
+.revision__from,
+.revision__to {
+  margin: 2px 0;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+}
+
+.revision__from {
+  background: var(--error-soft);
+  color: var(--error);
+  text-decoration: line-through;
+}
+
+.revision__to {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+}
+
+.revision-list--history {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  gap: 3px;
+}
+
+.tool-row--tight {
+  margin: 4px 0 0;
+}

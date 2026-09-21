@@ -148,10 +148,28 @@ export interface ScriptImpact {
   corrections: NewRevision[];
 }
 
-function overlaps(source: SourceRef, h: Hunk): boolean {
+/**
+ * Righe solo aggiunte. Se nel copione nuovo seguono direttamente una riga
+ * piena, sono la continuazione di quel blocco e appartengono al pannello
+ * dell'ultima riga non vuota che le precede: è il caso tipico di una
+ * risposta aggiunta dopo l'ultima battuta, che il diff colloca sulla riga
+ * vuota successiva — di nessun pannello. Se invece le precede una riga
+ * vuota, sono un paragrafo nuovo: materiale da impaginare, non di un pannello.
+ */
+function insertionAnchor(h: Hunk, oldLines: readonly string[], newLines: readonly string[]): number | null {
+  // Paragrafo nuovo: preceduto da una riga vuota, o che comincia con una.
+  const blank = (line: string | undefined) => (line ?? "").trim() === "";
+  if (h.newStart <= 1 || blank(newLines[h.newStart - 2]) || blank(newLines[h.newStart - 1])) return null;
+  let line = h.oldStart - 1;
+  while (line >= 1 && (oldLines[line - 1] ?? "").trim() === "") line--;
+  return line >= 1 ? line : null;
+}
+
+function overlaps(source: SourceRef, h: Hunk, oldLines: readonly string[], newLines: readonly string[]): boolean {
   if (h.oldEnd > h.oldStart) return h.oldStart <= source.to_line && h.oldEnd - 1 >= source.from_line;
-  // Righe solo aggiunte: toccano il pannello se cadono dentro il suo intervallo.
-  return h.oldStart > source.from_line && h.oldStart <= source.to_line;
+  if (h.oldStart > source.from_line && h.oldStart <= source.to_line) return true;
+  const anchor = insertionAnchor(h, oldLines, newLines);
+  return anchor !== null && anchor >= source.from_line && anchor <= source.to_line;
 }
 
 export function scriptImpact(doc: ProjectDoc, chapterId: string, newText: string): ScriptImpact {
@@ -171,7 +189,7 @@ export function scriptImpact(doc: ProjectDoc, chapterId: string, newText: string
   const assigned = new Set<Hunk>();
   for (const { pageId, panel } of panels) {
     if (!panel.source) continue;
-    const mine = hunks.filter((h) => overlaps(panel.source!, h));
+    const mine = hunks.filter((h) => overlaps(panel.source!, h, oldLines, newLines));
     if (mine.length === 0) continue;
     mine.forEach((h) => assigned.add(h));
     touched.push({ pageId, panel, hunks: mine });
