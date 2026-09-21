@@ -15,6 +15,11 @@ import { primaryGeometry } from "../project.js";
 
 interface Props {
   page: Page;
+  /** La pagina com'è nel formato mostrato: le ancore dei balloon includono gli override. */
+  shownPage: Page;
+  /** Formato mostrato; se non è il principale, si spostano solo i balloon, come override. */
+  targetId: string;
+  primary: boolean;
   svg: string | null;
   boxes: Map<string, Box>;
   fits: Map<string, LetteringFit>;
@@ -44,7 +49,9 @@ let gestureCounter = 0;
  * vede. Ogni trascinamento è un solo passo di undo.
  */
 export function PageEditor(props: Props) {
-  const { page, svg, boxes, fits, width, height, selectedPanelId, selectedBalloonId, run, endGesture } = props;
+  const { page, shownPage, targetId, primary, svg, boxes, fits, width, height, selectedPanelId, selectedBalloonId, run, endGesture } = props;
+  // Fuori dal formato principale ogni spostamento è un override per quel formato.
+  const forTarget = primary ? {} : { target: targetId };
   const overlay = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
 
@@ -69,11 +76,11 @@ export function PageEditor(props: Props) {
     const p = toPage(event);
     if (drag.kind === "balloon") {
       const anchor = anchorFor(p.x - drag.dx, p.y - drag.dy, drag.panelBox);
-      run({ type: "balloon.move", pageId: page.id, balloonId: drag.balloonId, anchor }, { gesture: drag.gesture });
+      run({ type: "balloon.move", pageId: page.id, balloonId: drag.balloonId, anchor, ...forTarget }, { gesture: drag.gesture });
     } else if (drag.kind === "tail") {
-      const target = { x: (p.x - drag.panelBox.x) / drag.panelBox.width, y: (p.y - drag.panelBox.y) / drag.panelBox.height };
-      const clamped = { x: Math.min(1, Math.max(0, target.x)), y: Math.min(1, Math.max(0, target.y)) };
-      run({ type: "balloon.tail", pageId: page.id, balloonId: drag.balloonId, tail: { mode: "manual", target: clamped } }, { gesture: drag.gesture });
+      const point = { x: (p.x - drag.panelBox.x) / drag.panelBox.width, y: (p.y - drag.panelBox.y) / drag.panelBox.height };
+      const clamped = { x: Math.min(1, Math.max(0, point.x)), y: Math.min(1, Math.max(0, point.y)) };
+      run({ type: "balloon.tail", pageId: page.id, balloonId: drag.balloonId, tail: { mode: "manual", target: clamped }, ...forTarget }, { gesture: drag.gesture });
     } else if (page.layout.mode === "page") {
       const { axis, index } = drag.handle;
       const weights = page.layout[axis];
@@ -96,8 +103,11 @@ export function PageEditor(props: Props) {
   }
 
   const selected = boxes.get(selectedPanelId);
-  const handles = gutterHandles(page, boxes);
-  const balloons = page.panels.flatMap((panel) => {
+  // La griglia si ritocca solo sul formato principale (§4.1 regola 2): negli
+  // altri deriva, e trascinarne i gutter cambierebbe tutti i formati insieme.
+  const handles = primary ? gutterHandles(page, boxes) : [];
+  const tuned = new Set(page.panels.flatMap((p) => p.balloons).filter((b) => b.per_target[targetId]).map((b) => b.id));
+  const balloons = shownPage.panels.flatMap((panel) => {
     const panelBox = boxes.get(panel.id);
     if (!panelBox) return [];
     return panel.balloons.flatMap((balloon) => {
@@ -155,7 +165,7 @@ export function PageEditor(props: Props) {
           {balloons.map(({ balloon, panel, panelBox, box }) => (
             <rect
               key={balloon.id}
-              className={`balloon-hit${balloon.id === selectedBalloonId ? " balloon-hit--selected" : ""}`}
+              className={`balloon-hit${balloon.id === selectedBalloonId ? " balloon-hit--selected" : ""}${!primary && tuned.has(balloon.id) ? " balloon-hit--tuned" : ""}`}
               x={box.x}
               y={box.y}
               width={box.width}
@@ -167,7 +177,7 @@ export function PageEditor(props: Props) {
                 begin(e, { kind: "balloon", balloonId: balloon.id, panelBox, dx: p.x - box.x, dy: p.y - box.y, gesture: `balloon-${++gestureCounter}` });
               }}
             >
-              <title>{`${balloon.id}: trascina per spostare`}</title>
+              <title>{`${balloon.id}: trascina per spostare${primary ? "" : ` (solo in ${targetId})`}${!primary && tuned.has(balloon.id) ? " — già ritoccato qui" : ""}`}</title>
             </rect>
           ))}
 

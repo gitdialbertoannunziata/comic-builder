@@ -291,3 +291,37 @@ describe("Undo/redo (§11.3)", () => {
     expect(h.past.length).toBe(HISTORY_LIMIT);
   });
 });
+
+describe("Posizione dei balloon per formato (§4.1 regola 3)", () => {
+  const { pageId, balloon } = firstBalloon(doc);
+  const onPrint = applyCommand(doc, { type: "balloon.move", pageId, balloonId: balloon.id, anchor: { x: 0.4, y: 0.6 }, target: "print-b5" });
+
+  it("un override registra la pagina come ritoccata per quel formato", () => {
+    expect(page(onPrint, pageId).variants["print-b5"]).toMatchObject({ status: "tuned", balloon_overrides: [balloon.id] });
+    expect(page(onPrint, pageId).variants["digital-page"]).toBeUndefined();
+  });
+
+  it("il corpo per formato non tocca quello canonico", () => {
+    const scaled = applyCommand(onPrint, { type: "balloon.scale", pageId, balloonId: balloon.id, fontScale: 0.85, target: "print-b5" });
+    const b = firstBalloon(scaled).balloon;
+    expect(b.font_scale).toBe(balloon.font_scale);
+    expect(b.per_target["print-b5"]).toEqual({ anchor: { x: 0.4, y: 0.6 }, font_scale: 0.85 });
+  });
+
+  it("ripristinare toglie l'override, e la pagina torna derivata", () => {
+    const reset = applyCommand(onPrint, { type: "balloon.reset", pageId, balloonId: balloon.id, target: "print-b5" });
+    expect(firstBalloon(reset).balloon.per_target).toEqual({});
+    expect(page(reset, pageId).variants["print-b5"]).toMatchObject({ status: "derived", balloon_overrides: [] });
+  });
+
+  it("uno split che azzera gli override aggiorna anche le varianti", () => {
+    const panel = firstBalloon(onPrint).panel;
+    const split = applyCommand(onPrint, { type: "panel.split", pageId, panelId: panel.id, axis: "rows" });
+    expect(page(split, pageId).variants["print-b5"]?.balloon_overrides).toEqual([]);
+  });
+
+  it("un comando che non tocca gli override lascia le varianti com'erano", () => {
+    const moved = applyCommand(onPrint, { type: "panel.camera", pageId, panelId: page(onPrint, pageId).panels[0]!.id, camera: { shot: "CU" } });
+    expect(page(moved, pageId).variants).toBe(page(onPrint, pageId).variants);
+  });
+});

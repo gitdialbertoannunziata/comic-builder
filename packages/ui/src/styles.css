@@ -1104,3 +1104,32 @@ code {
   color: var(--error);
   height: 3px;
 }
+
+/* Balloon ritoccati per un formato diverso dal principale. */
+.balloon-hit--tuned {
+  stroke: var(--warning);
+  stroke-dasharray: 4 3;
+}
+
+.format-note {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 12px;
+}
+
+.format-note--tuned {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.balloon-ghost {
+  fill: var(--accent);
+  fill-opacity: 0.12;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-dasharray: 10 6;
+  pointer-events: none;
+}

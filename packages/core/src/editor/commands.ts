@@ -26,6 +26,8 @@ export type Command =
   | { type: "balloon.tail"; pageId: string; balloonId: string; tail: Tail; target?: string }
   | { type: "balloon.text"; pageId: string; balloonId: string; text: TextRun[] }
   | { type: "balloon.update"; pageId: string; balloonId: string; patch: BalloonPatch }
+  | { type: "balloon.scale"; pageId: string; balloonId: string; fontScale: number; target?: string }
+  | { type: "balloon.reset"; pageId: string; balloonId: string; target: string }
   | { type: "balloon.add"; pageId: string; panelId: string; text: TextRun[]; anchor?: Point; balloonType?: Balloon["type"] }
   | { type: "balloon.remove"; pageId: string; balloonId: string }
   | { type: "panel.update"; pageId: string; panelId: string; patch: PanelPatch }
@@ -63,7 +65,34 @@ function gridLayout(page: Page) {
   return page.layout;
 }
 
-function withPage(doc: ProjectDoc, page: Page, options: { validate?: boolean } = {}): ProjectDoc {
+/**
+ * `variants[target]` dice quali balloon sono ritoccati per un formato (§5.4):
+ * è ciò che permette di sapere, senza aprire ogni balloon, che la B5 o la
+ * striscia di una pagina non sono più "derivate" ma sistemate a mano. Si
+ * ricalcola dagli override dopo ogni comando, così non può divergere da essi
+ * — nemmeno quando un merge o uno split li azzera.
+ */
+function syncVariants(page: Page): Page {
+  const byTarget = new Map<string, string[]>();
+  for (const balloon of [...page.panels.flatMap((p) => p.balloons), ...page.overlays]) {
+    for (const target of Object.keys(balloon.per_target)) byTarget.set(target, [...(byTarget.get(target) ?? []), balloon.id]);
+  }
+  let changed = false;
+  const variants = { ...page.variants };
+  for (const target of new Set([...Object.keys(variants), ...byTarget.keys()])) {
+    const ids = byTarget.get(target) ?? [];
+    const current = variants[target];
+    const status = ids.length > 0 ? "tuned" : "derived";
+    if (!current && ids.length === 0) continue;
+    if (current && current.status === status && current.balloon_overrides.join("\u0000") === ids.join("\u0000")) continue;
+    variants[target] = { ...current, status, balloon_overrides: ids };
+    changed = true;
+  }
+  return changed ? { ...page, variants } : page;
+}
+
+function withPage(doc: ProjectDoc, rawPage: Page, options: { validate?: boolean } = {}): ProjectDoc {
+  const page = syncVariants(rawPage);
   if (options.validate) {
     const errors = validateDocument(page).filter((i) => i.level === "error");
     if (errors.length > 0) throw new CommandError(`La pagina diventerebbe non valida: ${errors[0]!.message}`);
@@ -445,6 +474,30 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       const page = requirePage(doc, command.pageId);
       return withPage(doc, mapBalloon(page, command.balloonId, (b) => ({ ...b, ...command.patch })));
     }
+    case "balloon.scale": {
+      if (!(command.fontScale > 0)) throw new CommandError("Il corpo deve essere positivo");
+      const page = requirePage(doc, command.pageId);
+      const fontScale = command.fontScale;
+      return withPage(
+        doc,
+        mapBalloon(page, command.balloonId, (b) =>
+          isPrimary(page, command.target)
+            ? { ...b, font_scale: fontScale }
+            : { ...b, per_target: { ...b.per_target, [command.target!]: { ...b.per_target[command.target!], font_scale: fontScale } } },
+        ),
+      );
+    }
+    case "balloon.reset": {
+      const page = requirePage(doc, command.pageId);
+      // Il balloon torna a derivare dal canonico per questo formato.
+      return withPage(
+        doc,
+        mapBalloon(page, command.balloonId, (b) => {
+          if (!b.per_target[command.target]) return b;
+          return { ...b, per_target: Object.fromEntries(Object.entries(b.per_target).filter(([t]) => t !== command.target)) };
+        }),
+      );
+    }
     case "balloon.add": {
       const page = requirePage(doc, command.pageId);
       return withPage(
@@ -545,6 +598,10 @@ export function describeCommand(command: Command): string {
       return "Modifica testo";
     case "balloon.update":
       return "Modifica balloon";
+    case "balloon.scale":
+      return command.target ? `Corpo del balloon (${command.target})` : "Corpo del balloon";
+    case "balloon.reset":
+      return `Ripristina balloon (${command.target})`;
     case "balloon.add":
       return "Aggiungi balloon";
     case "balloon.remove":

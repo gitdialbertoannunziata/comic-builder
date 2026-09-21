@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import { PageSchema, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
+import { PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
-import { renderPreview } from "./renderPreview.js";
+import { pageTargets, renderPreview } from "./renderPreview.js";
 import { runBreakdown } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { CameraForm } from "./components/CameraForm.js";
@@ -14,7 +14,7 @@ import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { StripView } from "./components/StripView.js";
 import { measureWith } from "@comic-builder/lettering";
-import { styles as projectStyles } from "./project.js";
+import { primaryTarget, styles as projectStyles } from "./project.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { ExportPanel } from "./components/ExportPanel.js";
 import { exportChapter, type ExportOutcome } from "./exportPages.js";
@@ -177,12 +177,14 @@ export function App() {
   // I comandi tengono valida la griglia; lo schema resta un controllo in più
   // sui campi liberi, e se fallisce l'anteprima non si aggiorna.
   const parsed = useMemo(() => PageSchema.safeParse(page), [page]);
+  // Formato in cui si guarda (e si ritoccano i balloon di) la pagina.
+  const [pageTargetId, setPageTargetId] = useState(primaryTarget.id);
   const schemaIssues = parsed.success ? [] : parsed.error.issues;
 
   const preview = useMemo(() => {
     if (!font || !parsed.success) return null;
-    return renderPreview(parsed.data, font, scene, { art: art.urls });
-  }, [parsed, font, scene, art.urls]);
+    return renderPreview(parsed.data, font, scene, { art: art.urls, targetId: pageTargetId });
+  }, [parsed, font, scene, art.urls, pageTargetId]);
 
   const issues = preview?.issues ?? [];
   const badges = useMemo(() => worstLevelByPanel(issues), [issues]);
@@ -228,6 +230,12 @@ export function App() {
     setSelectedPanelId(id);
     setSelectedBalloonId(null);
   }, []);
+
+  // Il formato di cui si modificano posizione e corpo dei balloon: quello
+  // mostrato in pagina, o la striscia nella vista scroll. Null = il principale.
+  const editTarget = view === "scroll" ? stripTargetId : pageTargetId === primaryTarget.id ? null : pageTargetId;
+  const shownPage = editTarget ? pageForTarget(page, editTarget) : page;
+  const forTarget = editTarget ? { target: editTarget } : {};
 
   /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
   function patchPanel(field: "action" | "setting", value: string) {
@@ -352,9 +360,13 @@ export function App() {
             <BalloonEditor
               key={balloon.id}
               balloon={balloon}
+              shown={shownPage.panels.find((p) => p.id === selectedPanel.id)?.balloons.find((b) => b.id === balloon.id) ?? balloon}
+              target={editTarget}
               onText={(text) => run({ type: "balloon.text", pageId: page.id, balloonId: balloon.id, text }, { gesture: `${balloon.id}:text` })}
-              onAnchor={(anchor) => run({ type: "balloon.move", pageId: page.id, balloonId: balloon.id, anchor }, { gesture: `${balloon.id}:anchor` })}
-              onTail={(tail) => run({ type: "balloon.tail", pageId: page.id, balloonId: balloon.id, tail }, { gesture: `${balloon.id}:tail` })}
+              onAnchor={(anchor) => run({ type: "balloon.move", pageId: page.id, balloonId: balloon.id, anchor, ...forTarget }, { gesture: `${balloon.id}:anchor` })}
+              onTail={(tail) => run({ type: "balloon.tail", pageId: page.id, balloonId: balloon.id, tail, ...forTarget }, { gesture: `${balloon.id}:tail` })}
+              onScale={(fontScale) => run({ type: "balloon.scale", pageId: page.id, balloonId: balloon.id, fontScale, ...forTarget }, { gesture: `${balloon.id}:scale` })}
+              onReset={() => editTarget && run({ type: "balloon.reset", pageId: page.id, balloonId: balloon.id, target: editTarget })}
               onRemove={() => run({ type: "balloon.remove", pageId: page.id, balloonId: balloon.id })}
               onCommit={endGesture}
             />
@@ -373,9 +385,21 @@ export function App() {
         <div className="view-head">
           <p className="eyebrow">{view === "page" ? `Pagina ${page.order}` : "Striscia dell'episodio"}</p>
           <div className="segmented" role="tablist" aria-label="Vista">
-            <button type="button" className="seg" aria-pressed={view === "page"} onClick={() => setView("page")}>
-              pagina
-            </button>
+            {pageTargets.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="seg"
+                aria-pressed={view === "page" && pageTargetId === t.id}
+                onClick={() => {
+                  setView("page");
+                  setPageTargetId(t.id);
+                }}
+                title={t.primary ? "Formato principale: qui si ritocca tutto" : "Qui si spostano solo i balloon, per questo formato"}
+              >
+                {t.id}
+              </button>
+            ))}
             <button type="button" className="seg" aria-pressed={view === "scroll"} onClick={() => setView("scroll")} disabled={!stripTargetId}>
               scroll
             </button>
@@ -391,12 +415,21 @@ export function App() {
               setSelectedPanelId(panelId);
               setSelectedBalloonId(null);
             }}
+            selectedBalloonId={selectedBalloonId}
+            onSelectBalloon={(targetPageId, panelId, balloonId) => {
+              setPageId(targetPageId);
+              setSelectedPanelId(panelId);
+              setSelectedBalloonId(balloonId);
+            }}
             run={run}
           />
         )}
         {view === "page" && preview && (
           <PageEditor
             page={page}
+            shownPage={preview.shownPage}
+            targetId={preview.targetId}
+            primary={preview.targetId === primaryTarget.id}
             svg={preview.svg}
             boxes={preview.boxes}
             fits={preview.fits}
@@ -415,7 +448,11 @@ export function App() {
           />
         )}
         {view === "page" && (
-          <p className="field__hint">Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla.</p>
+          <p className="field__hint">
+            {pageTargetId === primaryTarget.id
+              ? "Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla."
+              : `In ${pageTargetId} si spostano solo i balloon, e solo per questo formato. Griglia e pannelli si ritoccano sul formato principale.`}
+          </p>
         )}
 
         <p className="eyebrow eyebrow-gap">Validazione</p>

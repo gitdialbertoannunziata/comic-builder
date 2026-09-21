@@ -1,6 +1,11 @@
 import {
+  pageForTarget,
+  pageRenderConfig,
   resolvePageBoxesForTarget,
+  resolvePageTargetGeometry,
+  scaleStyles,
   renderPageSvg,
+  type PageTarget,
   validateDocument,
   lintPage,
   type Scene,
@@ -11,15 +16,13 @@ import {
   type LetteringFit,
 } from "@comic-builder/core";
 import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
-import { primaryGeometry, primaryTarget, styles } from "./project.js";
+import { primaryGeometry, primaryTarget, project, styles } from "./project.js";
 
 export const PAGE_WIDTH_PX = primaryGeometry.width;
 export const PAGE_HEIGHT_PX = primaryGeometry.height;
 export const TARGET = primaryTarget.id;
 export const LETTERING = styles.lettering;
 
-const BALLOON_STYLE = styles.balloonStyle;
-const DRAFT_STYLE = styles.draftStyle;
 
 export interface PreviewResult {
   svg: string | null;
@@ -34,6 +37,9 @@ export interface PreviewResult {
   fits: Map<string, LetteringFit>;
   width: number;
   height: number;
+  /** Il formato mostrato, e la pagina com'è in quel formato (override applicati). */
+  targetId: string;
+  shownPage: Page;
 }
 
 /**
@@ -46,7 +52,12 @@ export interface RenderPreviewOptions {
   draft?: boolean;
   /** Arte per pannello (blob URL): il documento sa solo il percorso, l'host sa dove sono i byte. */
   art?: ReadonlyMap<string, string>;
+  /** Formato pagina da mostrare; di default il canonico. */
+  targetId?: string;
 }
+
+/** I formati pagina del progetto, nell'ordine dichiarato: quelli che l'anteprima sa mostrare. */
+export const pageTargets: PageTarget[] = project.targets.filter((t): t is PageTarget => t.kind === "page");
 
 export function renderPreview(
   page: Page,
@@ -63,43 +74,40 @@ export function renderPreview(
     ...lintPage(page, { target: TARGET, ...(scene ? { scene } : {}) }),
   ];
 
+  const target = pageTargets.find((t) => t.id === options.targetId) ?? primaryTarget;
   if (page.layout.mode !== "page") {
-    return { svg: null, issues, boxes: new Map(), fits: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX };
+    return { svg: null, issues, boxes: new Map(), fits: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX, targetId: target.id, shownPage: page };
   }
 
-  const boxes = resolvePageBoxesForTarget(page, primaryGeometry);
-
+  // Stessa catena dell'export (planTargetExport): geometria del formato,
+  // lettering in unità di pagina, override dei balloon per quel formato.
+  // Ciò che si sistema qui è ciò che esce.
+  const geometry = target.id === primaryTarget.id ? primaryGeometry : resolvePageTargetGeometry(target, project);
+  const scaled = scaleStyles(styles, geometry.letteringScale);
+  const shown = pageForTarget(page, target.id);
+  const boxes = resolvePageBoxesForTarget(shown, geometry);
   const fits = computePageFits({
-    page,
+    page: shown,
     boxes,
     font,
-    lettering: LETTERING,
-    draftStyle: DRAFT_STYLE,
-    target: TARGET,
+    lettering: scaled.lettering,
+    draftStyle: scaled.draftStyle,
+    target: primaryTarget.id,
     draft,
   });
-
   const config: RenderConfig = {
-    width: PAGE_WIDTH_PX,
-    height: PAGE_HEIGHT_PX,
-    fontFamily: LETTERING.font_family,
-    lineHeight: LETTERING.line_height,
-    padding: LETTERING.padding,
-    tailWidthPx: LETTERING.tail_width,
-    balloonStyle: BALLOON_STYLE,
-    draftStyle: DRAFT_STYLE,
-    baseFontSizePx: LETTERING.base_size_px,
-    target: TARGET,
-    draft,
+    ...pageRenderConfig(geometry, scaled, { draft, artTarget: primaryTarget.id }),
     ...(options.art ? { art: options.art } : {}),
   };
 
   return {
-    svg: renderPageSvg(page, boxes, fits, config),
+    svg: renderPageSvg(shown, boxes, fits, config),
     issues,
     boxes,
     fits,
-    width: PAGE_WIDTH_PX,
-    height: PAGE_HEIGHT_PX,
+    width: geometry.width,
+    height: geometry.height,
+    targetId: target.id,
+    shownPage: shown,
   };
 }

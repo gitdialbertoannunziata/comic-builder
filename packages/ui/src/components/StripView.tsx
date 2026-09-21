@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { prepareStrip, renderStripWindow, type Command, type ExportContext, type SliceCut } from "@comic-builder/core";
+import { anchorFor, balloonBox, prepareStrip, renderStripWindow, type Box, type Command, type ExportContext, type SliceCut } from "@comic-builder/core";
 
 interface Props {
   context: ExportContext;
   targetId: string;
   selectedPanelId: string;
   onSelect: (pageId: string, panelId: string) => void;
+  onSelectBalloon: (pageId: string, panelId: string, balloonId: string) => void;
+  selectedBalloonId: string | null;
   run: (command: Command) => boolean;
+}
+
+/** Un balloon che si sta trascinando: la sagoma si muove, il comando parte al rilascio. */
+interface BalloonDrag {
+  pageId: string;
+  balloonId: string;
+  panelBox: Box;
+  dx: number;
+  dy: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** Larghezza a cui si mostra la striscia: quella di un telefono, dove verrà letta. */
@@ -29,13 +44,14 @@ const CUT_LABEL: Record<SliceCut["kind"], string> = {
  * solo quando arriva vicino allo schermo. Un episodio di sessanta pagine
  * resta scorrevole perché nel DOM ce ne sono poche alla volta.
  */
-export function StripView({ context, targetId, selectedPanelId, onSelect, run }: Props) {
+export function StripView({ context, targetId, selectedPanelId, onSelect, onSelectBalloon, selectedBalloonId, run }: Props) {
   const prepared = useMemo(() => prepareStrip(context, targetId), [context, targetId]);
   const scale = DISPLAY_WIDTH / prepared.strip.width;
   const [visible, setVisible] = useState<ReadonlySet<number>>(new Set([0, 1]));
   const [bandMode, setBandMode] = useState(false);
   const [drawing, setDrawing] = useState<{ index: number; pageId: string; panelId: string; y0: number; y1: number } | null>(null);
   const chunks = useRef<Array<HTMLDivElement | null>>([]);
+  const [balloonDrag, setBalloonDrag] = useState<BalloonDrag | null>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -71,6 +87,24 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, run }:
   const { plan, strip } = prepared;
   const report = plan.report;
   const gutterCuts = plan.cuts.filter((c) => c.kind === "gutter").length;
+
+  /** Dal puntatore alle coordinate della striscia, attraverso l'overlay della slice. */
+  function toStrip(event: ReactPointerEvent): { x: number; y: number } {
+    const svg = (event.currentTarget as SVGGraphicsElement).ownerSVGElement!;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: point.x, y: point.y };
+  }
+
+  const balloons = useMemo(
+    () =>
+      prepared.strip.placements.flatMap(({ pageId, panel, box }) =>
+        panel.balloons.flatMap((balloon) => {
+          const fit = prepared.fits.get(balloon.id);
+          return fit ? [{ pageId, panel, panelBox: box, balloon, box: balloonBox(balloon, box, fit) }] : [];
+        }),
+      ),
+    [prepared],
+  );
 
   function stripY(event: ReactPointerEvent, sliceY: number): number {
     const rect = (event.currentTarget as SVGElement).ownerSVGElement!.getBoundingClientRect();
@@ -157,6 +191,44 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, run }:
                     ))}
                   </g>
                 ))}
+                {!bandMode &&
+                  balloons
+                    .filter(({ box }) => box.y < slice.y + slice.height && box.y + box.height > slice.y)
+                    .map(({ pageId, panel, panelBox, balloon, box }) => (
+                      <rect
+                        key={balloon.id}
+                        className={`balloon-hit${balloon.id === selectedBalloonId ? " balloon-hit--selected" : ""}${balloon.per_target[targetId] ? " balloon-hit--tuned" : ""}`}
+                        x={box.x}
+                        y={box.y}
+                        width={box.width}
+                        height={box.height}
+                        rx={10}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                          const p = toStrip(e);
+                          onSelectBalloon(pageId, panel.id, balloon.id);
+                          setBalloonDrag({ pageId, balloonId: balloon.id, panelBox, dx: p.x - box.x, dy: p.y - box.y, x: box.x, y: box.y, width: box.width, height: box.height });
+                        }}
+                        onPointerMove={(e) => {
+                          if (!balloonDrag || balloonDrag.balloonId !== balloon.id) return;
+                          const p = toStrip(e);
+                          setBalloonDrag({ ...balloonDrag, x: p.x - balloonDrag.dx, y: p.y - balloonDrag.dy });
+                        }}
+                        onPointerUp={() => {
+                          if (!balloonDrag || balloonDrag.balloonId !== balloon.id) return;
+                          const { pageId: p, balloonId, panelBox: pb, x, y } = balloonDrag;
+                          setBalloonDrag(null);
+                          if (Math.abs(x - box.x) < 1 && Math.abs(y - box.y) < 1) return; // un clic, non uno spostamento
+                          run({ type: "balloon.move", pageId: p, balloonId, anchor: anchorFor(x, y, pb), target: targetId });
+                        }}
+                      >
+                        <title>{`${balloon.id}: trascina per spostarlo nella striscia`}</title>
+                      </rect>
+                    ))}
+                {balloonDrag && (
+                  <rect className="balloon-ghost" x={balloonDrag.x} y={balloonDrag.y} width={balloonDrag.width} height={balloonDrag.height} rx={10} />
+                )}
                 {drawing?.index === index && (
                   <rect className="strip-band strip-band--drawing" x={0} y={Math.min(drawing.y0, drawing.y1)} width={strip.width} height={Math.abs(drawing.y1 - drawing.y0)} />
                 )}
