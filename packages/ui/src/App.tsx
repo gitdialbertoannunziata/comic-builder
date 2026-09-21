@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { balloonBox, compilePageBrief, compilePanel, PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
+import { balloonBox, characterRefs, compilePageBrief, compilePanel, lintCharacters, PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { pageTargets, renderPreview } from "./renderPreview.js";
 import { runBreakdown } from "./runBreakdown.js";
@@ -15,6 +15,8 @@ import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { StripView } from "./components/StripView.js";
 import { RevisionsPanel } from "./components/RevisionsPanel.js";
 import { PromptCard } from "./components/PromptCard.js";
+import { CharactersPanel } from "./components/CharactersPanel.js";
+import { PanelCharacters } from "./components/PanelCharacters.js";
 import { measureWith } from "@comic-builder/lettering";
 import { primaryTarget, styles as projectStyles } from "./project.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
@@ -159,6 +161,7 @@ export function App() {
         pages,
         chapter: { id: chapter.id, number: chapter.number, title: chapter.title },
         projectStyle: doc.project.style,
+        characters: doc.characters,
         seriesSeed: doc.project.series_seed,
         scenes: doc.scenes.scenes,
         font,
@@ -270,7 +273,7 @@ export function App() {
         const fit = preview.fits.get(b.id);
         return fit ? [{ id: b.id, box: balloonBox(b, panelBox, fit) }] : [];
       });
-      return [compilePanel({ project: doc.project, page: shown, panel, panelBox, balloonBoxes, targetId: preview.targetId, scene })];
+      return [compilePanel({ project: doc.project, page: shown, panel, panelBox, balloonBoxes, targetId: preview.targetId, scene, characters: doc.characters })];
     });
     const page = compilePageBrief({
       page: shown,
@@ -280,7 +283,14 @@ export function App() {
       readingDirection: doc.project.reading_direction,
     });
     return { list, page };
-  }, [preview, doc.project, scene]);
+  }, [preview, doc.project, doc.characters, scene]);
+  const refs = useMemo(() => [...characterRefs(doc)].sort(), [doc]);
+
+  // Avvisi sui personaggi (Appendice A) che riguardano la pagina aperta.
+  const characterIssues = useMemo(() => {
+    const onPage = new Set(page.panels.flatMap((p) => p.characters.map((c) => c.ref)));
+    return lintCharacters(doc).filter((i) => i.path.startsWith(`pages[${page.id}]`) || (i.code === "content.no-character-sheet" && [...onPage].some((r) => i.path === `characters[${r}]`)));
+  }, [doc, page]);
   const selectedBrief = briefs?.list.find((b) => b.panelId === selectedPanel.id) ?? null;
 
   /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
@@ -391,6 +401,8 @@ export function App() {
           </div>
 
           <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
+
+          <PanelCharacters pageId={page.id} panel={selectedPanel} refs={refs} sheets={doc.characters} run={run} endGesture={endGesture} />
 
           {selectedBrief && briefs && (
             <PromptCard
@@ -516,13 +528,16 @@ export function App() {
         <p className="eyebrow eyebrow-gap">Validazione</p>
         <ValidationPanel
           schemaIssues={schemaIssues}
-          docIssues={[...editor.loadIssues, ...issues]}
+          docIssues={[...editor.loadIssues, ...issues, ...characterIssues]}
           onSelectPanel={selectPanel}
           knownPanelIds={panelIds}
         />
 
         {fontError && <p className="preview__note">Font non caricato: {fontError}</p>}
         {!font && !fontError && <p className="muted">Carico il font…</p>}
+        <p className="eyebrow eyebrow-gap">Personaggi</p>
+        <CharactersPanel doc={doc} store={editor.store} run={run} endGesture={endGesture} />
+
         <p className="eyebrow eyebrow-gap">Revisioni</p>
         <RevisionsPanel
           doc={doc}

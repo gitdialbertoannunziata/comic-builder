@@ -6,6 +6,7 @@ import {
   resolvePageBoxesForTarget,
   scaleStyles,
   type PanelBrief,
+  type CharacterSheet,
   type Scene,
   finishTargetExport,
   findTarget,
@@ -39,6 +40,7 @@ export interface ExportInput {
   projectStyle?: typeof project.style;
   seriesSeed?: number;
   scenes?: readonly Scene[];
+  characters?: Readonly<Record<string, CharacterSheet>>;
   font: LoadedFont;
   fontBytes: Uint8Array;
   choices: readonly ExportChoice[];
@@ -150,6 +152,7 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
               balloonBoxes,
               targetId: primaryTarget.id,
               ...(scene ? { scene } : {}),
+              ...(input.characters ? { characters: input.characters } : {}),
             }),
           ];
         });
