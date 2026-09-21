@@ -2,6 +2,7 @@ import { ProjectSchema, type Project } from "../schema/project.js";
 import { ScenesDocSchema, type ScenesDoc } from "../schema/scenes.js";
 import { ChaptersDocSchema, type ChaptersDoc } from "../schema/chapters.js";
 import { PageSchema, type Page } from "../schema/page.js";
+import { RevisionsDocSchema, type RevisionsDoc } from "../schema/revisions.js";
 import { issue, type ValidationIssue } from "../validate/issue.js";
 import { migrate, MigrationError, type DocumentKind } from "./migrate.js";
 import type { ProjectStore } from "./store.js";
@@ -20,6 +21,14 @@ export interface ProjectDoc {
   chapters: ChaptersDoc;
   /** Pagine per id. L'ordine sta in `chapters` (§5.3), non qui. */
   pages: Readonly<Record<string, Page>>;
+  /** Changelog delle revisioni per capitolo (§10.2): `revisions/<id>.json`. */
+  revisions: Readonly<Record<string, RevisionsDoc>>;
+  /**
+   * Il copione di ogni capitolo, testo sorgente (§5.1: `script/<id>.md`).
+   * Sta nel documento perché una revisione del copione si confronta con
+   * questo testo, e sostituirlo deve potersi annullare come il resto.
+   */
+  scripts: Readonly<Record<string, string>>;
 }
 
 export const PROJECT_FILE = "project.json";
@@ -27,6 +36,14 @@ export const JOURNAL_FILE = ".comic-journal.json";
 
 export function pagePath(pageId: string): string {
   return `pages/${pageId}.json`;
+}
+
+export function revisionsPath(chapterId: string): string {
+  return `revisions/${chapterId}.json`;
+}
+
+export function scriptPath(chapterId: string): string {
+  return `script/${chapterId}.md`;
 }
 
 /** Serializzazione stabile: stesso documento, stessi byte — il presupposto di un diff leggibile (§5.1). */
@@ -119,7 +136,16 @@ export async function loadProject(store: ProjectStore): Promise<LoadResult> {
     }
   }
 
-  return { doc: { project, scenes, chapters, pages }, issues, recovered };
+  const revisions: Record<string, RevisionsDoc> = {};
+  const scripts: Record<string, string> = {};
+  for (const chapter of chapters.chapters) {
+    const revs = await readDocument(store, revisionsPath(chapter.id), "revisions", RevisionsDocSchema);
+    if (revs) revisions[chapter.id] = revs;
+    const script = await store.readText(scriptPath(chapter.id));
+    if (script !== null) scripts[chapter.id] = script;
+  }
+
+  return { doc: { project, scenes, chapters, pages, revisions, scripts }, issues, recovered };
 }
 
 interface Journal {
@@ -154,6 +180,13 @@ export function changedFiles(next: ProjectDoc, previous: ProjectDoc | null): Jou
   if (!previous || next.chapters !== previous.chapters) writes.push({ path: next.project.chapters, text: canonical(ChaptersDocSchema, next.chapters, next.project.chapters) });
   for (const [id, page] of Object.entries(next.pages)) {
     if (!previous || previous.pages[id] !== page) writes.push({ path: pagePath(id), text: canonical(PageSchema, page, pagePath(id)) });
+  }
+  for (const [id, revs] of Object.entries(next.revisions)) {
+    if (!previous || previous.revisions[id] !== revs) writes.push({ path: revisionsPath(id), text: canonical(RevisionsDocSchema, revs, revisionsPath(id)) });
+  }
+  for (const [id, text] of Object.entries(next.scripts)) {
+    // Il copione è testo dell'autore: si scrive com'è, senza passare da uno schema.
+    if (!previous || previous.scripts[id] !== text) writes.push({ path: scriptPath(id), text });
   }
   if (previous) {
     for (const id of Object.keys(previous.pages)) if (!next.pages[id]) removes.push(pagePath(id));
@@ -220,6 +253,8 @@ export function projectDocFrom(input: {
   scenes: ScenesDoc["scenes"];
   chapter: { id: string; number: number; title: string };
   pages: readonly Page[];
+  /** Il copione da cui il capitolo è stato spogliato, se c'è. */
+  script?: string;
 }): ProjectDoc {
   const ordered = [...input.pages].sort((a, b) => a.order - b.order);
   return {
@@ -230,5 +265,7 @@ export function projectDocFrom(input: {
       chapters: [{ ...input.chapter, status: "in-production", pages: ordered.map((p) => p.id) }],
     },
     pages: Object.fromEntries(ordered.map((p) => [p.id, p])),
+    revisions: {},
+    scripts: input.script === undefined ? {} : { [input.chapter.id]: input.script },
   };
 }

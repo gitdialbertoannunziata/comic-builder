@@ -7,6 +7,7 @@ import { nextBalloonId, nextIndex, nextPanelId, pageId as derivePageId, panelId 
 import { validateDocument } from "../validate/validateDocument.js";
 import { getTemplate } from "../templates/catalog.js";
 import { expandTemplate } from "../templates/expand.js";
+import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
 
 /**
  * Comandi tipizzati (§11.3): l'unico modo di modificare il documento.
@@ -38,7 +39,11 @@ export type Command =
   | { type: "layout.gutter"; pageId: string; gutter: { x: number; y: number } }
   | { type: "page.add"; chapterId: string; templateId: string; after?: string; sceneId: string }
   | { type: "page.remove"; pageId: string }
-  | { type: "page.move"; pageId: string; toIndex: number };
+  | { type: "page.move"; pageId: string; toIndex: number }
+  | { type: "revision.add"; chapterId: string; entries: NewRevision[]; by: string; at: string }
+  | { type: "revision.apply"; chapterId: string; ids: string[]; by: string; at: string }
+  | { type: "revision.reject"; chapterId: string; ids: string[]; by: string; at: string }
+  | { type: "script.set"; chapterId: string; text: string; sha: string };
 
 export interface Point {
   x: number;
@@ -576,6 +581,26 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       const pages = Object.fromEntries(Object.entries(doc.pages).filter(([id]) => id !== command.pageId));
       return withChapterPages(doc, chapter.id, chapter.pages.filter((id) => id !== command.pageId), pages, trailingIndex(command.pageId));
     }
+    case "revision.add":
+      return addRevisions(doc, command.chapterId, command.entries, command.by, command.at);
+    case "revision.apply":
+      try {
+        return applyRevisions(doc, command.chapterId, command.ids, command.by, command.at, applyCommand);
+      } catch (error) {
+        if (error instanceof RevisionConflict) throw new CommandError(`Correzioni non applicabili: ${error.message}`);
+        throw error;
+      }
+    case "revision.reject":
+      return rejectRevisions(doc, command.chapterId, command.ids, command.by, command.at);
+    case "script.set": {
+      // Il copione nuovo diventa il riferimento: le prossime revisioni si confrontano con questo.
+      const revs = doc.revisions[command.chapterId] ?? emptyRevisions(command.chapterId);
+      return {
+        ...doc,
+        scripts: { ...doc.scripts, [command.chapterId]: command.text },
+        revisions: { ...doc.revisions, [command.chapterId]: { ...revs, script: { file: `script/${command.chapterId}.md`, sha: command.sha } } },
+      };
+    }
     case "page.move": {
       requirePage(doc, command.pageId);
       const chapter = chapterOf(doc, command.pageId);
@@ -624,5 +649,13 @@ export function describeCommand(command: Command): string {
       return "Elimina pagina";
     case "page.move":
       return "Sposta pagina";
+    case "revision.add":
+      return command.entries.length === 1 ? "Importa una correzione" : `Importa ${command.entries.length} correzioni`;
+    case "revision.apply":
+      return command.ids.length === 1 ? "Applica correzione" : `Applica ${command.ids.length} correzioni`;
+    case "revision.reject":
+      return command.ids.length === 1 ? "Rifiuta correzione" : `Rifiuta ${command.ids.length} correzioni`;
+    case "script.set":
+      return "Aggiorna il copione";
   }
 }
