@@ -26,6 +26,7 @@ interface Props {
   onAnthropicKeyChange: (key: string) => void;
   anthropicModel: string;
   onAnthropicModelChange: (model: string) => void;
+  anthropicKeyFromEnv: boolean;
   onRun: () => void;
   running: boolean;
   error: string | null;
@@ -50,6 +51,7 @@ export function ScriptPanel({
   onAnthropicKeyChange,
   anthropicModel,
   onAnthropicModelChange,
+  anthropicKeyFromEnv,
   onRun,
   running,
   error,
@@ -156,8 +158,11 @@ export function ScriptPanel({
                   placeholder="sk-ant-..."
                 />
                 <span className="field__hint">
-                  Resta in questa scheda e non viene salvata. <strong>Il copione esce verso terzi</strong>: per
-                  una serie inedita, valuta se è quello che vuoi — lo spoglio locale non lo fa.
+                  {anthropicKeyFromEnv
+                    ? "Letta da .env.local (solo in sviluppo). "
+                    : "Resta in questa scheda e non viene salvata. "}
+                  <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
+                  vuoi — lo spoglio locale non lo fa.
                 </span>
               </label>
               <label className="field">

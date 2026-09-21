@@ -12,9 +12,13 @@ import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./compon
 import { ExportPanel } from "./components/ExportPanel.js";
 import { buildExportFiles, type ExportFormat } from "./exportPages.js";
 import { BrowserPlatformService } from "./platform/browserPlatform.js";
+import { prefilledConfig } from "./devConfig.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
+
+/** Valori di partenza, eventualmente da .env.local in sviluppo. */
+const prefilled = prefilledConfig();
 
 function updatePanel(page: Page, panelId: string, updater: (panel: Panel) => Panel): Page {
   return { ...page, panels: page.panels.map((p) => (p.id === panelId ? updater(p) : p)) };
@@ -47,11 +51,11 @@ export function App() {
 
   const [scene, setScene] = useState<Scene>(initialScene);
   const [script, setScript] = useState(SAMPLE_SCRIPT);
-  const [service, setService] = useState<ServiceChoice>("mock");
-  const [ollamaModel, setOllamaModel] = useState("mistral");
-  const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [anthropicModel, setAnthropicModel] = useState("claude-opus-5");
+  const [service, setService] = useState<ServiceChoice>(prefilled.anthropicKeyFromEnv ? "anthropic" : "mock");
+  const [ollamaModel, setOllamaModel] = useState(prefilled.ollamaModel);
+  const [ollamaHost, setOllamaHost] = useState(prefilled.ollamaHost);
+  const [anthropicKey, setAnthropicKey] = useState(prefilled.anthropicKey);
+  const [anthropicModel, setAnthropicModel] = useState(prefilled.anthropicModel);
   const [running, setRunning] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
@@ -170,6 +174,7 @@ export function App() {
           onAnthropicKeyChange={setAnthropicKey}
           anthropicModel={anthropicModel}
           onAnthropicModelChange={setAnthropicModel}
+          anthropicKeyFromEnv={prefilled.anthropicKeyFromEnv}
           onRun={() => void onRunBreakdown()}
           running={running}
           error={breakdownError}
