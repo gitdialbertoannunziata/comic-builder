@@ -22,6 +22,8 @@ export interface RunBreakdownInput {
   deepseekKey: string;
   deepseekModel: string;
   chapterId: string;
+  /** Ciò che si sa degli altri capitoli: personaggi esistenti, riassunto del precedente. */
+  context?: { characters: ReadonlyArray<{ ref: string; name: string }>; previously: string | null };
 }
 
 export interface RunBreakdownResult {
@@ -57,7 +59,12 @@ export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdo
   const result = await breakdownScript({
     llm: serviceFor(input.service, input),
     script: input.script,
-    scriptFile: "copione-incollato.md",
+    // Stesso percorso in cui il copione si salva (script/<capitolo>.md): la
+    // provenienza dei pannelli punta al file giusto per le revisioni (§10.1).
+    scriptFile: `script/${input.chapterId}.md`,
+    // Id di scena per capitolo: lo spoglio del capitolo 2 non riusa gli id del capitolo 1.
+    scenePrefix: `${input.chapterId}-s`,
+    ...(input.context ? { context: input.context } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
   });
 

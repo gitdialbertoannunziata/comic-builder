@@ -39,3 +39,4 @@ export * from "./editor/renameCharacter.js";
 export * from "./compile/fragments.js";
 export * from "./compile/promptCompiler.js";
 export * from "./validate/lintCharacters.js";
+export * from "./editor/chapters.js";

@@ -12,6 +12,9 @@ import { findMatches, matchesAsRevisions, type FindOptions } from "../revisions/
 import { refFromName } from "../revisions/readable.js";
 import { characterRefs, renameCharacterRefs } from "./renameCharacter.js";
 import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.js";
+import type { Chapter } from "../schema/chapters.js";
+import type { Scene } from "../schema/scenes.js";
+import { addChapter, setChapterContent, updateChapter } from "./chapters.js";
 import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
 
 /**
@@ -53,7 +56,10 @@ export type Command =
   | { type: "character.rename"; from: string; to: string }
   | { type: "project.style"; positive: string[]; negative: string[] }
   | { type: "character.upsert"; ref: string; patch: CharacterPatch }
-  | { type: "character.remove"; ref: string };
+  | { type: "character.remove"; ref: string }
+  | { type: "chapter.add"; title: string }
+  | { type: "chapter.update"; chapterId: string; title?: string; status?: Chapter["status"] }
+  | { type: "chapter.set-content"; chapterId: string; pages: Page[]; scenes: Scene[]; script?: string };
 
 export type CharacterPatch = Partial<Omit<CharacterSheet, "schema" | "id" | "appearance">> & { appearance?: Partial<CharacterSheet["appearance"]> };
 
@@ -641,6 +647,18 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       if (!doc.characters[command.ref]) throw new CommandError(`Nessuna scheda per «${command.ref}»`);
       return { ...doc, characters: Object.fromEntries(Object.entries(doc.characters).filter(([ref]) => ref !== command.ref)) };
     }
+    case "chapter.add":
+      return addChapter(doc, command.title);
+    case "chapter.update": {
+      if (!doc.chapters.chapters.some((c) => c.id === command.chapterId)) throw new CommandError(`Capitolo ${command.chapterId} inesistente`);
+      const patch = { ...(command.title !== undefined ? { title: command.title } : {}), ...(command.status ? { status: command.status } : {}) };
+      return updateChapter(doc, command.chapterId, patch);
+    }
+    case "chapter.set-content": {
+      if (!doc.chapters.chapters.some((c) => c.id === command.chapterId)) throw new CommandError(`Capitolo ${command.chapterId} inesistente`);
+      if (command.pages.some((p) => p.chapter_id !== command.chapterId)) throw new CommandError("Le pagine appartengono a un altro capitolo");
+      return setChapterContent(doc, command.chapterId, { pages: command.pages, scenes: command.scenes, ...(command.script !== undefined ? { script: command.script } : {}) });
+    }
     case "project.style": {
       // La bibbia di stile del progetto (§5.2): vale per ogni pannello, sotto il prompt dell'autore.
       const clean = (list: string[]) => list.map((s) => s.trim()).filter((s) => s.length > 0);
@@ -724,5 +742,11 @@ export function describeCommand(command: Command): string {
       return `Scheda di ${command.ref}`;
     case "character.remove":
       return `Togli la scheda di ${command.ref}`;
+    case "chapter.add":
+      return "Nuovo capitolo";
+    case "chapter.update":
+      return "Modifica capitolo";
+    case "chapter.set-content":
+      return "Spoglio del capitolo";
   }
 }

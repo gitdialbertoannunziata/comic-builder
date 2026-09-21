@@ -111,3 +111,17 @@ describe("Spoglio a parti", () => {
     await expect(breakdownScript({ llm, script: "SARA: una riga sola", scriptFile: "cap.md" })).rejects.toThrow(/alza il limite di token/);
   });
 });
+
+describe("Contesto degli altri capitoli", () => {
+  it("personaggi esistenti (con nome) e riassunto del precedente arrivano già alla prima parte", async () => {
+    const { llm, prompts } = truncatingLlm(100_000);
+    await breakdownScript({
+      llm,
+      script: "# Scena\n\nSARA: ciao",
+      scriptFile: "cap2.md",
+      context: { characters: [{ ref: "sara", name: "Sara Bellini" }, { ref: "elio", name: "" }], previously: "Capitolo 1 «La lanterna»: il faro è spento." },
+    });
+    expect(prompts[0]).toContain("Nei capitoli precedenti (solo contesto, da non spogliare):\nCapitolo 1 «La lanterna»: il faro è spento.");
+    expect(prompts[0]).toContain("da chiamare con questi ref se ricompaiono: elio, sara (Sara Bellini).");
+  });
+});

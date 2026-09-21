@@ -18,6 +18,12 @@ export interface BreakdownInput {
    * di scena. Default 6000, prudente per i limiti più bassi.
    */
   chunkChars?: number;
+  /**
+   * Ciò che si sa dagli altri capitoli dell'opera: personaggi esistenti (con
+   * il nome della scheda) e un riassunto del capitolo precedente. Senza, il
+   * capitolo 2 reinventa i ref del capitolo 1 — «sara» diventa «sara_bellini».
+   */
+  context?: { characters: ReadonlyArray<{ ref: string; name: string }>; previously: string | null };
   /** Avanzamento, per chi aspetta: «parte 2 di 4». */
   onProgress?: (progress: { done: number; total: number }) => void;
 }
@@ -255,7 +261,8 @@ function stitch(parts: readonly PartResult[]): BreakdownScene[] {
 export async function breakdownScript(input: BreakdownInput): Promise<BreakdownResult> {
   const issues: ValidationIssue[] = [];
   const scriptLines = input.script.split("\n").length;
-  const known = new Set<string>();
+  const known = new Set<string>(input.context?.characters.map((c) => c.ref) ?? []);
+  const characterNames = Object.fromEntries((input.context?.characters ?? []).filter((c) => c.name).map((c) => [c.ref, c.name]));
   const parts: PartResult[] = [];
   const queue = splitScript(input.script, input.chunkChars ?? 6000);
   let done = 0;
@@ -272,6 +279,8 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
         user: breakdownUserPrompt(chunk.text, {
           firstLine: chunk.firstLine,
           knownCharacters: [...known].sort(),
+          characterNames,
+          previously: input.context?.previously ?? null,
           part: { index: done, total: done + queue.length + 1, continuation: chunk.continuation },
         }),
         schema: breakdownJsonSchema(),

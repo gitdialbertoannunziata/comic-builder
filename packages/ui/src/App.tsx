@@ -1,5 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
-import { balloonBox, characterRefs, compilePageBrief, compilePanel, lintCharacters, PageSchema, pageForTarget, projectDocFrom, type Page, type ValidationIssue } from "@comic-builder/core";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  balloonBox,
+  chapterContext,
+  characterRefs,
+  compilePageBrief,
+  compilePanel,
+  lintCharacters,
+  nextChapterId,
+  PageSchema,
+  pageForTarget,
+  projectDocFrom,
+  type Chapter,
+  type Page,
+  type ValidationIssue,
+} from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { pageTargets, renderPreview } from "./renderPreview.js";
 import { runBreakdown } from "./runBreakdown.js";
@@ -11,7 +25,8 @@ import { PageEditor } from "./components/PageEditor.js";
 import { PanelTools } from "./components/PanelTools.js";
 import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
-import { useArtWatcher } from "./editor/useArtWatcher.js";
+import { useArtWatcher, type ArtWatcher } from "./editor/useArtWatcher.js";
+import { ChapterBar } from "./components/ChapterBar.js";
 import { importArt, panelForFileName } from "./editor/importArt.js";
 import { StripView } from "./components/StripView.js";
 import { RevisionsPanel } from "./components/RevisionsPanel.js";
@@ -26,7 +41,7 @@ import { exportChapter, type ExportOutcome } from "./exportPages.js";
 import { BrowserPlatformService } from "./platform/browserPlatform.js";
 import { prefilledConfig } from "./devConfig.js";
 import { project } from "./project.js";
-import { useProjectEditor } from "./editor/useProjectEditor.js";
+import { useProjectEditor, type ProjectEditor } from "./editor/useProjectEditor.js";
 import { ProjectBar } from "./components/ProjectBar.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
@@ -44,6 +59,7 @@ const initialDoc = projectDocFrom({
   scenes: [initialScene],
   chapter: { id: "ep001", number: 1, title: initialScene.title },
   pages: initialPages,
+  script: SAMPLE_SCRIPT,
 });
 
 /** Livello più grave fra gli issue che riguardano un pannello, per il pallino nell'elenco. */
@@ -61,20 +77,25 @@ function worstLevelByPanel(issues: ValidationIssue[]): Map<string, ValidationIss
   return worst;
 }
 
+/**
+ * L'opera: capitoli, copione e spoglio. Ciò che riguarda un capitolo aperto
+ * — pagine, pannelli, anteprima, revisioni, export — sta nel Workspace, che
+ * esiste solo se il capitolo ha pagine e riparte da capo cambiando capitolo.
+ */
 export function App() {
   const editor = useProjectEditor(initialDoc);
   const { doc, run, endGesture } = editor;
   const art = useArtWatcher(editor.assets, doc, run, endGesture);
-  const chapter = doc.chapters.chapters[0]!;
+  const chapters = doc.chapters.chapters;
+  const [chapterId, setChapterId] = useState(chapters[0]!.id);
+  const chapter = chapters.find((c) => c.id === chapterId) ?? chapters[0]!;
   const pages = chapter.pages.map((id) => doc.pages[id]).filter((p): p is Page => p !== undefined);
 
-  // La selezione non è documento: non entra nella cronologia né nel file.
-  // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
-  const [pageId, setPageId] = useState<string>(pages[0]!.id);
-  const page = doc.pages[pageId] ?? pages[0]!;
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(page.panels[0]!.id);
-  const scene = doc.scenes.scenes.find((s) => s.id === page.panels[0]?.scene_id) ?? doc.scenes.scenes[0] ?? initialScene;
-  const [script, setScript] = useState(SAMPLE_SCRIPT);
+  // Il copione che si sta scrivendo, per capitolo: finché non si spoglia è
+  // una bozza della scheda; spogliato, diventa il copione del capitolo.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const script = drafts[chapter.id] ?? doc.scripts[chapter.id] ?? "";
+  const setScript = (text: string) => setDrafts((d) => ({ ...d, [chapter.id]: text }));
   const [service, setService] = useState<ServiceChoice>(
     prefilled.anthropicKeyFromEnv ? "anthropic" : prefilled.deepseekKeyFromEnv ? "deepseek" : "mock",
   );
@@ -88,19 +109,6 @@ export function App() {
   const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
-
-  // Di default i tre formati del criterio d'uscita di F2.1: pagina digitale,
-  // stampa e striscia, dallo stesso documento in un clic.
-  const [exportChoices, setExportChoices] = useState<ReadonlySet<string>>(
-    () => new Set(["target:digital-page", "target:print-b5", "target:webtoon-strip"]),
-  );
-  const [exportDraft, setExportDraft] = useState(true);
-  const [exportProgress, setExportProgress] = useState<string | null>(null);
-  const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
-  const [destination, setDestination] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
 
   const { font, bytes: fontBytes, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
 
@@ -117,25 +125,21 @@ export function App() {
         anthropicModel,
         deepseekKey,
         deepseekModel,
-        chapterId: "ep001",
+        chapterId: chapter.id,
+        // Gli altri capitoli: personaggi esistenti e riassunto del precedente.
+        context: chapterContext(doc, chapter.id),
         onProgress: setBreakdownProgress,
       });
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
-      // Un nuovo spoglio sostituisce il capitolo, ma resta un passo della
-      // cronologia: un Ctrl+Z riporta il lavoro di prima.
-      editor.replace(
-        projectDocFrom({
-          project: doc.project,
-          scenes: result.scenes,
-          chapter: { id: chapter.id, number: chapter.number, title: result.scenes[0]?.title ?? chapter.title },
-          pages: result.pages,
-          // Il copione spogliato diventa il riferimento delle revisioni (§10.1).
-          script,
-        }),
-        "Nuovo spoglio",
-      );
-      setPageId(result.pages[0]!.id);
-      setSelectedPanelId(result.pages[0]!.panels[0]!.id);
+      // Lo spoglio riempie il capitolo aperto e basta: gli altri restano come
+      // sono. È un passo della cronologia: Ctrl+Z riporta il capitolo di prima.
+      const gesture = `breakdown-${chapter.id}-${Date.now()}`;
+      run({ type: "chapter.set-content", chapterId: chapter.id, pages: result.pages, scenes: result.scenes, script }, { gesture });
+      if (!chapter.title.trim() || /^Capitolo \d+$/.test(chapter.title)) {
+        run({ type: "chapter.update", chapterId: chapter.id, title: result.scenes[0]?.title ?? chapter.title }, { gesture });
+      }
+      endGesture();
+      setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([id]) => id !== chapter.id)));
       setSummary(result.summary);
     } catch (error) {
       setBreakdownError(error instanceof Error ? error.message : String(error));
@@ -145,6 +149,108 @@ export function App() {
       setBreakdownProgress(null);
     }
   }
+
+  const sidebarTop = (
+    <>
+      <p className="eyebrow">Capitoli</p>
+      <ChapterBar chapters={chapters} currentId={chapter.id} onSelect={setChapterId} run={run} endGesture={endGesture} nextId={nextChapterId(doc).id} />
+      <div className="eyebrow-gap" />
+        <ScriptPanel
+          script={script}
+          onScriptChange={setScript}
+          service={service}
+          onServiceChange={setService}
+          ollamaModel={ollamaModel}
+          onOllamaModelChange={setOllamaModel}
+          ollamaHost={ollamaHost}
+          onOllamaHostChange={setOllamaHost}
+          anthropicKey={anthropicKey}
+          onAnthropicKeyChange={setAnthropicKey}
+          anthropicModel={anthropicModel}
+          onAnthropicModelChange={setAnthropicModel}
+          anthropicKeyFromEnv={prefilled.anthropicKeyFromEnv}
+          deepseekKey={deepseekKey}
+          onDeepseekKeyChange={setDeepseekKey}
+          deepseekModel={deepseekModel}
+          onDeepseekModelChange={setDeepseekModel}
+          deepseekKeyFromEnv={prefilled.deepseekKeyFromEnv}
+          onRun={() => void onRunBreakdown()}
+          running={running}
+          progress={breakdownProgress}
+          error={breakdownError}
+          summary={summary}
+        />
+    </>
+  );
+
+  return (
+    <div className="shell">
+      <ProjectBar editor={editor} title={`${doc.project.title} — ${chapter.number}. ${chapter.title}`} />
+      {pages.length > 0 ? (
+        <Workspace
+          key={chapter.id}
+          editor={editor}
+          art={art}
+          chapter={chapter}
+          pages={pages}
+          font={font}
+          fontBytes={fontBytes}
+          fontError={fontError}
+          sidebarTop={sidebarTop}
+        />
+      ) : (
+        <div className="app">
+          <aside className="col">{sidebarTop}</aside>
+          <section className="col col--empty">
+            <div className="empty-chapter">
+              <p className="eyebrow">Capitolo {chapter.number} — vuoto</p>
+              <p>Incolla il copione di questo capitolo e premi «Spoglia il capitolo»: le pagine nascono da lì.</p>
+              <p className="field__hint">
+                Personaggi, schede e stile sono dell'opera e valgono anche qui. Lo spoglio riceve i personaggi già esistenti e un
+                riassunto del capitolo precedente, così i nomi restano quelli.
+              </p>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface WorkspaceProps {
+  editor: ProjectEditor;
+  art: ArtWatcher;
+  chapter: Chapter;
+  pages: Page[];
+  font: ReturnType<typeof useFont>["font"];
+  fontBytes: ReturnType<typeof useFont>["bytes"];
+  fontError: ReturnType<typeof useFont>["error"];
+  /** La parte alta della colonna di sinistra: capitoli e copione, che appartengono all'opera. */
+  sidebarTop: ReactNode;
+}
+
+/** Il capitolo aperto: pagine, pannelli, anteprima, revisioni, export. */
+function Workspace({ editor, art, chapter, pages, font, fontBytes, fontError, sidebarTop }: WorkspaceProps) {
+  const { doc, run, endGesture } = editor;
+  // La selezione non è documento: non entra nella cronologia né nel file.
+  // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
+  const [pageId, setPageId] = useState<string>(pages[0]!.id);
+  const page = doc.pages[pageId] ?? pages[0]!;
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(page.panels[0]!.id);
+  const scene = doc.scenes.scenes.find((s) => s.id === page.panels[0]?.scene_id) ?? doc.scenes.scenes[0] ?? initialScene;
+
+  // Di default i tre formati del criterio d'uscita di F2.1: pagina digitale,
+  // stampa e striscia, dallo stesso documento in un clic.
+  const [exportChoices, setExportChoices] = useState<ReadonlySet<string>>(
+    () => new Set(["target:digital-page", "target:print-b5", "target:webtoon-strip"]),
+  );
+  const [exportDraft, setExportDraft] = useState(true);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
+  const [destination, setDestination] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   async function onChooseDestination() {
     setDestination(await platform.chooseDestination());
@@ -332,35 +438,9 @@ export function App() {
   }
 
   return (
-    <div className="shell">
-    <ProjectBar editor={editor} title={`${doc.project.title} — ${chapter.title}`} />
     <div className="app">
       <aside className="col">
-        <ScriptPanel
-          script={script}
-          onScriptChange={setScript}
-          service={service}
-          onServiceChange={setService}
-          ollamaModel={ollamaModel}
-          onOllamaModelChange={setOllamaModel}
-          ollamaHost={ollamaHost}
-          onOllamaHostChange={setOllamaHost}
-          anthropicKey={anthropicKey}
-          onAnthropicKeyChange={setAnthropicKey}
-          anthropicModel={anthropicModel}
-          onAnthropicModelChange={setAnthropicModel}
-          anthropicKeyFromEnv={prefilled.anthropicKeyFromEnv}
-          deepseekKey={deepseekKey}
-          onDeepseekKeyChange={setDeepseekKey}
-          deepseekModel={deepseekModel}
-          onDeepseekModelChange={setDeepseekModel}
-          deepseekKeyFromEnv={prefilled.deepseekKeyFromEnv}
-          onRun={() => void onRunBreakdown()}
-          running={running}
-          progress={breakdownProgress}
-          error={breakdownError}
-          summary={summary}
-        />
+        {sidebarTop}
 
         <p className="eyebrow eyebrow-gap">Pagine</p>
         <PageList
@@ -612,7 +692,6 @@ export function App() {
         />
 
       </section>
-    </div>
     </div>
   );
 }

@@ -54,6 +54,10 @@ export interface UserPromptOptions {
   firstLine?: number;
   /** Ref dei personaggi già incontrati nelle parti precedenti: si riusano, non si reinventano. */
   knownCharacters?: readonly string[];
+  /** Nomi dei personaggi per ref, dalle schede: aiutano il modello a riconoscere «Sara Bellini» come `sara`. */
+  characterNames?: Readonly<Record<string, string>>;
+  /** Riassunto breve dei capitoli precedenti: contesto per la continuità, non testo da spogliare. */
+  previously?: string | null;
   /** Quale parte del capitolo è, se è stato diviso. */
   part?: { index: number; total: number; continuation: boolean };
 }
@@ -75,8 +79,13 @@ export function breakdownUserPrompt(script: string, options: UserPromptOptions =
         (options.part.continuation ? " Continua la scena della parte precedente: non ripetere ciò che c'era prima." : ""),
     );
   }
+  if (options.previously) {
+    header.push(`Nei capitoli precedenti (solo contesto, da non spogliare):\n${options.previously}`);
+  }
   if (options.knownCharacters && options.knownCharacters.length > 0) {
-    header.push(`Personaggi già incontrati, da chiamare con questi ref se ricompaiono: ${options.knownCharacters.join(", ")}.`);
+    const names = options.characterNames ?? {};
+    const list = options.knownCharacters.map((ref) => (names[ref] ? `${ref} (${names[ref]})` : ref));
+    header.push(`Personaggi già incontrati, da chiamare con questi ref se ricompaiono: ${list.join(", ")}.`);
   }
   const intro = header.length > 0 ? `${header.join("\n")}\n\n` : "";
   return `${intro}Spoglia questo capitolo. Le righe sono numerate per riferimento.\n\n${numbered}`;
