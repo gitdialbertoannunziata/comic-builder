@@ -6,6 +6,7 @@ import {
   type LetteringFit,
   type LetteringConfig,
   type DraftStyle,
+  type MeasureFits,
 } from "@comic-builder/core";
 import type { LoadedFont } from "./font.js";
 import { fitBalloonText } from "./fitBalloon.js";
@@ -93,4 +94,14 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
   }
 
   return fits;
+}
+
+/**
+ * La misura del testo nella forma che il piano d'export del Core si aspetta
+ * (`MeasureFits`): il Core decide cosa misurare e dove, questo pacchetto
+ * misura con i glifi veri.
+ */
+export function measureWith(font: LoadedFont): MeasureFits {
+  return ({ page, boxes, lettering, draftStyle, target, draft }) =>
+    computePageFits({ page, boxes, font, lettering, draftStyle, target, draft });
 }

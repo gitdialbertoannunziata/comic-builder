@@ -43,6 +43,9 @@ importers:
       '@comic-builder/core':
         specifier: workspace:*
         version: link:../core
+      '@comic-builder/lettering':
+        specifier: workspace:*
+        version: link:../lettering
       vitest:
         specifier: ^2.1.5
         version: 2.1.9(@types/node@22.20.2)

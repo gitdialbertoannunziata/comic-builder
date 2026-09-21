@@ -43,4 +43,20 @@ export interface RenderConfig {
    * un pannello vuoto è un pannello vuoto.
    */
   draft?: boolean;
+  /**
+   * Scala di bordi e tratti dei pannelli, che nel documento sono in pixel della
+   * pagina canonica: una tavola a 600 dpi con i bordi a 3 px avrebbe un filo
+   * invisibile. Default 1.
+   */
+  strokeScale?: number;
+  /** Fondo del canvas; senza, il fondo è trasparente (e il PNG lo resta). */
+  background?: string;
+  /** `gray` converte l'intera tavola in scala di grigi, per la stampa manga (§4). */
+  color?: "srgb" | "gray" | "cmyk";
+  /**
+   * Finestra del canvas da emettere, se non è tutto. Serve alla striscia: ogni
+   * slice è lo stesso disegno visto da una finestra diversa, così una giunzione
+   * non può mai disallinearsi fra due immagini consecutive.
+   */
+  viewport?: { x: number; y: number; width: number; height: number };
 }

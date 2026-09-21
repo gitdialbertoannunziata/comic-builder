@@ -5,3 +5,4 @@
  */
 export { samplePage } from "./sample-page.js";
 export { sampleScene } from "./sample-scene.js";
+export { sampleProject } from "./sample-project.js";

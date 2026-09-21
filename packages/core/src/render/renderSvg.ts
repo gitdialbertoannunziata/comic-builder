@@ -15,10 +15,11 @@ function escapeXml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function renderPanelBorder(panel: Panel, box: Box): string {
+function renderPanelBorder(panel: Panel, box: Box, scale: number): string {
   if (panel.border.style === "none") return "";
-  const dash = panel.border.style === "dashed" ? ' stroke-dasharray="8 6"' : "";
-  return `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${panel.border.radius}" ry="${panel.border.radius}" fill="none" stroke="black" stroke-width="${panel.border.width}"${dash}/>`;
+  const dash = panel.border.style === "dashed" ? ` stroke-dasharray="${8 * scale} ${6 * scale}"` : "";
+  const radius = panel.border.radius * scale;
+  return `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}" fill="none" stroke="black" stroke-width="${panel.border.width * scale}"${dash}/>`;
 }
 
 /**
@@ -168,7 +169,7 @@ function renderPanel(panel: Panel, box: Box, fits: Map<string, LetteringFit>, co
     });
   }
 
-  out += renderPanelBorder(panel, box);
+  out += renderPanelBorder(panel, box, config.strokeScale ?? 1);
   for (const balloon of panel.balloons) {
     const fit = fits.get(balloon.id);
     if (!fit) continue;
@@ -178,7 +179,19 @@ function renderPanel(panel: Panel, box: Box, fits: Map<string, LetteringFit>, co
 }
 
 function svgRoot(config: RenderConfig, body: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${config.width} ${config.height}" width="${config.width}" height="${config.height}">${body}</svg>`;
+  const view = config.viewport ?? { x: 0, y: 0, width: config.width, height: config.height };
+  const background = config.background
+    ? `<rect x="0" y="0" width="${config.width}" height="${config.height}" fill="${escapeXml(config.background)}"/>`
+    : "";
+  let content = background + body;
+  if (config.color === "gray") {
+    // Una matrice di saturazione a zero, non un'altra tavolozza: il disegno
+    // resta quello, cambia solo come esce. Luminanza secondo il filtro SVG.
+    content =
+      `<defs><filter id="cb-gray" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter></defs>` +
+      `<g filter="url(#cb-gray)">${content}</g>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view.x} ${view.y} ${view.width} ${view.height}" width="${view.width}" height="${view.height}">${content}</svg>`;
 }
 
 /** Renderizza una pagina in modalità `page` (§7.1) in SVG, layer bordo+balloon+testo. */
@@ -219,5 +232,20 @@ export function renderStripSvg(
     if (!panel || !box) continue;
     body += renderPanel(panel, box, fits, config);
   }
+  return svgRoot(config, body);
+}
+
+/**
+ * Renderizza un'intera striscia d'episodio: pannelli di più pagine già
+ * collocati (vedi `resolveEpisodeStrip`). Con `config.viewport` emette solo
+ * una slice — lo stesso disegno visto da una finestra diversa.
+ */
+export function renderEpisodeStripSvg(
+  placements: ReadonlyArray<{ panel: Panel; box: Box }>,
+  fits: Map<string, LetteringFit>,
+  config: RenderConfig,
+): string {
+  let body = "";
+  for (const { panel, box } of placements) body += renderPanel(panel, box, fits, config);
   return svgRoot(config, body);
 }

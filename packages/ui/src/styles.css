@@ -603,3 +603,75 @@ code {
 .field--row input[type="checkbox"] {
   margin-top: 2px;
 }
+
+/* Export per target: una riga per formato dichiarato nel progetto. */
+.targets {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.target {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.target + .target {
+  border-top: 1px solid var(--border);
+}
+
+.target:has(input:checked) {
+  background: var(--accent-soft);
+}
+
+.target__name {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.target__spec {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.export-report {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.export-report strong {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.export-report__slice {
+  margin-top: 2px;
+}
+
+.gate {
+  font-weight: 600;
+}
+
+.gate--ok {
+  color: var(--ok);
+}
+
+.gate--ko {
+  color: var(--error);
+}

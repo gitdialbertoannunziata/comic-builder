@@ -153,6 +153,7 @@ export function buildPagesFromScene(input: BuildPagesInput): Page[] {
         seed: { mode: "auto", value: null, epoch: 0 },
         render: {},
         balloons: balloonsForBeat(beat, id, readingDirection),
+        slice_avoid: [],
       };
     });
 

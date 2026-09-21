@@ -10,7 +10,7 @@ import { ValidationPanel } from "./components/ValidationPanel.js";
 import { SvgPreview } from "./components/SvgPreview.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { ExportPanel } from "./components/ExportPanel.js";
-import { buildExportFiles, type ExportFormat } from "./exportPages.js";
+import { exportChapter, type ExportOutcome } from "./exportPages.js";
 import { BrowserPlatformService } from "./platform/browserPlatform.js";
 import { prefilledConfig } from "./devConfig.js";
 
@@ -64,10 +64,14 @@ export function App() {
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
 
-  const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
-  const [exportWidth, setExportWidth] = useState(1600);
-  const [exportScope, setExportScope] = useState<"page" | "chapter">("page");
+  // Di default i tre formati del criterio d'uscita di F2.1: pagina digitale,
+  // stampa e striscia, dallo stesso documento in un clic.
+  const [exportChoices, setExportChoices] = useState<ReadonlySet<string>>(
+    () => new Set(["target:digital-page", "target:print-b5", "target:webtoon-strip"]),
+  );
   const [exportDraft, setExportDraft] = useState(true);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [destination, setDestination] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
@@ -116,24 +120,31 @@ export function App() {
     setExporting(true);
     setExportError(null);
     setExportResult(null);
+    setExportOutcome(null);
     try {
-      const files = await buildExportFiles({
+      const choices = [...exportChoices].map((key) =>
+        key.startsWith("target:") ? { kind: "target" as const, id: key.slice("target:".length) } : { kind: key as "document" | "svg" },
+      );
+      if (choices.length === 0) throw new Error("Scegli almeno un formato.");
+      const outcome = await exportChapter({
         pages,
-        scene,
+        chapter: { id: page.chapter_id, title: scene.title },
         font,
         fontBytes,
-        format: exportFormat,
-        widthPx: exportWidth,
+        choices,
         draft: exportDraft,
-        ...(exportScope === "page" ? { only: page } : {}),
+        onProgress: setExportProgress,
       });
-      if (files.length === 0) throw new Error("Nessun file da esportare.");
-      const outcome = await platform.write(files);
-      setExportResult(`${outcome.written} file in ${outcome.destination}.`);
+      if (outcome.files.length === 0) throw new Error("Nessun file da esportare.");
+      setExportProgress("scrivo i file…");
+      const written = await platform.write(outcome.files);
+      setExportOutcome(outcome);
+      setExportResult(`${written.written} file in ${written.destination}.`);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : String(error));
     } finally {
       setExporting(false);
+      setExportProgress(null);
     }
   }
 
@@ -305,12 +316,8 @@ export function App() {
         {!font && !fontError && <p className="muted">Carico il font…</p>}
         <p className="eyebrow eyebrow-gap">Export</p>
         <ExportPanel
-          format={exportFormat}
-          onFormatChange={setExportFormat}
-          widthPx={exportWidth}
-          onWidthChange={setExportWidth}
-          scope={exportScope}
-          onScopeChange={setExportScope}
+          choices={exportChoices}
+          onChoicesChange={setExportChoices}
           draft={exportDraft}
           onDraftChange={setExportDraft}
           destination={destination}
@@ -318,6 +325,8 @@ export function App() {
           onChooseDestination={() => void onChooseDestination()}
           onExport={() => void onExport()}
           busy={exporting}
+          progress={exportProgress}
+          outcome={exportOutcome}
           result={exportResult}
           error={exportError}
           pageCount={pages.length}

@@ -41,6 +41,7 @@ function basePanel(id: string, area: Page["panels"][number]["area"]) {
     continuity_notes: "",
     characters: [],
     balloons: [],
+    slice_avoid: [],
   };
 }
 

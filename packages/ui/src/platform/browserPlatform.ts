@@ -1,4 +1,4 @@
-import type { ExportFile, PlatformService, WriteOutcome } from "@comic-builder/core";
+import { createZip, utf8, type ExportFile, type PlatformService, type WriteOutcome } from "@comic-builder/core";
 
 /**
  * Tipi dell'API di accesso al filesystem. Non sono nelle librerie standard di
@@ -15,12 +15,26 @@ interface FileHandle {
 interface DirectoryHandle {
   readonly name: string;
   getFileHandle(name: string, options?: { create?: boolean }): Promise<FileHandle>;
+  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<DirectoryHandle>;
 }
 type DirectoryPicker = (options?: { mode?: "read" | "readwrite" }) => Promise<DirectoryHandle>;
 
 function directoryPicker(): DirectoryPicker | null {
   const picker = (globalThis as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker;
   return typeof picker === "function" ? picker.bind(globalThis) : null;
+}
+
+/**
+ * Un nome con cartelle (`print-b5/001-p1.png`) diventa una cartella vera: un
+ * export in più formati resta ordinato per formato invece di mescolarsi.
+ */
+async function fileHandleFor(root: DirectoryHandle, path: string): Promise<FileHandle> {
+  const parts = path.split("/").filter((p) => p.length > 0);
+  const fileName = parts.pop();
+  if (!fileName) throw new Error(`Nome di file vuoto: "${path}"`);
+  let directory = root;
+  for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+  return directory.getFileHandle(fileName, { create: true });
 }
 
 function blobFor(file: ExportFile): Blob {
@@ -64,7 +78,7 @@ export class BrowserPlatformService implements PlatformService {
   async write(files: readonly ExportFile[]): Promise<WriteOutcome> {
     if (this.handle) {
       for (const file of files) {
-        const fileHandle = await this.handle.getFileHandle(file.name, { create: true });
+        const fileHandle = await fileHandleFor(this.handle, file.name);
         const writable = await fileHandle.createWritable();
         await writable.write(blobFor(file));
         await writable.close();
@@ -72,17 +86,34 @@ export class BrowserPlatformService implements PlatformService {
       return { written: files.length, destination: this.handle.name };
     }
 
-    for (const file of files) {
-      const url = URL.createObjectURL(blobFor(file));
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = file.name;
-      anchor.click();
-      // Revoca ritardata: revocare subito può interrompere il download appena
-      // avviato, e il file arriva troncato o non arriva affatto.
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    // Più di un file va in un archivio solo. Non per comodità: i browser
+    // bloccano o scartano in silenzio le raffiche di download automatici —
+    // verificato in Chromium, 10 file arrivati su 19 in un export a cinque
+    // formati. Un file perso senza avviso in una consegna è il danno peggiore.
+    if (files.length === 1) {
+      const file = files[0]!;
+      // Un download non può creare cartelle: la "/" diventa un trattino.
+      download(blobFor(file), file.name.replace(/\//g, "-"));
+      return { written: 1, destination: "cartella dei download del browser" };
     }
 
-    return { written: files.length, destination: "cartella dei download del browser" };
+    const archive = createZip(
+      files.map((file) => ({ name: file.name, data: typeof file.data === "string" ? utf8(file.data) : file.data })),
+      new Date(),
+    );
+    const name = `comic-builder-export-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.zip`;
+    download(new Blob([archive as BlobPart], { type: "application/zip" }), name);
+    return { written: files.length, destination: `${name}, nei download del browser` };
   }
+}
+
+function download(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  // Revoca ritardata: revocare subito può interrompere il download appena
+  // avviato, e il file arriva troncato o non arriva affatto.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }

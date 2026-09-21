@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@comic-builder/core": "workspace:*",
+    "@comic-builder/lettering": "workspace:*",
     "vitest": "^2.1.5"
   }
 }

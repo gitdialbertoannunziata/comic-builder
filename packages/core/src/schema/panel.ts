@@ -71,6 +71,16 @@ export const RenderRecordSchema = z.object({
   rendered_at: z.string(),
 });
 
+/**
+ * Fascia orizzontale del pannello che lo slicing non deve tagliare (§7.2),
+ * in coordinate normalizzate all'altezza del pannello. I balloon sono
+ * geometria nota e si evitano da soli; i volti no, e in v1 li indica l'autore.
+ */
+export const SliceBandSchema = z
+  .object({ from: z.number().min(0).max(1), to: z.number().min(0).max(1) })
+  .refine((b) => b.to > b.from, { message: "La banda deve avere to > from" });
+export type SliceBand = z.infer<typeof SliceBandSchema>;
+
 export const PanelSchema = z.object({
   id: IdSchema,
   scene_id: IdSchema,
@@ -90,5 +100,6 @@ export const PanelSchema = z.object({
   seed: SeedSchema,
   render: z.record(z.string(), RenderRecordSchema.nullable()).default({}),
   balloons: z.array(BalloonSchema).default([]),
+  slice_avoid: z.array(SliceBandSchema).default([]),
 });
 export type Panel = z.infer<typeof PanelSchema>;

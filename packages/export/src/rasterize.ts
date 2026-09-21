@@ -28,7 +28,7 @@ export interface RasterizedImage {
  * Core per la stessa ragione di `lettering`: l'export non è una dipendenza del
  * documento, solo dell'output finale (§11.2).
  */
-export function rasterizeSvgToPng(svg: string, options: RasterizeOptions = {}): RasterizedImage {
+function renderSvg(svg: string, options: RasterizeOptions) {
   const font: NonNullable<ResvgRenderOptions["font"]> = {};
   if (options.fontFiles && options.fontFiles.length > 0) {
     font.fontFiles = options.fontFiles;
@@ -45,12 +45,24 @@ export function rasterizeSvgToPng(svg: string, options: RasterizeOptions = {}): 
     renderOptions.background = options.background;
   }
 
-  const resvg = new Resvg(svg, renderOptions);
-  const rendered = resvg.render();
+  return new Resvg(svg, renderOptions).render();
+}
 
+export function rasterizeSvgToPng(svg: string, options: RasterizeOptions = {}): RasterizedImage {
+  const rendered = renderSvg(svg, options);
   return {
     data: rendered.asPng(),
     width: rendered.width,
     height: rendered.height,
   };
+}
+
+/**
+ * Pixel RGBA grezzi, senza codifica PNG: servono ai test che confrontano
+ * immagini pixel per pixel (per esempio la continuità fra slice consecutive
+ * della striscia, §7.2), dove decodificare un PNG sarebbe solo rumore.
+ */
+export function rasterizeSvgToPixels(svg: string, options: RasterizeOptions = {}): RasterizedImage {
+  const rendered = renderSvg(svg, options);
+  return { data: new Uint8Array(rendered.pixels), width: rendered.width, height: rendered.height };
 }

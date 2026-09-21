@@ -1,35 +1,24 @@
 import {
-  resolvePageLayout,
+  resolvePageBoxesForTarget,
   renderPageSvg,
   validateDocument,
   lintPage,
   type Scene,
-  LetteringConfigSchema,
-  BalloonStyleSchema,
-  DraftStyleSchema,
   type Page,
   type ValidationIssue,
   type RenderConfig,
   type Box,
 } from "@comic-builder/core";
 import { computePageFits, type LoadedFont } from "@comic-builder/lettering";
+import { primaryGeometry, primaryTarget, styles } from "./project.js";
 
-export const PAGE_WIDTH_PX = 1600;
-export const PAGE_HEIGHT_PX = 2400;
-export const PAGE_MARGIN_PX = 56;
-export const TARGET = "digital-page";
+export const PAGE_WIDTH_PX = primaryGeometry.width;
+export const PAGE_HEIGHT_PX = primaryGeometry.height;
+export const TARGET = primaryTarget.id;
+export const LETTERING = styles.lettering;
 
-export const LETTERING = LetteringConfigSchema.parse({
-  font_family: "Comic Neue",
-  base_size_px: 26,
-  line_height: 1.35,
-  padding: 12,
-  max_width_ratio: 0.62,
-  tail_width: 10,
-});
-
-const BALLOON_STYLE = BalloonStyleSchema.parse({});
-const DRAFT_STYLE = DraftStyleSchema.parse({});
+const BALLOON_STYLE = styles.balloonStyle;
+const DRAFT_STYLE = styles.draftStyle;
 
 export interface PreviewResult {
   svg: string | null;
@@ -73,14 +62,7 @@ export function renderPreview(
     return { svg: null, issues, boxes: new Map(), width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX };
   }
 
-  const boxes = resolvePageLayout(
-    page.layout,
-    page.panels,
-    PAGE_WIDTH_PX - PAGE_MARGIN_PX * 2,
-    PAGE_HEIGHT_PX - PAGE_MARGIN_PX * 2,
-    PAGE_MARGIN_PX,
-    PAGE_MARGIN_PX,
-  );
+  const boxes = resolvePageBoxesForTarget(page, primaryGeometry);
 
   const fits = computePageFits({
     page,

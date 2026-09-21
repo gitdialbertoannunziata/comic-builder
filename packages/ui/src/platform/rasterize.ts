@@ -37,10 +37,13 @@ export function embedFont(svg: string, fontFamily: string, fontBytes: Uint8Array
 export interface RasterizeOptions {
   widthPx: number;
   background?: string;
+  format?: "png" | "jpeg";
+  /** Qualità JPEG in [0,1]; ignorata per PNG. */
+  quality?: number;
 }
 
-/** SVG → PNG. La larghezza governa la scala; l'altezza segue il rapporto del viewBox. */
-export async function svgToPngBlob(
+/** SVG → immagine. La larghezza governa la scala; l'altezza segue il rapporto del viewBox. */
+export async function svgToImageBlob(
   svg: string,
   sourceWidth: number,
   sourceHeight: number,
@@ -49,6 +52,7 @@ export async function svgToPngBlob(
   const scale = options.widthPx / sourceWidth;
   const width = Math.round(options.widthPx);
   const height = Math.round(sourceHeight * scale);
+  const type = options.format === "jpeg" ? "image/jpeg" : "image/png";
 
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
@@ -67,16 +71,22 @@ export async function svgToPngBlob(
     if (!context) throw new Error("Canvas 2D non disponibile");
 
     // Una pagina di fumetto è carta: senza fondo esplicito il PNG uscirebbe
-    // trasparente, e trasparente su nero è illeggibile.
+    // trasparente, e trasparente su nero è illeggibile. Il JPEG non ha alfa:
+    // senza fondo, il trasparente diventerebbe nero.
     context.fillStyle = options.background ?? "#ffffff";
     context.fillRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
 
     return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Conversione in PNG fallita"));
-      }, "image/png");
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          // Succede con canvas oltre i limiti del browser: meglio dirlo che scrivere un file vuoto.
+          else reject(new Error(`Conversione in ${type} fallita (${width}×${height} px)`));
+        },
+        type,
+        options.quality,
+      );
     });
   } finally {
     URL.revokeObjectURL(url);

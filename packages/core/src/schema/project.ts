@@ -2,6 +2,21 @@ import { z } from "zod";
 import { IdSchema, ReadingDirectionSchema, TextDirectionSchema } from "./common.js";
 import { BalloonTypeSchema } from "./balloon.js";
 
+/**
+ * Formato e compressione dell'immagine esportata. Stanno sul target e non nel
+ * codice di export (Appendice C, regola 3): aggiungere o cambiare un formato
+ * d'uscita è una voce di configurazione.
+ */
+const ImageFormatSchema = z.enum(["png", "jpeg"]);
+
+/**
+ * Moltiplicatore del corpo del lettering per questo target, oltre alla scala
+ * naturale in unità di pagina (§8.1). Serve dove la larghezza d'uscita non
+ * racconta come verrà letta: una striscia larga 1080 px si guarda su un
+ * telefono, e il testo scalato solo per larghezza vi risulterebbe minuscolo.
+ */
+const LetteringScaleSchema = z.number().positive().default(1);
+
 const PageTargetSchema = z.object({
   id: z.string(),
   kind: z.literal("page"),
@@ -9,20 +24,58 @@ const PageTargetSchema = z.object({
   size_mm: z.tuple([z.number().positive(), z.number().positive()]).optional(),
   dpi: z.number().positive().optional(),
   bleed_mm: z.number().nonnegative().optional(),
+  /**
+   * Rientro dell'area sicura dal taglio, per la stampa (Appendice C). Si somma
+   * al bleed nel canvas e fa da minimo per i margini: nessun pannello finisce
+   * nella fascia che il taglio può mangiare.
+   */
+  safe_mm: z.number().nonnegative().optional(),
   color: z.enum(["srgb", "gray", "cmyk"]).default("srgb"),
   reading_direction: ReadingDirectionSchema,
+  format: ImageFormatSchema.default("png"),
+  /** Qualità JPEG in [0,1]; ignorata per PNG. */
+  quality: z.number().min(0).max(1).default(0.92),
+  lettering_scale: LetteringScaleSchema,
   primary: z.boolean().default(false),
 });
+export type PageTarget = z.infer<typeof PageTargetSchema>;
+
+/** Limiti imposti dalla piattaforma a un episodio (Appendice C): da configurare, cambiano senza preavviso. */
+export const PlatformLimitsSchema = z.object({
+  max_images: z.number().int().positive().optional(),
+  max_bytes_per_image: z.number().int().positive().optional(),
+  max_bytes_total: z.number().int().positive().optional(),
+});
+export type PlatformLimits = z.infer<typeof PlatformLimitsSchema>;
 
 const StripTargetSchema = z.object({
   id: z.string(),
   kind: z.literal("strip"),
   width_px: z.number().positive(),
   slice_max_h: z.number().positive(),
+  /** Altezza minima di una slice (§7.2); l'ultima dell'episodio può essere più bassa. */
+  slice_min_h: z.number().positive().optional(),
   seam: z.enum(["none", "visible"]).default("none"),
-  format: z.enum(["jpeg", "png"]).default("jpeg"),
+  /**
+   * Altezza massima di un pannello nella striscia; default `slice_max_h`. Un
+   * pannello che la supererebbe a tutta larghezza si restringe e si centra:
+   * altrimenti un pannello stretto della pagina diventa alto più di una slice,
+   * e ogni taglio finisce dentro l'arte.
+   */
+  panel_max_h: z.number().positive().optional(),
+  /** Pixel ripetuti in fondo a ogni slice, per chi impila le immagini sovrapponendole (§7.2). */
+  overlap_px: z.number().nonnegative().default(0),
+  /** Spazio fra pannelli e fra pagine nella striscia: 0 è la norma, le giunzioni non si vedono (§7.2). */
+  panel_gap: z.number().nonnegative().default(0),
+  page_gap: z.number().nonnegative().default(0),
+  format: ImageFormatSchema.default("jpeg"),
+  quality: z.number().min(0).max(1).default(0.9),
+  /** Default 2: una striscia si legge su un telefono (vedi `LetteringScaleSchema`). */
+  lettering_scale: z.number().positive().default(2),
+  limits: PlatformLimitsSchema.default({}),
   primary: z.boolean().default(false),
 });
+export type StripTarget = z.infer<typeof StripTargetSchema>;
 
 const RegionsTargetSchema = z.object({
   id: z.string(),
@@ -30,12 +83,27 @@ const RegionsTargetSchema = z.object({
   source: z.string(),
   primary: z.boolean().default(false),
 });
+export type RegionsTarget = z.infer<typeof RegionsTargetSchema>;
+
+/**
+ * Contenitore (§4, `cbz`): un archivio delle immagini di un altro target,
+ * con numerazione di pagina nell'ordine di lettura. Non rende nulla da sé.
+ */
+const ArchiveTargetSchema = z.object({
+  id: z.string(),
+  kind: z.literal("archive"),
+  format: z.enum(["cbz"]).default("cbz"),
+  source: z.string(),
+  primary: z.boolean().default(false),
+});
+export type ArchiveTarget = z.infer<typeof ArchiveTargetSchema>;
 
 /** Il formato è un asse di render (§4): ogni target è dato di configurazione, non codice cablato. */
 export const OutputTargetSchema = z.discriminatedUnion("kind", [
   PageTargetSchema,
   StripTargetSchema,
   RegionsTargetSchema,
+  ArchiveTargetSchema,
 ]);
 export type OutputTarget = z.infer<typeof OutputTargetSchema>;
 
@@ -45,6 +113,7 @@ export const MarginSchema = z.object({
   bottom: z.number().nonnegative(),
   left: z.number().nonnegative(),
 });
+export type Margin = z.infer<typeof MarginSchema>;
 
 /** Dimensioni in unità di pagina (§8.1): non di pannello, per coerenza fra pannelli di dimensioni diverse. */
 export const LetteringConfigSchema = z.object({
