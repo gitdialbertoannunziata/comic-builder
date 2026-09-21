@@ -3,6 +3,7 @@ import {
   MockLlmService,
   OllamaLlmService,
   AnthropicLlmService,
+  DeepSeekLlmService,
   breakdownScript,
   type LlmService,
 } from "@comic-builder/llm";
@@ -16,6 +17,8 @@ export interface RunBreakdownInput {
   ollamaHost: string;
   anthropicKey: string;
   anthropicModel: string;
+  deepseekKey: string;
+  deepseekModel: string;
   chapterId: string;
 }
 
@@ -36,6 +39,9 @@ function serviceFor(choice: ServiceChoice, input: RunBreakdownInput): LlmService
       // desktop (§14.4) passerà all'archivio sicuro dell'host.
       allowBrowser: true,
     });
+  }
+  if (choice === "deepseek") {
+    return new DeepSeekLlmService({ apiKey: input.deepseekKey, model: input.deepseekModel });
   }
   return new MockLlmService();
 }

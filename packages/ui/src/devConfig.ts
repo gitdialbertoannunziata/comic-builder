@@ -17,6 +17,8 @@ interface DevEnv {
   VITE_ANTHROPIC_MODEL?: string;
   VITE_OLLAMA_HOST?: string;
   VITE_OLLAMA_MODEL?: string;
+  VITE_DEEPSEEK_API_KEY?: string;
+  VITE_DEEPSEEK_MODEL?: string;
 }
 
 function devEnv(): DevEnv {
@@ -30,11 +32,15 @@ export interface PrefilledConfig {
   ollamaModel: string;
   /** Vero se la chiave arriva dall'ambiente: la UI lo dice, invece di mostrare un campo pieno senza spiegazione. */
   anthropicKeyFromEnv: boolean;
+  deepseekKey: string;
+  deepseekModel: string;
+  deepseekKeyFromEnv: boolean;
 }
 
 export function prefilledConfig(): PrefilledConfig {
   const env = devEnv();
   const key = env.VITE_ANTHROPIC_API_KEY?.trim() ?? "";
+  const deepseekKey = env.VITE_DEEPSEEK_API_KEY?.trim() ?? "";
 
   return {
     anthropicKey: key,
@@ -42,5 +48,8 @@ export function prefilledConfig(): PrefilledConfig {
     ollamaHost: env.VITE_OLLAMA_HOST?.trim() || "http://localhost:11434",
     ollamaModel: env.VITE_OLLAMA_MODEL?.trim() || "mistral",
     anthropicKeyFromEnv: key.length > 0,
+    deepseekKey,
+    deepseekModel: env.VITE_DEEPSEEK_MODEL?.trim() || "deepseek-flash",
+    deepseekKeyFromEnv: deepseekKey.length > 0,
   };
 }

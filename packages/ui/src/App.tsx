@@ -51,11 +51,15 @@ export function App() {
 
   const [scene, setScene] = useState<Scene>(initialScene);
   const [script, setScript] = useState(SAMPLE_SCRIPT);
-  const [service, setService] = useState<ServiceChoice>(prefilled.anthropicKeyFromEnv ? "anthropic" : "mock");
+  const [service, setService] = useState<ServiceChoice>(
+    prefilled.anthropicKeyFromEnv ? "anthropic" : prefilled.deepseekKeyFromEnv ? "deepseek" : "mock",
+  );
   const [ollamaModel, setOllamaModel] = useState(prefilled.ollamaModel);
   const [ollamaHost, setOllamaHost] = useState(prefilled.ollamaHost);
   const [anthropicKey, setAnthropicKey] = useState(prefilled.anthropicKey);
   const [anthropicModel, setAnthropicModel] = useState(prefilled.anthropicModel);
+  const [deepseekKey, setDeepseekKey] = useState(prefilled.deepseekKey);
+  const [deepseekModel, setDeepseekModel] = useState(prefilled.deepseekModel);
   const [running, setRunning] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
@@ -83,6 +87,8 @@ export function App() {
         ollamaHost,
         anthropicKey,
         anthropicModel,
+        deepseekKey,
+        deepseekModel,
         chapterId: "ep001",
       });
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
@@ -175,6 +181,11 @@ export function App() {
           anthropicModel={anthropicModel}
           onAnthropicModelChange={setAnthropicModel}
           anthropicKeyFromEnv={prefilled.anthropicKeyFromEnv}
+          deepseekKey={deepseekKey}
+          onDeepseekKeyChange={setDeepseekKey}
+          deepseekModel={deepseekModel}
+          onDeepseekModelChange={setDeepseekModel}
+          deepseekKeyFromEnv={prefilled.deepseekKeyFromEnv}
           onRun={() => void onRunBreakdown()}
           running={running}
           error={breakdownError}

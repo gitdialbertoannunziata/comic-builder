@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ValidationIssue } from "@comic-builder/core";
 
-export type ServiceChoice = "mock" | "ollama" | "anthropic";
+export type ServiceChoice = "mock" | "ollama" | "anthropic" | "deepseek";
 
 export interface BreakdownSummary {
   scenes: number;
@@ -27,6 +27,11 @@ interface Props {
   anthropicModel: string;
   onAnthropicModelChange: (model: string) => void;
   anthropicKeyFromEnv: boolean;
+  deepseekKey: string;
+  onDeepseekKeyChange: (key: string) => void;
+  deepseekModel: string;
+  onDeepseekModelChange: (model: string) => void;
+  deepseekKeyFromEnv: boolean;
   onRun: () => void;
   running: boolean;
   error: string | null;
@@ -52,6 +57,11 @@ export function ScriptPanel({
   anthropicModel,
   onAnthropicModelChange,
   anthropicKeyFromEnv,
+  deepseekKey,
+  onDeepseekKeyChange,
+  deepseekModel,
+  onDeepseekModelChange,
+  deepseekKeyFromEnv,
   onRun,
   running,
   error,
@@ -116,6 +126,15 @@ export function ScriptPanel({
               >
                 claude
               </button>
+              <button
+                type="button"
+                className="seg"
+                aria-pressed={service === "deepseek"}
+                onClick={() => onServiceChange("deepseek")}
+                title="API di DeepSeek: JSON garantito ma non lo schema — lo controlla la validazione a valle"
+              >
+                deepseek
+              </button>
             </div>
           </div>
 
@@ -172,6 +191,36 @@ export function ScriptPanel({
                   value={anthropicModel}
                   onChange={(e) => onAnthropicModelChange(e.target.value)}
                   placeholder="claude-opus-5"
+                />
+              </label>
+            </>
+          )}
+
+          {service === "deepseek" && (
+            <>
+              <label className="field">
+                <span className="field__label">chiave API</span>
+                <input
+                  type="password"
+                  value={deepseekKey}
+                  onChange={(e) => onDeepseekKeyChange(e.target.value)}
+                  placeholder="sk-..."
+                />
+                <span className="field__hint">
+                  {deepseekKeyFromEnv
+                    ? "Letta da .env.local (solo in sviluppo). "
+                    : "Resta in questa scheda e non viene salvata. "}
+                  <strong>Il copione esce verso terzi.</strong> DeepSeek garantisce JSON valido ma non la forma
+                  richiesta: gli scostamenti li intercetta la validazione, e compaiono qui sotto.
+                </span>
+              </label>
+              <label className="field">
+                <span className="field__label">modello</span>
+                <input
+                  type="text"
+                  value={deepseekModel}
+                  onChange={(e) => onDeepseekModelChange(e.target.value)}
+                  placeholder="deepseek-flash"
                 />
               </label>
             </>
