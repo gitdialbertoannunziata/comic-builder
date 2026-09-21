@@ -89,3 +89,17 @@ describe("Nome e progetto nuovo", () => {
     expect((await loadProject(store)).doc.project.title).toBe("La Città di Sale");
   });
 });
+
+describe("Contesto per la continuità fra capitoli", () => {
+  it("porta schede (aspetto e costumi), luoghi degli altri capitoli e regole della serie", () => {
+    let d = applyCommand(doc, { type: "character.upsert", ref: "sara", patch: { name: "Sara", summary: "tecnica", appearance: { age: "30s" }, wardrobe: { notte: "raincoat" } } });
+    d = applyCommand(d, { type: "project.notes", notes: "  Dialoghi brevi.  " });
+    d = applyCommand(d, { type: "chapter.add", title: "B" });
+    const context = chapterContext(d, "ep002");
+    expect(context.characters).toContainEqual({ ref: "sara", name: "Sara", summary: "tecnica", appearance: "30s", wardrobe: { notte: "raincoat" } });
+    expect(context.locations).toEqual([sampleScene.location]);
+    expect(context.notes).toBe("Dialoghi brevi.");
+    // I luoghi del capitolo stesso non contano come «già visti».
+    expect(chapterContext(d, "ep001").locations).toEqual([]);
+  });
+});

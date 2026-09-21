@@ -1,6 +1,6 @@
 import { SceneSchema, beatId, issue, type Scene, type ValidationIssue } from "@comic-builder/core";
 import { BreakdownSchema, breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME, type BreakdownScene } from "./breakdownSchema.js";
-import { breakdownSystemPrompt, breakdownUserPrompt } from "./prompt.js";
+import { breakdownSystemPrompt, breakdownUserPrompt, type CharacterContext } from "./prompt.js";
 import { LlmError, LlmTruncatedError, type LlmService } from "./service.js";
 
 export interface BreakdownInput {
@@ -23,7 +23,14 @@ export interface BreakdownInput {
    * il nome della scheda) e un riassunto del capitolo precedente. Senza, il
    * capitolo 2 reinventa i ref del capitolo 1 — «sara» diventa «sara_bellini».
    */
-  context?: { characters: ReadonlyArray<{ ref: string; name: string }>; previously: string | null };
+  context?: {
+    characters: ReadonlyArray<CharacterContext>;
+    previously: string | null;
+    /** Luoghi già visti negli altri capitoli. */
+    locations?: readonly string[];
+    /** Le regole della serie: vanno nelle istruzioni di sistema, a ogni capitolo. */
+    notes?: string;
+  };
   /** Avanzamento, per chi aspetta: «parte 2 di 4». */
   onProgress?: (progress: { done: number; total: number }) => void;
 }
@@ -52,6 +59,7 @@ function toScene(
   scriptFile: string,
   scriptLines: number,
   issues: ValidationIssue[],
+  wardrobes: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Scene {
   const id = sceneIdFor(prefix, index);
 
@@ -80,12 +88,23 @@ function toScene(
     // Chi parla in vignetta deve esserci: il lint lo tratta come errore
     // (Appendice A), salvo le battute fuori campo e le didascalie, che per
     // definizione non hanno un corpo nell'inquadratura.
-    let characters = beat.characters?.map((c) => ({ ref: c.ref.trim(), expression: c.expression.trim() })) ?? null;
+    // Il costume si accetta solo se la scheda lo conosce: un nome inventato
+    // diventerebbe un costume senza descrizione, e il lint lo segnalerebbe.
+    let characters =
+      beat.characters?.map((c) => {
+        const ref = c.ref.trim();
+        const wanted = c.wardrobe.trim();
+        const known = wardrobes.get(ref);
+        if (wanted && !known?.has(wanted)) {
+          issues.push(issue("info", "breakdown.unknown-wardrobe", `«${wanted}» non è un costume di ${ref}: resta quello di sempre`, `${path}.characters`));
+        }
+        return { ref, expression: c.expression.trim(), wardrobe: wanted && known?.has(wanted) ? wanted : "default" };
+      }) ?? null;
     if (characters) {
       for (const line of beat.lines) {
         if (!line.speaker || line.type === "offpanel" || line.type === "caption") continue;
         if (characters.some((c) => c.ref === line.speaker)) continue;
-        characters = [...characters, { ref: line.speaker, expression: "" }];
+        characters = [...characters, { ref: line.speaker, expression: "", wardrobe: "default" }];
         issues.push(
           issue(
             "info",
@@ -262,7 +281,8 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
   const issues: ValidationIssue[] = [];
   const scriptLines = input.script.split("\n").length;
   const known = new Set<string>(input.context?.characters.map((c) => c.ref) ?? []);
-  const characterNames = Object.fromEntries((input.context?.characters ?? []).filter((c) => c.name).map((c) => [c.ref, c.name]));
+  // Costumi dichiarati nelle schede: lo spoglio può scegliere solo fra questi.
+  const wardrobes = new Map((input.context?.characters ?? []).map((c) => [c.ref, new Set(Object.keys(c.wardrobe ?? {}))]));
   const parts: PartResult[] = [];
   const queue = splitScript(input.script, input.chunkChars ?? 6000);
   let done = 0;
@@ -275,11 +295,12 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
     let response;
     try {
       response = await input.llm.complete({
-        system: breakdownSystemPrompt(),
+        system: breakdownSystemPrompt({ seriesNotes: input.context?.notes ?? "" }),
         user: breakdownUserPrompt(chunk.text, {
           firstLine: chunk.firstLine,
           knownCharacters: [...known].sort(),
-          characterNames,
+          characters: input.context?.characters ?? [],
+          locations: input.context?.locations ?? [],
           previously: input.context?.previously ?? null,
           part: { index: done, total: done + queue.length + 1, continuation: chunk.continuation },
         }),
@@ -324,7 +345,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
   input.onProgress?.({ done, total: done });
 
   const prefix = input.scenePrefix ?? "s";
-  const scenes = stitch(parts).map((raw, i) => toScene(raw, i, prefix, input.scriptFile, scriptLines, issues));
+  const scenes = stitch(parts).map((raw, i) => toScene(raw, i, prefix, input.scriptFile, scriptLines, issues, wardrobes));
 
   return {
     scenes,

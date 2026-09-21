@@ -145,7 +145,7 @@ function beatFrom(block: RawBlock, index: number, total: number): BreakdownBeat 
     // L'euristica sa chi c'è solo quando parla: in quel caso lo dice, altrimenti
     // `null` ("non lo so") e il pannello erediterà il cast della scena. Mai `[]`,
     // che affermerebbe una vignetta vuota senza saperlo.
-    characters: speakers.length > 0 ? speakers.map((ref) => ({ ref, expression: "" })) : null,
+    characters: speakers.length > 0 ? speakers.map((ref) => ({ ref, expression: "", wardrobe: "" })) : null,
     mood: null,
     props: [],
     from_line: block.from,

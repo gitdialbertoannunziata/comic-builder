@@ -27,6 +27,7 @@ import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher, type ArtWatcher } from "./editor/useArtWatcher.js";
 import { ChapterBar } from "./components/ChapterBar.js";
+import { BreakdownContext } from "./components/BreakdownContext.js";
 import { loadPreference, savePreference } from "./platform/session.js";
 
 /**
@@ -200,6 +201,8 @@ export function App() {
           error={breakdownError}
           summary={summary}
         />
+      <div className="eyebrow-gap" />
+      <BreakdownContext doc={doc} chapterId={chapter.id} script={script} run={run} endGesture={endGesture} />
     </>
   );
 

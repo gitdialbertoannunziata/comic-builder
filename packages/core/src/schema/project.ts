@@ -216,6 +216,13 @@ export const ProjectSchema = z.object({
   style: StyleConfigSchema,
   balloon_style: BalloonStyleSchema.default({}),
   draft_style: DraftStyleSchema.default({}),
+  /**
+   * Le regole della serie, in chiaro: ciò che deve restare uguale da un
+   * capitolo all'altro e che lo spoglio deve rispettare — tono, ritmo, quante
+   * battute per vignetta, preferenze di inquadratura, come parla un
+   * personaggio. Arrivano al modello come istruzioni, a ogni capitolo.
+   */
+  series_notes: z.string().default(""),
   fonts: z.array(FontDeclarationSchema).default([]),
   chapters: z.string(),
   scenes: z.string(),

@@ -9,6 +9,7 @@ import {
 } from "@comic-builder/llm";
 import { TARGET } from "./renderPreview.js";
 import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.js";
+import type { ChapterContext } from "@comic-builder/core";
 
 export interface RunBreakdownInput {
   script: string;
@@ -22,8 +23,8 @@ export interface RunBreakdownInput {
   deepseekKey: string;
   deepseekModel: string;
   chapterId: string;
-  /** Ciò che si sa degli altri capitoli: personaggi esistenti, riassunto del precedente. */
-  context?: { characters: ReadonlyArray<{ ref: string; name: string }>; previously: string | null };
+  /** Ciò che si sa dell'opera: personaggi con scheda, luoghi già visti, regole della serie, riassunto del precedente. */
+  context?: ChapterContext;
 }
 
 export interface RunBreakdownResult {

@@ -31,6 +31,8 @@ export const BreakdownCharacterSchema = z.object({
   ref: z.string(),
   /** Espressione del personaggio in questa vignetta. Stringa vuota se il testo non la suggerisce. */
   expression: z.string(),
+  /** Nome di uno dei costumi della scheda del personaggio; stringa vuota per quello di sempre. */
+  wardrobe: z.string(),
 });
 
 export const BreakdownBeatSchema = z.object({

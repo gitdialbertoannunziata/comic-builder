@@ -88,7 +88,7 @@ describe("Spoglio a parti", () => {
     const { llm, prompts } = truncatingLlm(100_000);
     await breakdownScript({ llm, script, scriptFile: "cap.md", chunkChars: 900 });
     expect(prompts[0]).not.toContain("Personaggi già incontrati");
-    expect(prompts[1]).toContain("Personaggi già incontrati, da chiamare con questi ref se ricompaiono: elio, sara.");
+    expect(prompts[1]).toContain("Personaggi già incontrati, da chiamare con questi ref se ricompaiono:\n- elio\n- sara");
   });
 
   it("una parte troncata si dimezza e si riprova, e lo si dice", async () => {
@@ -122,6 +122,68 @@ describe("Contesto degli altri capitoli", () => {
       context: { characters: [{ ref: "sara", name: "Sara Bellini" }, { ref: "elio", name: "" }], previously: "Capitolo 1 «La lanterna»: il faro è spento." },
     });
     expect(prompts[0]).toContain("Nei capitoli precedenti (solo contesto, da non spogliare):\nCapitolo 1 «La lanterna»: il faro è spento.");
-    expect(prompts[0]).toContain("da chiamare con questi ref se ricompaiono: elio, sara (Sara Bellini).");
+    expect(prompts[0]).toContain("- sara «Sara Bellini»");
+    expect(prompts[0]).toContain("- elio\n");
+  });
+});
+
+describe("Continuità fra capitoli: schede, costumi, luoghi, regole della serie", () => {
+  const context = {
+    characters: [
+      { ref: "sara", name: "Sara Bellini", summary: "tecnica del faro", appearance: "woman in her 30s, scar on left eyebrow", wardrobe: { default: "grey overalls", notte: "dark raincoat" } },
+    ],
+    locations: ["faro di Capo Vento", "molo vecchio"],
+    notes: "Dialoghi brevi: al massimo due battute per vignetta.\nSara non dice mai parolacce.",
+    previously: null,
+  };
+
+  it("scheda, costumi e luoghi arrivano nell'intestazione; le regole nelle istruzioni di sistema", async () => {
+    const systems: string[] = [];
+    const users: string[] = [];
+    const llm: LlmService = {
+      name: "spia",
+      constraint: "grammar",
+      complete(request) {
+        systems.push(request.system);
+        users.push(request.user);
+        return Promise.resolve({ data: heuristicBreakdown(request.user), meta: { model: "spia", durationMs: 1 } });
+      },
+    };
+    await breakdownScript({ llm, script: "# Scena\n\nSARA: ciao", scriptFile: "cap2.md", context });
+    expect(users[0]).toContain("- sara «Sara Bellini»: tecnica del faro; woman in her 30s, scar on left eyebrow; costumi: default (grey overalls), notte (dark raincoat)");
+    expect(users[0]).toContain("Luoghi già visti (se la scena è lì, usa lo stesso nome): faro di Capo Vento; molo vecchio.");
+    expect(systems[0]).toContain("Regole di questa serie, scritte dall'autore");
+    expect(systems[0]).toContain("Sara non dice mai parolacce.");
+  });
+
+  it("il costume scelto dal modello si tiene se la scheda lo conosce; uno inventato torna quello di sempre, e lo si dice", async () => {
+    const reply = (wardrobe: string): LlmService => ({
+      name: "fisso",
+      constraint: "schema",
+      complete: () =>
+        Promise.resolve({
+          data: {
+            scenes: [
+              {
+                title: "Notte",
+                location: "molo vecchio",
+                time_of_day: "notte",
+                characters: ["sara"],
+                mood: "tense",
+                lighting: "night",
+                beats: [
+                  { function: "establish", summary: "Sara sul molo.", intense: false, lines: [], characters: [{ ref: "sara", expression: "", wardrobe }], mood: null, props: [], from_line: 1, to_line: 1 },
+                ],
+              },
+            ],
+          },
+          meta: { model: "fisso", durationMs: 1 },
+        }),
+    });
+    const ok = await breakdownScript({ llm: reply("notte"), script: "Sara sul molo.", scriptFile: "c.md", context });
+    expect(ok.scenes[0]!.beats[0]!.characters![0]!.wardrobe).toBe("notte");
+    const invented = await breakdownScript({ llm: reply("pigiama"), script: "Sara sul molo.", scriptFile: "c.md", context });
+    expect(invented.scenes[0]!.beats[0]!.characters![0]!.wardrobe).toBe("default");
+    expect(invented.issues.map((i) => i.code)).toContain("breakdown.unknown-wardrobe");
   });
 });

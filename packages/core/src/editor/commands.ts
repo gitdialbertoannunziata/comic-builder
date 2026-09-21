@@ -58,6 +58,7 @@ export type Command =
   | { type: "character.upsert"; ref: string; patch: CharacterPatch }
   | { type: "character.remove"; ref: string }
   | { type: "project.rename"; title: string }
+  | { type: "project.notes"; notes: string }
   | { type: "chapter.add"; title: string }
   | { type: "chapter.update"; chapterId: string; title?: string; status?: Chapter["status"] }
   | { type: "chapter.set-content"; chapterId: string; pages: Page[]; scenes: Scene[]; script?: string };
@@ -648,6 +649,8 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       if (!doc.characters[command.ref]) throw new CommandError(`Nessuna scheda per «${command.ref}»`);
       return { ...doc, characters: Object.fromEntries(Object.entries(doc.characters).filter(([ref]) => ref !== command.ref)) };
     }
+    case "project.notes":
+      return { ...doc, project: { ...doc.project, series_notes: command.notes } };
     case "project.rename":
       // Solo il titolo: l'id del progetto resta quello, come ogni id (§5.3).
       return { ...doc, project: { ...doc.project, title: command.title } };
@@ -748,6 +751,8 @@ export function describeCommand(command: Command): string {
       return `Togli la scheda di ${command.ref}`;
     case "project.rename":
       return "Rinomina il progetto";
+    case "project.notes":
+      return "Regole della serie";
     case "chapter.add":
       return "Nuovo capitolo";
     case "chapter.update":

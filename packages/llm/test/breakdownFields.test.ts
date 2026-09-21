@@ -79,7 +79,7 @@ describe("Riparazioni sui personaggi in vignetta", () => {
   it("chi parla in vignetta ma non è fra i presenti viene aggiunto, e lo si dice", async () => {
     const result = await run(
       breakdown({
-        characters: [{ ref: "sara", expression: "" }],
+        characters: [{ ref: "sara", expression: "", wardrobe: "" }],
         lines: [{ speaker: "elio", text: "Aveva le chiavi.", type: "speech" }],
       }),
     );
@@ -93,7 +93,7 @@ describe("Riparazioni sui personaggi in vignetta", () => {
   it("chi parla fuori campo non viene messo in vignetta", async () => {
     const result = await run(
       breakdown({
-        characters: [{ ref: "sara", expression: "" }],
+        characters: [{ ref: "sara", expression: "", wardrobe: "" }],
         lines: [{ speaker: "elio", text: "Sono giù!", type: "offpanel" }],
       }),
     );

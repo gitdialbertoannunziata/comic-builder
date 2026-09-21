@@ -18,7 +18,12 @@ const BEAT_FUNCTIONS = [
   ["close", "chiude la scena o le dà una pausa."],
 ] as const;
 
-export function breakdownSystemPrompt(): string {
+export interface SystemPromptOptions {
+  /** Le regole della serie scritte dall'autore: valgono per ogni capitolo. */
+  seriesNotes?: string;
+}
+
+export function breakdownSystemPrompt(options: SystemPromptOptions = {}): string {
   const functions = BEAT_FUNCTIONS.map(([id, meaning]) => `- ${id}: ${meaning}`).join("\n");
 
   return [
@@ -43,10 +48,30 @@ export function breakdownSystemPrompt(): string {
     "- `mood` e `lighting` della scena si scelgono dai valori ammessi: `lighting` dall'ora e dal luogo (alba o tramonto → golden, notte → night, interno illuminato da lampade → practical).",
     "- `mood` del beat è null, salvo quando il tono di quel momento si discosta da quello della scena.",
     "- `props` elenca gli oggetti che la vignetta deve mostrare. Lista vuota se non ce ne sono.",
+    "- `wardrobe` di un personaggio nel beat: il nome di uno dei costumi elencati per lui, se il testo o la scena lo indicano (notte, divisa, sotto la pioggia…); stringa vuota se è quello di sempre o non si sa. Non inventare costumi che non sono nell'elenco.",
+    "- `location` della scena: se è uno dei luoghi già visti elencati, usa esattamente lo stesso nome.",
+    "- Un personaggio già elencato si riconosce anche quando il testo lo descrive senza nominarlo: usa il suo ref.",
     "- `from_line` e `to_line` sono le righe dello script da cui il beat nasce, numerate da 1.",
+    "",
+    ...(options.seriesNotes?.trim()
+      ? [
+          "",
+          "Regole di questa serie, scritte dall'autore: valgono per ogni capitolo e hanno la precedenza sulle indicazioni generali qui sopra (non sul formato della risposta):",
+          options.seriesNotes.trim(),
+        ]
+      : []),
     "",
     "Rispondi esclusivamente con JSON conforme allo schema richiesto, senza commenti né testo attorno.",
   ].join("\n");
+}
+
+/** Un personaggio dell'opera come lo vede lo spoglio: ciò che serve a riconoscerlo e a vestirlo. */
+export interface CharacterContext {
+  ref: string;
+  name: string;
+  summary?: string;
+  appearance?: string;
+  wardrobe?: Readonly<Record<string, string>>;
 }
 
 export interface UserPromptOptions {
@@ -54,8 +79,10 @@ export interface UserPromptOptions {
   firstLine?: number;
   /** Ref dei personaggi già incontrati nelle parti precedenti: si riusano, non si reinventano. */
   knownCharacters?: readonly string[];
-  /** Nomi dei personaggi per ref, dalle schede: aiutano il modello a riconoscere «Sara Bellini» come `sara`. */
-  characterNames?: Readonly<Record<string, string>>;
+  /** I personaggi dell'opera con la loro scheda: nome, chi è, aspetto, costumi. */
+  characters?: ReadonlyArray<CharacterContext>;
+  /** Luoghi già visti negli altri capitoli. */
+  locations?: readonly string[];
   /** Riassunto breve dei capitoli precedenti: contesto per la continuità, non testo da spogliare. */
   previously?: string | null;
   /** Quale parte del capitolo è, se è stato diviso. */
@@ -82,10 +109,24 @@ export function breakdownUserPrompt(script: string, options: UserPromptOptions =
   if (options.previously) {
     header.push(`Nei capitoli precedenti (solo contesto, da non spogliare):\n${options.previously}`);
   }
-  if (options.knownCharacters && options.knownCharacters.length > 0) {
-    const names = options.characterNames ?? {};
-    const list = options.knownCharacters.map((ref) => (names[ref] ? `${ref} (${names[ref]})` : ref));
-    header.push(`Personaggi già incontrati, da chiamare con questi ref se ricompaiono: ${list.join(", ")}.`);
+  // I personaggi: quelli con una scheda per esteso, gli altri solo per ref.
+  const sheets = new Map((options.characters ?? []).map((c) => [c.ref, c]));
+  const refs = [...new Set([...(options.characters ?? []).map((c) => c.ref), ...(options.knownCharacters ?? [])])].sort();
+  if (refs.length > 0) {
+    const lines = refs.map((ref) => {
+      const c = sheets.get(ref);
+      if (!c) return `- ${ref}`;
+      const parts = [c.summary, c.appearance].filter((p): p is string => Boolean(p && p.trim()));
+      const wardrobe = c.wardrobe && Object.keys(c.wardrobe).length > 0
+        ? `costumi: ${Object.entries(c.wardrobe).map(([name, text]) => (text ? `${name} (${text})` : name)).join(", ")}`
+        : null;
+      if (wardrobe) parts.push(wardrobe);
+      return `- ${ref}${c.name ? ` «${c.name}»` : ""}${parts.length > 0 ? `: ${parts.join("; ")}` : ""}`;
+    });
+    header.push(`Personaggi già incontrati, da chiamare con questi ref se ricompaiono:\n${lines.join("\n")}`);
+  }
+  if (options.locations && options.locations.length > 0) {
+    header.push(`Luoghi già visti (se la scena è lì, usa lo stesso nome): ${options.locations.join("; ")}.`);
   }
   const intro = header.length > 0 ? `${header.join("\n")}\n\n` : "";
   return `${intro}Spoglia questo capitolo. Le righe sono numerate per riferimento.\n\n${numbered}`;

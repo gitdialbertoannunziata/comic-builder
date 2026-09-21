@@ -2,6 +2,7 @@ import type { ProjectDoc } from "../document/projectDoc.js";
 import type { Chapter } from "../schema/chapters.js";
 import type { Page } from "../schema/page.js";
 import type { Scene } from "../schema/scenes.js";
+import { appearanceText } from "../compile/promptCompiler.js";
 
 /**
  * Un'opera ha più capitoli (§5.3: `chapters.json`). Qui le operazioni che
@@ -89,13 +90,23 @@ export function setChapterContent(
 }
 
 /**
- * Cosa sa il modello degli altri capitoli quando ne spoglia uno nuovo: i
- * personaggi già esistenti (ref e nome, perché «Sara» resti `sara`) e un
- * riassunto breve del capitolo precedente, per la continuità. Breve di
+ * Cosa sa il modello dell'opera quando spoglia un capitolo: i personaggi con
+ * la loro scheda (perché «Sara» resti `sara`, e la si riconosca anche se il
+ * testo la descrive senza nominarla), i costumi, i luoghi già visti, le
+ * regole della serie e un riassunto breve del capitolo precedente. Breve di
  * proposito: è contesto, non un secondo capitolo da spogliare.
  */
 export interface ChapterContext {
-  characters: Array<{ ref: string; name: string }>;
+  /**
+   * I personaggi dell'opera, con ciò che la scheda dice di loro: nome, chi
+   * sono, com'è fatto, i costumi. Serve a riconoscerli nel testo («la donna
+   * con la cicatrice» è sara) e a scegliere il costume giusto per ogni beat.
+   */
+  characters: Array<{ ref: string; name: string; summary?: string; appearance?: string; wardrobe?: Record<string, string> }>;
+  /** Luoghi già visti negli altri capitoli: si riusano con lo stesso nome. */
+  locations: string[];
+  /** Le regole della serie (`project.series_notes`). */
+  notes: string;
   previously: string | null;
 }
 
@@ -108,12 +119,28 @@ export function chapterContext(doc: ProjectDoc, chapterId: string, maxChars = 15
     }
   }
   Object.keys(doc.characters).forEach((r) => refs.add(r));
-  const characters = [...refs].sort().map((ref) => ({ ref, name: doc.characters[ref]?.name ?? "" }));
+  const characters = [...refs].sort().map((ref) => {
+    const sheet = doc.characters[ref];
+    if (!sheet) return { ref, name: "" };
+    const appearance = appearanceText(sheet);
+    return {
+      ref,
+      name: sheet.name,
+      ...(sheet.summary ? { summary: sheet.summary } : {}),
+      ...(appearance ? { appearance } : {}),
+      ...(Object.keys(sheet.wardrobe).length > 0 ? { wardrobe: sheet.wardrobe } : {}),
+    };
+  });
+
+  // I luoghi delle scene degli altri capitoli, senza ripetizioni.
+  const here = chapterSceneIds(doc, chapterId);
+  const locations = [...new Set(doc.scenes.scenes.filter((s) => !here.has(s.id)).map((s) => s.location.trim()).filter(Boolean))];
+  const notes = doc.project.series_notes.trim();
 
   const chapters = [...doc.chapters.chapters].sort((a, b) => a.number - b.number);
   const index = chapters.findIndex((c) => c.id === chapterId);
   const previous = [...chapters.slice(0, Math.max(0, index))].reverse().find((c) => c.pages.length > 0);
-  if (!previous) return { characters, previously: null };
+  if (!previous) return { characters, locations, notes, previously: null };
 
   const sceneIds = chapterSceneIds(doc, previous.id);
   const lines = doc.scenes.scenes
@@ -121,5 +148,5 @@ export function chapterContext(doc: ProjectDoc, chapterId: string, maxChars = 15
     .map((s) => `- ${s.title} (${s.location}, ${s.time_of_day}): ${s.beats.map((b) => b.summary).filter(Boolean).slice(0, 3).join(" ")}`);
   let text = `Capitolo ${previous.number} «${previous.title}»:\n${lines.join("\n")}`;
   if (text.length > maxChars) text = `${text.slice(0, maxChars - 1)}…`;
-  return { characters, previously: text };
+  return { characters, locations, notes, previously: text };
 }

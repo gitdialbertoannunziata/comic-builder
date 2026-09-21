@@ -46,10 +46,10 @@ function charactersForPanel(scene: Scene, beat: Beat, camera: Camera, empty: boo
   // Chi è davvero in vignetta, se lo spoglio lo dice; tutto il cast della
   // scena solo quando non lo dice. Prima valeva sempre il secondo caso, e un
   // campo lungo su un luogo vuoto chiedeva di disegnarci due persone.
-  const present: Array<{ ref: string; expression: string }> =
+  const present: Array<{ ref: string; expression: string; wardrobe?: string }> =
     beat.characters ?? scene.characters.map((ref) => ({ ref, expression: "" }));
 
-  return present.map(({ ref, expression }, index) => ({
+  return present.map(({ ref, expression, wardrobe }, index) => ({
     ref,
     weight: index === 0 ? 0.7 : 0.4,
     role: index === 0 ? ("lead" as const) : ("support" as const),
@@ -57,7 +57,8 @@ function charactersForPanel(scene: Scene, beat: Beat, camera: Camera, empty: boo
     // Vuota se lo spoglio non l'ha dedotta: un modello la ricava dal testo,
     // l'euristico no, e inventarla sarebbe peggio che lasciarla all'autore.
     expression,
-    wardrobe: "default",
+    // Il costume scelto dallo spoglio fra quelli della scheda, o quello di sempre.
+    wardrobe: wardrobe || "default",
   }));
 }
 

@@ -117,3 +117,17 @@ describe("Precedenza del tono (§6.1): beat → tabella → scena", () => {
     expect(cameraForBeat("dialogue").mood).toBe("calm");
   });
 });
+
+describe("Il costume scelto nel beat arriva al pannello", () => {
+  it("wardrobe del beat → wardrobe del personaggio in vignetta", () => {
+    const result = panels(
+      scene({}, [
+        { id: "b1", function: "establish", summary: "x", characters: [{ ref: "sara", expression: "", wardrobe: "notte" }] },
+        { id: "b2", function: "dialogue", summary: "x" },
+        { id: "b3", function: "close", summary: "x" },
+      ]),
+    );
+    expect(result[0]!.characters[0]).toMatchObject({ ref: "sara", wardrobe: "notte" });
+    expect(result[1]!.characters.every((c) => c.wardrobe === "default")).toBe(true);
+  });
+});

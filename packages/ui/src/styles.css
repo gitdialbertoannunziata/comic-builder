@@ -1536,3 +1536,12 @@ code {
 .art-frame input[type="range"] {
   flex: 1;
 }
+
+.breakdown-context textarea {
+  width: 100%;
+  font-size: 12px;
+}
+
+.breakdown-context .prompt-text {
+  max-height: 320px;
+}

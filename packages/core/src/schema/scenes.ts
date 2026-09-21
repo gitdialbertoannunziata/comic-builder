@@ -53,7 +53,14 @@ export const BeatSchema = z.object({
    * persone.
    */
   characters: z
-    .array(z.object({ ref: IdSchema, expression: z.string().default("") }))
+    .array(
+      z.object({
+        ref: IdSchema,
+        expression: z.string().default(""),
+        /** Costume della scheda personaggio (§5.1) per questo beat; `default` se è quello di sempre. */
+        wardrobe: z.string().default("default"),
+      }),
+    )
     .nullable()
     .default(null),
   /**
