@@ -9,6 +9,12 @@ import { BalloonEditor } from "./components/BalloonEditor.js";
 import { ValidationPanel } from "./components/ValidationPanel.js";
 import { SvgPreview } from "./components/SvgPreview.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
+import { ExportPanel } from "./components/ExportPanel.js";
+import { buildExportFiles, type ExportFormat } from "./exportPages.js";
+import { BrowserPlatformService } from "./platform/browserPlatform.js";
+
+/** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
+const platform = new BrowserPlatformService();
 
 function updatePanel(page: Page, panelId: string, updater: (panel: Panel) => Panel): Page {
   return { ...page, panels: page.panels.map((p) => (p.id === panelId ? updater(p) : p)) };
@@ -48,7 +54,16 @@ export function App() {
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
 
-  const { font, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
+  const [exportWidth, setExportWidth] = useState(1600);
+  const [exportScope, setExportScope] = useState<"page" | "chapter">("page");
+  const [exportDraft, setExportDraft] = useState(true);
+  const [destination, setDestination] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const { font, bytes: fontBytes, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
   const page = pages[pageIndex]!;
 
   async function onRunBreakdown() {
@@ -69,6 +84,36 @@ export function App() {
       setSummary(null);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function onChooseDestination() {
+    setDestination(await platform.chooseDestination());
+  }
+
+  async function onExport() {
+    if (!font || !fontBytes) return;
+    setExporting(true);
+    setExportError(null);
+    setExportResult(null);
+    try {
+      const files = await buildExportFiles({
+        pages,
+        scene,
+        font,
+        fontBytes,
+        format: exportFormat,
+        widthPx: exportWidth,
+        draft: exportDraft,
+        ...(exportScope === "page" ? { only: page } : {}),
+      });
+      if (files.length === 0) throw new Error("Nessun file da esportare.");
+      const outcome = await platform.write(files);
+      setExportResult(`${outcome.written} file in ${outcome.destination}.`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -226,9 +271,29 @@ export function App() {
           knownPanelIds={panelIds}
         />
 
-        <p className="eyebrow eyebrow-gap">Anteprima</p>
         {fontError && <p className="preview__note">Font non caricato: {fontError}</p>}
         {!font && !fontError && <p className="muted">Carico il font…</p>}
+        <p className="eyebrow eyebrow-gap">Export</p>
+        <ExportPanel
+          format={exportFormat}
+          onFormatChange={setExportFormat}
+          widthPx={exportWidth}
+          onWidthChange={setExportWidth}
+          scope={exportScope}
+          onScopeChange={setExportScope}
+          draft={exportDraft}
+          onDraftChange={setExportDraft}
+          destination={destination}
+          canChooseDestination={platform.canChooseDestination}
+          onChooseDestination={() => void onChooseDestination()}
+          onExport={() => void onExport()}
+          busy={exporting}
+          result={exportResult}
+          error={exportError}
+          pageCount={pages.length}
+        />
+
+        <p className="eyebrow eyebrow-gap">Anteprima</p>
         {preview && (
           <SvgPreview
             svg={preview.svg}

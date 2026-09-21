@@ -3,6 +3,8 @@ import { parseFont, type LoadedFont } from "@comic-builder/lettering";
 
 interface FontState {
   font: LoadedFont | null;
+  /** Byte grezzi: servono a incorporare il font nell'SVG esportato, dove il documento non è più a portata. */
+  bytes: Uint8Array | null;
   error: string | null;
 }
 
@@ -12,7 +14,7 @@ interface FontState {
  * anche da test Node, solo la sorgente dei byte cambia.
  */
 export function useFont(url: string): FontState {
-  const [state, setState] = useState<FontState>({ font: null, error: null });
+  const [state, setState] = useState<FontState>({ font: null, bytes: null, error: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -22,10 +24,10 @@ export function useFont(url: string): FontState {
         return res.arrayBuffer();
       })
       .then((buffer) => {
-        if (!cancelled) setState({ font: parseFont(buffer), error: null });
+        if (!cancelled) setState({ font: parseFont(buffer), bytes: new Uint8Array(buffer), error: null });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ font: null, error: err instanceof Error ? err.message : String(err) });
+        if (!cancelled) setState({ font: null, bytes: null, error: err instanceof Error ? err.message : String(err) });
       });
     return () => {
       cancelled = true;

@@ -49,7 +49,18 @@ export interface PreviewResult {
  * Stessa pipeline usata dai test golden del Core, qui eseguita nel browser
  * invece che in Node — nessun ramo di codice diverso fra i due.
  */
-export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): PreviewResult {
+export interface RenderPreviewOptions {
+  /** Spegne il layer bozza: nell'export finale un pannello non disegnato è vuoto, non un foglio di spoglio. */
+  draft?: boolean;
+}
+
+export function renderPreview(
+  page: Page,
+  font: LoadedFont,
+  scene?: Scene,
+  options: RenderPreviewOptions = {},
+): PreviewResult {
+  const draft = options.draft ?? true;
   // Le due validazioni insieme: coerenza strutturale (§7.1) e qualità
   // secondo l'Appendice A. Sono separate nel Core perché rispondono a
   // domande diverse, ma per chi corregge una pagina sono un elenco solo.
@@ -78,6 +89,7 @@ export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): Prev
     lettering: LETTERING,
     draftStyle: DRAFT_STYLE,
     target: TARGET,
+    draft,
   });
 
   const config: RenderConfig = {
@@ -91,6 +103,7 @@ export function renderPreview(page: Page, font: LoadedFont, scene?: Scene): Prev
     draftStyle: DRAFT_STYLE,
     baseFontSizePx: LETTERING.base_size_px,
     target: TARGET,
+    draft,
   };
 
   return {
