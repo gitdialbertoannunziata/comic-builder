@@ -1377,3 +1377,18 @@ code {
   width: 100%;
   min-width: 0;
 }
+
+/* Un'immagine trascinata sulla pagina: il pannello che la riceverà. */
+.preview__drop {
+  fill: var(--accent);
+  fill-opacity: 0.18;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-dasharray: 14 8;
+  pointer-events: none;
+}
+
+.preview--dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}

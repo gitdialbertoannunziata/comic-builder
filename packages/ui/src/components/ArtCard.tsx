@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
-import { artPathFor, extensionOf, isArtFile, type Command, type Panel, type ProjectStore } from "@comic-builder/core";
+import type { Command, Panel, ProjectStore } from "@comic-builder/core";
+import { importArt } from "../editor/importArt.js";
 
 interface Props {
   pageId: string;
   panel: Panel;
-  store: ProjectStore | null;
+  /** Dove vanno le immagini: la cartella del progetto, o la memoria della scheda finché non c'è. */
+  store: ProjectStore;
+  /** Vero se il progetto non è ancora in una cartella: le immagini stanno in memoria. */
+  inMemory: boolean;
   url: string | undefined;
   run: (command: Command) => boolean;
   scan: () => Promise<void>;
@@ -20,31 +24,18 @@ const STATUS_LABELS: Record<(typeof STATUSES)[number], string> = {
 };
 
 /**
- * L'arte del pannello. Due modi di collegarla, e il primo è quello di tutti
- * i giorni: esportare dal proprio programma in `art/` col nome del pannello,
- * e la pagina si aggiorna da sola. Il secondo, qui, copia un file qualsiasi
- * in `art/` con il nome giusto.
+ * L'arte del pannello. Tre modi di collegarla: caricarla da qui, trascinarla
+ * sul pannello nella pagina, o esportarla dal proprio programma in `art/`
+ * col nome del pannello (la pagina si aggiorna da sola). Funziona anche
+ * prima di scegliere una cartella: l'immagine resta in memoria, e al
+ * salvataggio viene copiata in `art/`.
  */
-export function ArtCard({ pageId, panel, store, url, run, scan }: Props) {
+export function ArtCard({ pageId, panel, store, inMemory, url, run, scan }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function importFile(file: File) {
-    setError(null);
-    if (!store) return;
-    if (!isArtFile(file.name)) {
-      setError("Formati accettati: PNG, JPEG, WebP. Esporta da lì il file sorgente (PSD, CLIP, KRA).");
-      return;
-    }
-    const path = artPathFor(panel.id, extensionOf(file.name));
-    await store.writeBytes(path, new Uint8Array(await file.arrayBuffer()));
-    // Collegamento esplicito: vince su qualunque collegamento per nome precedente.
-    run({
-      type: "panel.update",
-      pageId,
-      panelId: panel.id,
-      patch: { art: { source: path, status: panel.art.status === "missing" ? "sketch" : panel.art.status, sha: null } },
-    });
+    setError(await importArt(store, run, pageId, panel, file));
     await scan();
   }
 
@@ -64,12 +55,7 @@ export function ArtCard({ pageId, panel, store, url, run, scan }: Props) {
         )}
       </p>
 
-      {!store ? (
-        <p className="field__hint">
-          L'arte vive nella cartella <code>art/</code> del progetto: salva prima il progetto in una cartella.
-        </p>
-      ) : (
-        <div className="stack">
+      <div className="stack">
           {panel.art.source ? (
             <div className="art-row">
               {url ? <img className="art-thumb" src={url} alt="" /> : <span className="art-thumb art-thumb--missing">?</span>}
@@ -80,13 +66,14 @@ export function ArtCard({ pageId, panel, store, url, run, scan }: Props) {
             </div>
           ) : (
             <p className="field__hint">
-              Esporta il disegno in <code>art/{panel.id}.png</code> (o .jpg, .webp): si collega da solo.
+              Carica un'immagine, oppure trascinala sul pannello nella pagina.
+              {inMemory ? " Resta in questa scheda finché non salvi il progetto in una cartella." : <> Se la esporti tu in <code>art/{panel.id}.png</code>, si collega da sola.</>}
             </p>
           )}
 
           <div className="tool-row">
             <button type="button" className="btn btn--small" onClick={() => input.current?.click()}>
-              {panel.art.source ? "Sostituisci…" : "Collega arte…"}
+              {panel.art.source ? "Sostituisci l'immagine…" : "Carica immagine…"}
             </button>
             <input
               ref={input}
@@ -116,8 +103,7 @@ export function ArtCard({ pageId, panel, store, url, run, scan }: Props) {
             </label>
           </div>
           {error && <p className="issue issue--error">{error}</p>}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -103,3 +103,28 @@ export class MemoryProjectStore implements ProjectStore {
     return [...this.files.keys()].sort();
   }
 }
+
+/**
+ * Copia i file binari del progetto (arte, riferimenti dei personaggi) da uno
+ * store all'altro, sottocartelle comprese. Serve quando un progetto nato in
+ * memoria — le immagini caricate prima di scegliere una cartella — viene
+ * salvato su disco: i documenti li scrive `saveProject`, questi no.
+ */
+export async function copyTree(from: ProjectStore, to: ProjectStore, directory: string): Promise<string[]> {
+  const copied: string[] = [];
+  for (const entry of await from.list(directory)) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.kind === "directory") {
+      copied.push(...(await copyTree(from, to, path)));
+      continue;
+    }
+    const bytes = await from.readBytes(path);
+    if (!bytes) continue;
+    await to.writeBytes(path, bytes);
+    copied.push(path);
+  }
+  return copied;
+}
+
+/** Le cartelle di file binari che un progetto porta con sé (§5.1): arte sorgente e riferimenti dei personaggi. */
+export const ASSET_DIRECTORIES = ["art", "characters"] as const;

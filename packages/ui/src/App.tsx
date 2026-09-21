@@ -12,6 +12,7 @@ import { PanelTools } from "./components/PanelTools.js";
 import { PageList } from "./components/PageList.js";
 import { ArtCard } from "./components/ArtCard.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
+import { importArt, panelForFileName } from "./editor/importArt.js";
 import { StripView } from "./components/StripView.js";
 import { RevisionsPanel } from "./components/RevisionsPanel.js";
 import { PromptCard } from "./components/PromptCard.js";
@@ -63,7 +64,7 @@ function worstLevelByPanel(issues: ValidationIssue[]): Map<string, ValidationIss
 export function App() {
   const editor = useProjectEditor(initialDoc);
   const { doc, run, endGesture } = editor;
-  const art = useArtWatcher(editor.store, doc, run, endGesture);
+  const art = useArtWatcher(editor.assets, doc, run, endGesture);
   const chapter = doc.chapters.chapters[0]!;
   const pages = chapter.pages.map((id) => doc.pages[id]).filter((p): p is Page => p !== undefined);
 
@@ -204,6 +205,7 @@ export function App() {
 
   const [selectedBalloonId, setSelectedBalloonId] = useState<string | null>(null);
   const [view, setView] = useState<"page" | "scroll">("page");
+  const [dropNote, setDropNote] = useState<string | null>(null);
   const stripTargetId = doc.project.targets.find((t) => t.kind === "strip")?.id ?? null;
 
   // Il contesto della striscia cambia solo quando cambia il documento: la
@@ -292,6 +294,34 @@ export function App() {
     return lintCharacters(doc).filter((i) => i.path.startsWith(`pages[${page.id}]`) || (i.code === "content.no-character-sheet" && [...onPage].some((r) => i.path === `characters[${r}]`)));
   }, [doc, page]);
   const selectedBrief = briefs?.list.find((b) => b.panelId === selectedPanel.id) ?? null;
+
+  /**
+   * Immagini trascinate sulla pagina. Una sola va al pannello su cui cade;
+   * più d'una, ognuna al pannello col suo nome (`ep001-p001-03.png`) — il
+   * modo di caricare una pagina intera in un gesto.
+   */
+  async function dropArt(files: File[], panelId: string | null) {
+    const problems: string[] = [];
+    let linked = 0;
+    const single = files.length === 1 && panelId ? page.panels.find((p) => p.id === panelId) : undefined;
+    for (const file of files) {
+      const target = single ? { pageId: page.id, panel: single } : panelForFileName(doc, file.name);
+      if (!target) {
+        problems.push(`«${file.name}» non ha il nome di un pannello`);
+        continue;
+      }
+      const problem = await importArt(editor.assets, run, target.pageId, target.panel, file);
+      if (problem) problems.push(problem);
+      else linked++;
+    }
+    await art.scan();
+    if (single) selectPanel(single.id);
+    if (problems.length > 0) {
+      setDropNote(`${linked} immagini collegate. ${problems.join("; ")}${files.length > 1 ? ". Con più file insieme, ognuno va al pannello col suo nome." : ""}`);
+    } else {
+      setDropNote(linked > 1 ? `${linked} immagini collegate ai loro pannelli.` : null);
+    }
+  }
 
   /** Digitare in un campo è un gesto: un passo di undo per campo, chiuso al blur. */
   function patchPanel(field: "action" | "setting", value: string) {
@@ -400,6 +430,16 @@ export function App() {
             </div>
           </div>
 
+          <ArtCard
+            pageId={page.id}
+            panel={selectedPanel}
+            store={editor.assets}
+            inMemory={editor.store === null}
+            url={art.urls.get(selectedPanel.id)}
+            run={run}
+            scan={art.scan}
+          />
+
           <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
 
           <PanelCharacters pageId={page.id} panel={selectedPanel} refs={refs} sheets={doc.characters} run={run} endGesture={endGesture} />
@@ -416,7 +456,6 @@ export function App() {
             />
           )}
 
-          <ArtCard pageId={page.id} panel={selectedPanel} store={editor.store} url={art.urls.get(selectedPanel.id)} run={run} scan={art.scan} />
 
           <div className="card">
             <p className="card__title">camera</p>
@@ -515,12 +554,14 @@ export function App() {
             run={run}
             endGesture={endGesture}
             staleNote={schemaIssues.length > 0}
+            onDropFiles={(files, panelId) => void dropArt(files, panelId)}
           />
         )}
+        {view === "page" && dropNote && <p className="issue issue--info">{dropNote}</p>}
         {view === "page" && (
           <p className="field__hint">
             {pageTargetId === primaryTarget.id
-              ? "Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · Ctrl+Z annulla."
+              ? "Clic su un pannello per selezionarlo · trascina balloon, punta della coda e gutter · trascina un'immagine su un pannello per dargliela · Ctrl+Z annulla."
               : `In ${pageTargetId} si spostano solo i balloon, e solo per questo formato. Griglia e pannelli si ritoccano sul formato principale.`}
           </p>
         )}
@@ -536,7 +577,7 @@ export function App() {
         {fontError && <p className="preview__note">Font non caricato: {fontError}</p>}
         {!font && !fontError && <p className="muted">Carico il font…</p>}
         <p className="eyebrow eyebrow-gap">Personaggi</p>
-        <CharactersPanel doc={doc} store={editor.store} run={run} endGesture={endGesture} />
+        <CharactersPanel doc={doc} store={editor.assets} run={run} endGesture={endGesture} />
 
         <p className="eyebrow eyebrow-gap">Revisioni</p>
         <RevisionsPanel

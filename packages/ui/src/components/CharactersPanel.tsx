@@ -3,7 +3,8 @@ import { appearanceText, characterRefs, isArtFile, type CharacterPatch, type Cha
 
 interface Props {
   doc: ProjectDoc;
-  store: ProjectStore | null;
+  /** Dove vanno le immagini: la cartella del progetto, o la memoria della scheda finché non c'è. */
+  store: ProjectStore;
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
 }
@@ -28,11 +29,10 @@ function completeness(sheet: CharacterSheet | undefined): "none" | "partial" | "
 const COMPLETENESS_LABEL = { none: "senza scheda", partial: "scheda incompleta", full: "scheda completa" } as const;
 
 /** Anteprime delle immagini di riferimento, lette dalla cartella del progetto. */
-function useReferenceUrls(store: ProjectStore | null, paths: readonly string[]): Map<string, string> {
+function useReferenceUrls(store: ProjectStore, paths: readonly string[]): Map<string, string> {
   const [urls, setUrls] = useState(new Map<string, string>());
   const key = paths.join("\n");
   useEffect(() => {
-    if (!store) return;
     let alive = true;
     const created: string[] = [];
     void (async () => {
@@ -73,7 +73,7 @@ export function CharactersPanel({ doc, store, run, endGesture }: Props) {
   const upsert = (patch: CharacterPatch, field: string) => ref && run({ type: "character.upsert", ref, patch }, { gesture: `${ref}:${field}` });
 
   async function addReference(file: File) {
-    if (!store || !ref) return;
+    if (!ref) return;
     const path = `characters/${ref}/${file.name.replace(/[^\w.-]+/g, "_")}`;
     await store.writeBytes(path, new Uint8Array(await file.arrayBuffer()));
     run({ type: "character.upsert", ref, patch: { references: [...(sheet?.references ?? []), { path, note: "" }] } });
@@ -178,9 +178,7 @@ export function CharactersPanel({ doc, store, run, endGesture }: Props) {
             </div>
 
             <span className="field__label">immagini di riferimento</span>
-            {!store ? (
-              <p className="field__hint">Le immagini vivono nella cartella del progetto: salva prima il progetto in una cartella.</p>
-            ) : (
+            {(
               <>
                 <div className="reference-grid">
                   {(sheet?.references ?? []).map((r) => (

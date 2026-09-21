@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   anchorFor,
   balloonBox,
@@ -32,6 +32,8 @@ interface Props {
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
   staleNote?: boolean;
+  /** Immagini trascinate sulla pagina: con il pannello su cui sono cadute, se ce n'è uno. */
+  onDropFiles?: (files: File[], panelId: string | null) => void;
 }
 
 type Drag =
@@ -54,11 +56,12 @@ export function PageEditor(props: Props) {
   const forTarget = primary ? {} : { target: targetId };
   const overlay = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [dropPanel, setDropPanel] = useState<string | null | undefined>(undefined);
 
   if (!svg) return <p className="muted">Nessuna anteprima: il lay-out non è in modalità "page".</p>;
 
   /** Dal puntatore alle coordinate della pagina, qualunque sia lo zoom dell'anteprima. */
-  function toPage(event: ReactPointerEvent): { x: number; y: number } {
+  function toPage(event: { clientX: number; clientY: number }): { x: number; y: number } {
     const svgEl = overlay.current!;
     const matrix = svgEl.getScreenCTM()!.inverse();
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
@@ -96,6 +99,17 @@ export function PageEditor(props: Props) {
     }
   }
 
+  /** Il pannello sotto il cursore durante un trascinamento di file. */
+  function panelAt(event: ReactDragEvent): string | null {
+    const p = toPage(event);
+    for (const [id, box] of boxes) {
+      if (p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height) return id;
+    }
+    return null;
+  }
+
+  const carriesFiles = (event: ReactDragEvent) => [...event.dataTransfer.types].includes("Files");
+
   function onUp() {
     if (!drag) return;
     setDrag(null);
@@ -123,7 +137,25 @@ export function PageEditor(props: Props) {
   return (
     <>
       {props.staleNote && <p className="preview__note">Mostra l'ultima versione valida: le modifiche non valide non sono applicate.</p>}
-      <div className={`preview${drag ? " preview--dragging" : ""}`}>
+      <div
+        className={`preview${drag ? " preview--dragging" : ""}${dropPanel !== undefined ? " preview--dropping" : ""}`}
+        onDragOver={(e) => {
+          if (!props.onDropFiles || !carriesFiles(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDropPanel(panelAt(e));
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropPanel(undefined);
+        }}
+        onDrop={(e) => {
+          if (!props.onDropFiles || !carriesFiles(e)) return;
+          e.preventDefault();
+          const target = panelAt(e);
+          setDropPanel(undefined);
+          props.onDropFiles([...e.dataTransfer.files], target);
+        }}
+      >
         <div className="preview__page" dangerouslySetInnerHTML={{ __html: svg }} />
         <svg
           ref={overlay}
@@ -147,6 +179,9 @@ export function PageEditor(props: Props) {
             </rect>
           ))}
           {selected && <rect className="preview__selected" x={selected.x} y={selected.y} width={selected.width} height={selected.height} />}
+          {dropPanel && boxes.get(dropPanel) && (
+            <rect className="preview__drop" x={boxes.get(dropPanel)!.x} y={boxes.get(dropPanel)!.y} width={boxes.get(dropPanel)!.width} height={boxes.get(dropPanel)!.height} />
+          )}
 
           {handles.map((h, i) => (
             <line

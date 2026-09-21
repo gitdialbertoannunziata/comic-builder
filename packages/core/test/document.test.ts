@@ -206,3 +206,20 @@ describe("Nessun documento non valido su disco", () => {
     expect(store.writes).toEqual([]);
   });
 });
+
+describe("Immagini caricate prima di scegliere una cartella", () => {
+  it("copyTree porta arte e riferimenti, sottocartelle comprese; i documenti no", async () => {
+    const { copyTree } = await import("../src/document/store.js");
+    const memory = new MemoryProjectStore("scheda", {
+      "art/ep001-p001-01.png": new Uint8Array([1, 2]),
+      "characters/sara/fronte.png": new Uint8Array([3]),
+      "characters/sara.json": "{}",
+      "project.json": "{}",
+    });
+    const disk = new MemoryProjectStore("disco");
+    const copied = [...(await copyTree(memory, disk, "art")), ...(await copyTree(memory, disk, "characters"))];
+    expect(copied.sort()).toEqual(["art/ep001-p001-01.png", "characters/sara.json", "characters/sara/fronte.png"]);
+    expect(await disk.readBytes("characters/sara/fronte.png")).toEqual(new Uint8Array([3]));
+    expect(disk.paths()).not.toContain("project.json");
+  });
+});

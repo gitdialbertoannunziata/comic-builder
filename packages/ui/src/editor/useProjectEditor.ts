@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acquireLock,
+  ASSET_DIRECTORIES,
+  copyTree,
+  MemoryProjectStore,
   canRedo,
   canUndo,
   CommandError,
@@ -56,8 +59,14 @@ export interface ProjectEditor {
   doc: ProjectDoc;
   history: History;
   folder: string | null;
-  /** La cartella del progetto, se aperta: serve a chi legge e scrive oltre ai documenti (l'arte). */
+  /** La cartella del progetto su disco, se scelta. */
   store: ProjectStore | null;
+  /**
+   * Dove stanno le immagini (arte, riferimenti): la cartella se c'è,
+   * altrimenti la memoria di questa scheda. Si può caricare un'immagine
+   * subito, senza prima scegliere una cartella; al salvataggio la si copia.
+   */
+  assets: ProjectStore;
   status: SaveStatus;
   /** Esiti dell'apertura (pagine mancanti, file orfani, salvataggio recuperato). */
   loadIssues: ValidationIssue[];
@@ -81,6 +90,7 @@ export interface ProjectEditor {
 export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   const [history, setHistory] = useState<History>(() => createHistory(initial));
   const [store, setStore] = useState<ProjectStore | null>(null);
+  const [memory] = useState(() => new MemoryProjectStore("questa scheda"));
   const [saved, setSaved] = useState<ProjectDoc | null>(null);
   const [status, setStatus] = useState<SaveStatus>({ kind: "memory" });
   const [loadIssues, setLoadIssues] = useState<ValidationIssue[]>([]);
@@ -244,6 +254,9 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       if (!(await claim(next))) return;
       const doc = historyRef.current.present;
       setStatus({ kind: "saving" });
+      // Prima le immagini (dalla memoria, o dalla cartella di prima), poi i
+      // documenti: così su disco vince sempre la versione salvata dei documenti.
+      for (const directory of ASSET_DIRECTORIES) await copyTree(store ?? memory, next, directory);
       await saveProject(next, doc, null);
       if (store) await releaseLock(store, session);
       setStore(next);
@@ -260,6 +273,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     history,
     folder: store?.label ?? null,
     store,
+    assets: store ?? memory,
     status,
     loadIssues,
     notice,
