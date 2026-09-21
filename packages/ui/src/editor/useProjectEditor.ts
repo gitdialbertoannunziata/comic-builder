@@ -56,6 +56,8 @@ export interface ProjectEditor {
   doc: ProjectDoc;
   history: History;
   folder: string | null;
+  /** La cartella del progetto, se aperta: serve a chi legge e scrive oltre ai documenti (l'arte). */
+  store: ProjectStore | null;
   status: SaveStatus;
   /** Esiti dell'apertura (pagine mancanti, file orfani, salvataggio recuperato). */
   loadIssues: ValidationIssue[];
@@ -257,6 +259,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     doc: history.present,
     history,
     folder: store?.label ?? null,
+    store,
     status,
     loadIssues,
     notice,

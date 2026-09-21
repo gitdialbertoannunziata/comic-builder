@@ -68,6 +68,24 @@ export interface ExportContext {
   measure: MeasureFits;
   /** Il layer bozza nell'export: di norma spento (§5.5). */
   draft?: boolean;
+  /**
+   * Arte per pannello, già in una forma che il rasterizzatore sa leggere
+   * (data URI nel browser, percorso o data URI in Node). Un pannello che
+   * dichiara arte assente da qui è un errore d'export, non un pannello vuoto.
+   */
+  art?: ReadonlyMap<string, string>;
+}
+
+function missingArtIssues(ctx: ExportContext, pages: readonly Page[], targetId: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const page of pages) {
+    for (const panel of page.panels) {
+      if (panel.art.source && !ctx.art?.has(panel.id)) {
+        issues.push(issue("error", "export.missing-art", `${panel.id}: l'arte ${panel.art.source} non è stata trovata`, `targets[${targetId}].${panel.id}`));
+      }
+    }
+  }
+  return issues;
 }
 
 function extension(format: ImageFormat): string {
@@ -100,7 +118,7 @@ function planPages(ctx: ExportContext, target: PageTarget, folder: string): Targ
     // una tavola disegnata per il digitale è la stessa tavola in stampa.
     const artTarget = page.panels.some((p) => p.render[target.id]) ? target.id : primary.id;
     const fits = ctx.measure({ page, boxes, lettering: styles.lettering, draftStyle: styles.draftStyle, target: artTarget, draft });
-    const config = pageRenderConfig(geometry, styles, { draft, artTarget });
+    const config = { ...pageRenderConfig(geometry, styles, { draft, artTarget }), ...(ctx.art ? { art: ctx.art } : {}) };
     return {
       name: `${folder}${names[i]!}`,
       svg: renderPageSvg(page, boxes, fits, config),
@@ -112,7 +130,7 @@ function planPages(ctx: ExportContext, target: PageTarget, folder: string): Targ
     };
   });
 
-  return { targetId: target.id, kind: "page", jobs, files: [], issues: [] };
+  return { targetId: target.id, kind: "page", jobs, files: [], issues: missingArtIssues(ctx, pages, target.id) };
 }
 
 function planRegions(ctx: ExportContext, target: Extract<OutputTarget, { kind: "regions" }>, folder: string): TargetExportPlan {
@@ -175,7 +193,7 @@ function planStrip(ctx: ExportContext, target: StripTarget, folder: string): Tar
     overlapPx: target.overlap_px,
   });
 
-  const issues: ValidationIssue[] = [];
+  const issues: ValidationIssue[] = missingArtIssues(ctx, pages, target.id);
   for (const cut of plan.cuts) {
     const path = `targets[${target.id}].cuts[${cut.y}]`;
     if (cut.kind === "obstacle") {
@@ -203,7 +221,7 @@ function planStrip(ctx: ExportContext, target: StripTarget, folder: string): Tar
     letteringScale: strip.letteringScale,
     color: "srgb",
   };
-  const stripConfig = pageRenderConfig(stripGeometry, styles, { draft, artTarget: primary.id });
+  const stripConfig = { ...pageRenderConfig(stripGeometry, styles, { draft, artTarget: primary.id }), ...(ctx.art ? { art: ctx.art } : {}) };
 
   const width = Math.max(3, String(plan.slices.length).length);
   const ext = extension(target.format);

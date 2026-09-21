@@ -59,4 +59,11 @@ export interface RenderConfig {
    * non può mai disallinearsi fra due immagini consecutive.
    */
   viewport?: { x: number; y: number; width: number; height: number };
+  /**
+   * Immagine dell'arte per pannello: id → riferimento già risolto dall'host
+   * (blob URL nell'anteprima, data URI nell'export, percorso in Node). Il
+   * documento conserva solo il percorso in `art/` (§5.8: niente pixel nel
+   * JSON); come arrivarci lo sa chi renderizza, non il Core.
+   */
+  art?: ReadonlyMap<string, string>;
 }

@@ -10,6 +10,8 @@ import { ValidationPanel } from "./components/ValidationPanel.js";
 import { PageEditor } from "./components/PageEditor.js";
 import { PanelTools } from "./components/PanelTools.js";
 import { PageList } from "./components/PageList.js";
+import { ArtCard } from "./components/ArtCard.js";
+import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { ExportPanel } from "./components/ExportPanel.js";
 import { exportChapter, type ExportOutcome } from "./exportPages.js";
@@ -54,6 +56,7 @@ function worstLevelByPanel(issues: ValidationIssue[]): Map<string, ValidationIss
 export function App() {
   const editor = useProjectEditor(initialDoc);
   const { doc, run, endGesture } = editor;
+  const art = useArtWatcher(editor.store, doc, run, endGesture);
   const chapter = doc.chapters.chapters[0]!;
   const pages = chapter.pages.map((id) => doc.pages[id]).filter((p): p is Page => p !== undefined);
 
@@ -152,6 +155,7 @@ export function App() {
         fontBytes,
         choices,
         draft: exportDraft,
+        art: await art.dataUris(doc),
         onProgress: setExportProgress,
       });
       if (outcome.files.length === 0) throw new Error("Nessun file da esportare.");
@@ -174,8 +178,8 @@ export function App() {
 
   const preview = useMemo(() => {
     if (!font || !parsed.success) return null;
-    return renderPreview(parsed.data, font, scene);
-  }, [parsed, font, scene]);
+    return renderPreview(parsed.data, font, scene, { art: art.urls });
+  }, [parsed, font, scene, art.urls]);
 
   const issues = preview?.issues ?? [];
   const badges = useMemo(() => worstLevelByPanel(issues), [issues]);
@@ -309,6 +313,8 @@ export function App() {
           </div>
 
           <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
+
+          <ArtCard pageId={page.id} panel={selectedPanel} store={editor.store} url={art.urls.get(selectedPanel.id)} run={run} scan={art.scan} />
 
           <div className="card">
             <p className="card__title">camera</p>

@@ -32,6 +32,8 @@ export interface ExportInput {
   choices: readonly ExportChoice[];
   /** Il layer bozza (§5.5): spento, un pannello senza arte esce vuoto. */
   draft: boolean;
+  /** Arte per pannello come data URI: dentro un'immagine SVG i blob esterni non si caricano. */
+  art?: ReadonlyMap<string, string>;
   onProgress?: (message: string) => void;
 }
 
@@ -86,6 +88,7 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
     styles,
     measure: measureWith(input.font),
     draft: input.draft,
+    ...(input.art ? { art: input.art } : {}),
   };
 
   const files: ExportFile[] = [];

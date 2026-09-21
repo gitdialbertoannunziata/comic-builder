@@ -44,6 +44,8 @@ export interface PreviewResult {
 export interface RenderPreviewOptions {
   /** Spegne il layer bozza: nell'export finale un pannello non disegnato è vuoto, non un foglio di spoglio. */
   draft?: boolean;
+  /** Arte per pannello (blob URL): il documento sa solo il percorso, l'host sa dove sono i byte. */
+  art?: ReadonlyMap<string, string>;
 }
 
 export function renderPreview(
@@ -89,6 +91,7 @@ export function renderPreview(
     baseFontSizePx: LETTERING.base_size_px,
     target: TARGET,
     draft,
+    ...(options.art ? { art: options.art } : {}),
   };
 
   return {

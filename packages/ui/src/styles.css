@@ -950,3 +950,42 @@ code {
   width: 32px;
   height: 48px;
 }
+
+/* Arte del pannello. */
+.art-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.art-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  flex: none;
+}
+
+.art-thumb--missing {
+  display: grid;
+  place-items: center;
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.art-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  word-break: break-all;
+  font-size: 11px;
+}
+
+.field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}

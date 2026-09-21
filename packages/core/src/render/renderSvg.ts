@@ -145,8 +145,34 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
   return `${tail}${shape}${text}`;
 }
 
+/**
+ * L'arte riempie il pannello e si ritaglia sul suo bordo ("cover"): il
+ * pannello è la finestra, e un disegno fatto al rapporto giusto (§7.4, ramo
+ * manuale) ci entra esatto. Se il documento dichiara un'arte che l'host non
+ * ha trovato, in bozza lo si dice sul pannello invece di lasciarlo vuoto in
+ * silenzio; nell'export finale resta vuoto, e lo segnala il piano d'export.
+ */
+function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
+  if (!panel.art.source) return "";
+  const href = config.art?.get(panel.id);
+  const clipId = `cb-clip-${panel.id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  const radius = panel.border.radius * (config.strokeScale ?? 1);
+  if (href) {
+    return (
+      `<clipPath id="${clipId}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}"/></clipPath>` +
+      `<image href="${escapeXml(href)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`
+    );
+  }
+  if (!(config.draft ?? true)) return "";
+  const size = config.baseFontSizePx * 0.6;
+  return (
+    `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="#fdf3e0"/>` +
+    `<text x="${box.x + box.width / 2}" y="${box.y + box.height / 2}" font-family="${escapeXml(config.fontFamily)}" font-size="${size}" text-anchor="middle" fill="#8a5a00">arte non trovata: ${escapeXml(panel.art.source)}</text>`
+  );
+}
+
 function renderPanel(panel: Panel, box: Box, fits: Map<string, LetteringFit>, config: RenderConfig): string {
-  let out = "";
+  let out = renderPanelArt(panel, box, config);
 
   // Layer bozza sotto tutto il resto: è il fondo del pannello finché l'arte
   // non arriva, quindi bordo e balloon gli vanno sopra.
