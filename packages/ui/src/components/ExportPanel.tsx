@@ -1,5 +1,6 @@
 import { describeTarget, type ExportOutcome } from "../exportPages.js";
 import { project } from "../project.js";
+import { targetLabel } from "../labels.js";
 
 interface Props {
   choices: ReadonlySet<string>;
@@ -63,7 +64,7 @@ export function ExportPanel({
             return (
               <label key={key} className="target">
                 <input type="checkbox" checked={choices.has(key)} onChange={() => toggle(key)} />
-                <span className="target__name">{target.id}</span>
+                <span className="target__name" title={target.id}>{targetLabel(target.id)}</span>
                 <span className="target__spec">{describeTarget(target)}</span>
               </label>
             );

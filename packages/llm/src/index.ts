@@ -5,4 +5,5 @@ export * from "./mockService.js";
 export * from "./ollamaService.js";
 export * from "./anthropicService.js";
 export * from "./deepseekService.js";
+export * from "./openaiService.js";
 export * from "./breakdown.js";

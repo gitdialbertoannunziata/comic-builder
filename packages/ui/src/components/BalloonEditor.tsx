@@ -1,4 +1,5 @@
 import type { Balloon, TextRun, Tail } from "@comic-builder/core";
+import { Section } from "./Section.js";
 
 interface Props {
   balloon: Balloon;
@@ -12,6 +13,9 @@ interface Props {
   onAnchor: (anchor: { x: number; y: number }) => void;
   onTail: (tail: Tail) => void;
   onRemove: () => void;
+  /** È il balloon scelto sulla pagina: si distingue dagli altri. */
+  selected?: boolean;
+  onSelect?: () => void;
   /** Fine di un'interazione continua (digitazione, trascinamento): chiude il passo di undo. */
   onCommit: () => void;
 }
@@ -25,16 +29,16 @@ const round = (v: number) => Math.round(v * 1000) / 1000;
  * successivo. Ancora e coda si spostano anche trascinando sulla pagina;
  * i numeri qui servono alla regolazione fine.
  */
-export function BalloonEditor({ balloon, shown, target, onText, onAnchor, onTail, onScale, onReset, onRemove, onCommit }: Props) {
+export function BalloonEditor({ balloon, selected, onSelect, shown, target, onText, onAnchor, onTail, onScale, onReset, onRemove, onCommit }: Props) {
   const plainText = balloon.text.map((r) => r.t).join("");
   const tailTarget = shown.tail.target ?? { x: 0.5, y: 0.5 };
   const tuned = target !== null && balloon.per_target[target] !== undefined;
 
   return (
-    <div className="card">
+    <div id={`balloon-${balloon.id}`} className={`card${selected ? " card--selected" : ""}`} onFocus={onSelect}>
       <p className="card__title card__title--row">
-        <span>
-          {balloon.id} · {balloon.type}
+        <span title={balloon.id}>
+          {balloon.type}
           {balloon.speaker.ref ? ` · ${balloon.speaker.ref}` : " · fuori campo"}
           {balloon.rev > 0 && <span className="muted"> · rev {balloon.rev}</span>}
         </span>
@@ -73,39 +77,58 @@ export function BalloonEditor({ balloon, shown, target, onText, onAnchor, onTail
           />
         </label>
 
-        <div className="grid-2">
-          <label className="field">
-            <span className="field__label">anchor x</span>
-            <input type="number" step={0.01} min={0} max={1} value={round(shown.anchor.x)} onChange={(e) => onAnchor({ ...shown.anchor, x: Number(e.target.value) })} onBlur={onCommit} />
-          </label>
-          <label className="field">
-            <span className="field__label">anchor y</span>
-            <input type="number" step={0.01} min={0} max={1} value={round(shown.anchor.y)} onChange={(e) => onAnchor({ ...shown.anchor, y: Number(e.target.value) })} onBlur={onCommit} />
-          </label>
-          <label className="field">
-            <span className="field__label">coda x</span>
-            <input type="number" step={0.01} min={0} max={1} value={round(tailTarget.x)} onChange={(e) => onTail({ mode: "manual", target: { ...tailTarget, x: Number(e.target.value) } })} onBlur={onCommit} />
-          </label>
-          <label className="field">
-            <span className="field__label">coda y</span>
-            <input type="number" step={0.01} min={0} max={1} value={round(tailTarget.y)} onChange={(e) => onTail({ mode: "manual", target: { ...tailTarget, y: Number(e.target.value) } })} onBlur={onCommit} />
-          </label>
-          <label className="field">
-            <span className="field__label">corpo{target ? ` in ${target}` : ""}</span>
-            <input
-              type="number"
-              step={0.05}
-              min={0.5}
-              max={2}
-              value={shown.font_scale}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                if (value > 0) onScale(value);
-              }}
-              onBlur={onCommit}
-            />
-          </label>
-        </div>
+        <label className="field field--inline">
+          <span className="field__label">corpo{target ? ` in ${target}` : ""}</span>
+          <input
+            type="number"
+            step={0.05}
+            min={0.5}
+            max={2}
+            value={shown.font_scale}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (value > 0) onScale(value);
+            }}
+            onBlur={onCommit}
+          />
+        </label>
+
+        <Section id="balloon-fine" title="posizione e coda, in numeri">
+          <div className="grid-2">
+            <label className="field">
+              <span className="field__label">anchor x</span>
+              <input type="number" step={0.01} min={0} max={1} value={round(shown.anchor.x)} onChange={(e) => onAnchor({ ...shown.anchor, x: Number(e.target.value) })} onBlur={onCommit} />
+            </label>
+            <label className="field">
+              <span className="field__label">anchor y</span>
+              <input type="number" step={0.01} min={0} max={1} value={round(shown.anchor.y)} onChange={(e) => onAnchor({ ...shown.anchor, y: Number(e.target.value) })} onBlur={onCommit} />
+            </label>
+            <label className="field">
+              <span className="field__label">coda x</span>
+              <input
+                type="number"
+                step={0.01}
+                min={0}
+                max={1}
+                value={round(tailTarget.x)}
+                onChange={(e) => onTail({ mode: "manual", target: { ...tailTarget, x: Number(e.target.value) } })}
+                onBlur={onCommit}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">coda y</span>
+              <input
+                type="number"
+                step={0.01}
+                min={0}
+                max={1}
+                value={round(tailTarget.y)}
+                onChange={(e) => onTail({ mode: "manual", target: { ...tailTarget, y: Number(e.target.value) } })}
+                onBlur={onCommit}
+              />
+            </label>
+          </div>
+        </Section>
       </div>
     </div>
   );

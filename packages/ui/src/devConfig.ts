@@ -19,6 +19,9 @@ interface DevEnv {
   VITE_OLLAMA_MODEL?: string;
   VITE_DEEPSEEK_API_KEY?: string;
   VITE_DEEPSEEK_MODEL?: string;
+  VITE_OPENAI_API_KEY?: string;
+  VITE_OPENAI_MODEL?: string;
+  VITE_OPENAI_BASE_URL?: string;
 }
 
 function devEnv(): DevEnv {
@@ -35,12 +38,17 @@ export interface PrefilledConfig {
   deepseekKey: string;
   deepseekModel: string;
   deepseekKeyFromEnv: boolean;
+  openaiKey: string;
+  openaiModel: string;
+  openaiBaseUrl: string;
+  openaiKeyFromEnv: boolean;
 }
 
 export function prefilledConfig(): PrefilledConfig {
   const env = devEnv();
   const key = env.VITE_ANTHROPIC_API_KEY?.trim() ?? "";
   const deepseekKey = env.VITE_DEEPSEEK_API_KEY?.trim() ?? "";
+  const openaiKey = env.VITE_OPENAI_API_KEY?.trim() ?? "";
 
   return {
     anthropicKey: key,
@@ -51,5 +59,9 @@ export function prefilledConfig(): PrefilledConfig {
     deepseekKey,
     deepseekModel: env.VITE_DEEPSEEK_MODEL?.trim() || "deepseek-flash",
     deepseekKeyFromEnv: deepseekKey.length > 0,
+    openaiKey,
+    openaiModel: env.VITE_OPENAI_MODEL?.trim() || "gpt-6-astra",
+    openaiBaseUrl: env.VITE_OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1",
+    openaiKeyFromEnv: openaiKey.length > 0,
   };
 }

@@ -4,6 +4,7 @@ import {
   OllamaLlmService,
   AnthropicLlmService,
   DeepSeekLlmService,
+  OpenAiLlmService,
   breakdownScript,
   type LlmService,
 } from "@comic-builder/llm";
@@ -22,6 +23,9 @@ export interface RunBreakdownInput {
   anthropicModel: string;
   deepseekKey: string;
   deepseekModel: string;
+  openaiKey: string;
+  openaiModel: string;
+  openaiBaseUrl: string;
   chapterId: string;
   /** Ciò che si sa dell'opera: personaggi con scheda, luoghi già visti, regole della serie, riassunto del precedente. */
   context?: ChapterContext;
@@ -47,6 +51,9 @@ function serviceFor(choice: ServiceChoice, input: RunBreakdownInput): LlmService
   }
   if (choice === "deepseek") {
     return new DeepSeekLlmService({ apiKey: input.deepseekKey, model: input.deepseekModel });
+  }
+  if (choice === "openai") {
+    return new OpenAiLlmService({ apiKey: input.openaiKey, model: input.openaiModel, baseUrl: input.openaiBaseUrl });
   }
   return new MockLlmService();
 }

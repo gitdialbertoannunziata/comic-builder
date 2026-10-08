@@ -1,5 +1,5 @@
 /*
- * Sistema di stile dell'Ispettore.
+ * Sistema di stile dell'editor.
  *
  * È uno strumento di lavoro, non una pagina da leggere: si scorre e si opera.
  * Quindi densità alta, gerarchia data da peso e colore più che da dimensione,
@@ -111,11 +111,68 @@ button {
   height: 100%;
 }
 
-.app {
-  display: grid;
-  grid-template-columns: 236px minmax(320px, 400px) 1fr;
-  gap: 1px;
+/* Un'area di lavoro alla volta riempie lo spazio sotto la barra; le altre
+   restano montate ma nascoste, così non perdono ciò che vi si è scritto. */
+[hidden] {
+  display: none !important;
+}
+
+.area {
   min-height: 0;
+  min-width: 0;
+}
+
+.area--scroll {
+  overflow-y: auto;
+}
+
+.area__inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 24px 48px;
+}
+
+.area__inner--script {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.area__inner--split {
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.area__head {
+  margin-bottom: 16px;
+}
+
+.area__title {
+  margin: 0 0 2px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.area__lead {
+  margin: 0;
+  color: var(--text-muted);
+  max-width: 68ch;
+}
+
+.area--empty {
+  display: grid;
+  place-items: center;
+}
+
+/* Area Pagine: navigatore · tela · ispettore. La tela non scorre via. */
+.editor {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) minmax(320px, 392px);
+  gap: 1px;
   background: var(--border);
 }
 
@@ -123,16 +180,121 @@ button {
   background: var(--bg);
   overflow-y: auto;
   padding: 14px;
+  min-height: 0;
 }
 
 .col--work {
   background: var(--surface-sunken);
 }
 
+.canvas {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-sunken);
+}
+
+.canvas__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.canvas__title {
+  margin: 0 auto 0 0;
+  font-weight: 600;
+}
+
+/* La pagina prende tutto lo spazio che c'è, restando intera: la larghezza
+   è la minore fra quella della tela e quella che l'altezza consente. */
+.canvas__stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  container-type: size;
+}
+
+.canvas__stage--page .preview {
+  width: min(100cqw, 100cqh * var(--page-ratio, 0.667));
+  flex: none;
+}
+
+.canvas__stage--width .preview {
+  width: min(100%, 980px);
+  flex: none;
+}
+
+.canvas__foot {
+  padding: 8px 14px 10px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas__foot p {
+  margin: 0;
+}
+
+.drawer .section__body {
+  max-height: 30vh;
+  overflow-y: auto;
+  padding-top: 8px;
+}
+
+.inspector__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.inspector__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.editor__inspector .panel-id {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
 @media (max-width: 1100px) {
-  .app {
-    grid-template-columns: 1fr;
+  .shell {
     height: auto;
+    min-height: 100%;
+  }
+
+  .editor,
+  .area__inner--script,
+  .area__inner--split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .col {
+    overflow: visible;
+  }
+
+  .canvas__stage {
+    container-type: normal;
+    overflow: visible;
+  }
+
+  .canvas__stage .preview {
+    width: 100%;
   }
 }
 
@@ -215,7 +377,7 @@ button {
 .panel-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 8px;
   text-align: left;
@@ -238,16 +400,49 @@ button {
 
 /* Senza min-width:0 la colonna 1fr non scende sotto la larghezza del suo
    contenuto e l'ellissi non scatta mai: il testo viene tagliato dal bordo. */
-.panel-row > span:first-child {
+.panel-row__main {
   min-width: 0;
 }
 
-.panel-row__shot {
+.panel-row__num {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--accent-text);
+  color: var(--text-muted);
+}
+
+.panel-row[aria-current="true"] .panel-row__num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.panel-row__code {
+  font-family: var(--mono);
+  font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.panel-row__count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.panel-row__shot {
+  display: block;
+  font-size: 11px;
+  color: var(--accent-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-row[aria-current="true"] .panel-row__shot {
@@ -265,7 +460,8 @@ button {
 
 .panel-row__badges {
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 5px;
 }
 
 .dot {
@@ -309,6 +505,8 @@ button {
 
 input[type="text"],
 input[type="number"],
+input[type="password"],
+select,
 textarea {
   font: inherit;
   width: 100%;
@@ -325,7 +523,13 @@ input[type="number"] {
   font-size: 12px;
 }
 
+select {
+  resize: none;
+  cursor: pointer;
+}
+
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--accent);
   outline: none;
@@ -476,7 +680,6 @@ textarea:focus {
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
-  max-width: 620px;
 }
 
 .preview__page {
@@ -531,10 +734,9 @@ textarea:focus {
 
 /* ---------- copione ---------- */
 
-.script {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 14px;
-  margin-bottom: 4px;
+.script__body .segmented + .field,
+.script__body > .btn {
+  align-self: flex-start;
 }
 
 .script__toggle {
@@ -686,50 +888,56 @@ code {
   color: var(--error);
 }
 
-/* Barra del progetto: dove vive il documento e se è al sicuro su disco. */
+/* Barra: dove si è (opera, capitolo, area) e se il lavoro è al sicuro. */
 .bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 8px 14px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
-.bar__project {
+.bar__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 14px;
+  min-height: 44px;
+}
+
+.bar__where {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  margin-right: auto;
 }
 
-.bar__folder {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.bar__actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.bar__hint {
+.bar__chapter {
+  width: auto;
+  max-width: 220px;
+  padding: 4px 6px;
   font-size: 12px;
   color: var(--text-muted);
+  border-color: transparent;
+  background: transparent;
+  text-overflow: ellipsis;
+}
+
+.bar__chapter:hover {
+  border-color: var(--border);
+}
+
+.bar__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .bar__status {
-  flex-basis: 100%;
   margin: 0;
+  padding: 4px 14px 6px;
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.bar__status--warn {
-  color: var(--warning);
 }
 
 .bar__status--error {
@@ -738,8 +946,7 @@ code {
 }
 
 .bar__notice {
-  flex-basis: 100%;
-  margin: 0;
+  margin: 0 14px 8px;
   padding: 6px 10px;
   border-radius: var(--r-sm);
   background: var(--warning-soft);
@@ -756,6 +963,293 @@ code {
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .bar__row {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px 14px;
+  }
+
+  .bar__tools {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+/* Schede. */
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab__badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.tab[aria-selected="true"] .tab__badge {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+
+.tabs--areas {
+  align-self: stretch;
+  overflow-x: auto;
+}
+
+.tabs--areas .tab {
+  padding: 0 14px;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+/* Le schede dell'ispettore restano in vista mentre il contenuto scorre. */
+.tabs--fill {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  margin: 0 -14px 14px;
+  padding: 0 14px;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs--fill .tab {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Stato di salvataggio in due parole. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.pill--ok::before {
+  background: var(--ok);
+}
+
+.pill--warn {
+  color: var(--warning);
+  border-color: currentColor;
+  background: var(--warning-soft);
+}
+
+.pill--warn::before {
+  background: var(--warning);
+}
+
+.pill--error {
+  color: var(--error);
+  border-color: currentColor;
+  background: var(--error-soft);
+}
+
+.pill--error::before {
+  background: var(--error);
+}
+
+/* Menu del progetto. */
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  list-style: none;
+  user-select: none;
+}
+
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu > summary::after {
+  content: " ▾";
+  color: var(--text-faint);
+}
+
+.menu__list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  min-width: 250px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+
+.menu__item {
+  text-align: left;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.menu__item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.menu__note {
+  margin: 0;
+  padding: 5px 9px 7px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* Sezioni richiudibili. */
+.section__title {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.section__title:hover {
+  color: var(--text);
+}
+
+.section[open] > .section__title {
+  margin-bottom: 10px;
+}
+
+.drawer[open] > .section__title {
+  margin-bottom: 0;
+}
+
+.drawer > .section__title {
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.level-counts {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.level-counts__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.level-counts--ok {
+  color: var(--ok);
+}
+
+.card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.empty {
+  margin: 0;
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--text-faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+}
+
+.btn--icon {
+  padding: 4px 9px;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+/* Controllo del capitolo prima dell'export. */
+.check-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.check-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.check-row:hover {
+  background: var(--surface-sunken);
+}
+
+.check-row__page {
+  font-weight: 600;
 }
 
 .btn--small {
@@ -1009,6 +1503,7 @@ code {
 }
 
 .strip-view__strip {
+  margin: 0 auto;
   max-width: 100%;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
   background: #fff;
@@ -1134,7 +1629,38 @@ code {
   pointer-events: none;
 }
 
-/* Revisioni: il 赤字 strutturato. */
+/* Revisioni: il 赤字 strutturato. A sinistra ciò che entra e gli strumenti,
+   a destra le correzioni da decidere. */
+.revisions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  grid-template-rows: auto 1fr;
+  gap: 14px 24px;
+  align-items: start;
+}
+
+.revisions__in,
+.revisions__tools {
+  grid-column: 1;
+}
+
+.revisions__list {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+@media (max-width: 1100px) {
+  .revisions {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .revisions__list {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
 .revisions textarea {
   width: 100%;
   font-family: var(--mono);
@@ -1181,8 +1707,6 @@ code {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 520px;
-  overflow-y: auto;
 }
 
 .revision {
@@ -1439,12 +1963,6 @@ code {
   border-style: dashed;
 }
 
-.col--empty {
-  grid-column: 2 / -1;
-  display: grid;
-  place-items: center;
-}
-
 .empty-chapter {
   max-width: 460px;
   text-align: center;
@@ -1467,13 +1985,6 @@ code {
 }
 
 /* Il nome del progetto: si legge come un titolo, si modifica cliccandoci. */
-.bar__title {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
 .bar__name {
   font: inherit;
   font-weight: 700;
@@ -1482,9 +1993,10 @@ code {
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: transparent;
-  padding: 1px 4px;
+  padding: 3px 4px;
   margin-left: -5px;
-  max-width: 420px;
+  max-width: 320px;
+  min-width: 0;
 }
 
 .bar__name:hover {
@@ -1495,13 +2007,6 @@ code {
   border-color: var(--accent);
   background: var(--surface);
   outline: none;
-}
-
-.bar__chapter {
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Inquadratura dell'arte: il contorno dell'immagine intera, anche fuori dal pannello. */
@@ -1544,4 +2049,12 @@ code {
 
 .breakdown-context .prompt-text {
   max-height: 320px;
+}
+
+.field--inline .field__label {
+  white-space: nowrap;
+}
+
+.field--inline input[type="number"] {
+  width: 96px;
 }

@@ -1,7 +1,6 @@
-import { useState } from "react";
 import type { ValidationIssue } from "@comic-builder/core";
 
-export type ServiceChoice = "mock" | "ollama" | "anthropic" | "deepseek";
+export type ServiceChoice = "mock" | "ollama" | "anthropic" | "deepseek" | "openai";
 
 export interface BreakdownSummary {
   scenes: number;
@@ -32,6 +31,13 @@ interface Props {
   deepseekModel: string;
   onDeepseekModelChange: (model: string) => void;
   deepseekKeyFromEnv: boolean;
+  openaiKey: string;
+  onOpenaiKeyChange: (key: string) => void;
+  openaiModel: string;
+  onOpenaiModelChange: (model: string) => void;
+  openaiBaseUrl: string;
+  onOpenaiBaseUrlChange: (url: string) => void;
+  openaiKeyFromEnv: boolean;
   onRun: () => void;
   running: boolean;
   /** «parte 2 di 4» mentre lo spoglio procede a parti. */
@@ -64,31 +70,28 @@ export function ScriptPanel({
   deepseekModel,
   onDeepseekModelChange,
   deepseekKeyFromEnv,
+  openaiKey,
+  onOpenaiKeyChange,
+  openaiModel,
+  onOpenaiModelChange,
+  openaiBaseUrl,
+  onOpenaiBaseUrlChange,
+  openaiKeyFromEnv,
   onRun,
   running,
   progress,
   error,
   summary,
 }: Props) {
-  const [open, setOpen] = useState(true);
-
   return (
     <section className="script">
-      <button type="button" className="script__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="eyebrow" style={{ margin: 0 }}>
-          Copione
-        </span>
-        <span className="muted">{open ? "nascondi" : "mostra"}</span>
-      </button>
-
-      {open && (
-        <div className="script__body">
+      <div className="script__body">
           <label className="field">
-            <span className="field__label">capitolo</span>
+            <span className="field__label">testo del capitolo</span>
             <textarea
               className="script__text"
               value={script}
-              rows={12}
+              rows={18}
               spellCheck={false}
               onChange={(e) => onScriptChange(e.target.value)}
               placeholder={"# Titolo della scena\n\nDescrizione di cosa si vede.\n\nNOME: Una battuta."}
@@ -100,7 +103,7 @@ export function ScriptPanel({
           </label>
 
           <div className="field">
-            <span className="field__label">spoglio</span>
+            <span className="field__label">chi fa lo spoglio</span>
             <div className="segmented">
               <button
                 type="button"
@@ -137,6 +140,15 @@ export function ScriptPanel({
                 title="API di DeepSeek: JSON garantito ma non lo schema — lo controlla la validazione a valle"
               >
                 deepseek
+              </button>
+              <button
+                type="button"
+                className="seg"
+                aria-pressed={service === "openai"}
+                onClick={() => onServiceChange("openai")}
+                title="API di OpenAI: risposta vincolata allo schema, ma il copione esce verso terzi"
+              >
+                openai
               </button>
             </div>
           </div>
@@ -229,6 +241,49 @@ export function ScriptPanel({
             </>
           )}
 
+          {service === "openai" && (
+            <>
+              <label className="field">
+                <span className="field__label">chiave API</span>
+                <input
+                  type="password"
+                  value={openaiKey}
+                  onChange={(e) => onOpenaiKeyChange(e.target.value)}
+                  placeholder="sk-..."
+                />
+                <span className="field__hint">
+                  {openaiKeyFromEnv
+                    ? "Letta da .env.local (solo in sviluppo). "
+                    : "Resta in questa scheda e non viene salvata. "}
+                  <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
+                  vuoi — lo spoglio locale non lo fa.
+                </span>
+              </label>
+              <label className="field">
+                <span className="field__label">modello</span>
+                <input
+                  type="text"
+                  value={openaiModel}
+                  onChange={(e) => onOpenaiModelChange(e.target.value)}
+                  placeholder="gpt-6-astra"
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">url</span>
+                <input
+                  type="text"
+                  value={openaiBaseUrl}
+                  onChange={(e) => onOpenaiBaseUrlChange(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                />
+                <span className="field__hint">
+                  Da cambiare per un proxy o un servizio compatibile: deve esporre <code>/responses</code> (la
+                  Responses API), non solo <code>/chat/completions</code>. Vuoto, vale quello di OpenAI.
+                </span>
+              </label>
+            </>
+          )}
+
           <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
             {running
               ? progress && progress.total > 1
@@ -259,8 +314,7 @@ export function ScriptPanel({
               )}
             </div>
           )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

@@ -125,93 +125,93 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
   const cleanRename = renameTo.trim();
 
   return (
-    <div className="stack revisions">
-      <div className="card">
-        <p className="card__title">scambio con lo sceneggiatore</p>
-        <div className="tool-row">
-          <button type="button" className="btn btn--small" onClick={() => void exportForReview()}>
-            Esporta per la revisione (.md)
-          </button>
-          <button type="button" className="btn btn--small" onClick={() => fileInput.current?.click()}>
-            Importa il file corretto…
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".md,.txt,text/markdown,text/plain"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) void importAnnotated(file);
-            }}
-          />
-        </div>
-        <label className="field field--inline">
-          <span className="field__label">corretto da</span>
-          <input type="text" value={by} onChange={(e) => setBy(e.target.value)} />
-        </label>
-      </div>
-
-      <div className="card">
-        <p className="card__title">nuova versione del copione</p>
-        <textarea rows={4} placeholder="Incolla qui il capitolo come lo rimanda lo sceneggiatore…" value={newScript} onChange={(e) => setNewScript(e.target.value)} />
-        <div className="tool-row">
-          <button type="button" className="btn btn--small" onClick={() => scriptInput.current?.click()}>
-            Carica da file…
-          </button>
-          <input
-            ref={scriptInput}
-            type="file"
-            accept=".md,.txt,text/markdown,text/plain"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) setNewScript(await file.text());
-            }}
-          />
-          <button type="button" className="btn btn--small" disabled={!newScript.trim()} onClick={compareScript}>
-            Confronta
-          </button>
-        </div>
-        {!doc.scripts[chapterId] && (
-          <p className="field__hint">Questo capitolo non ha ancora un copione di riferimento: il confronto vedrà tutto come nuovo.</p>
-        )}
-        {impact && (
-          <div className="impact">
-            {impact.hunks.length === 0 ? (
-              <p className="field__hint">Nessuna differenza dal copione di riferimento.</p>
-            ) : (
-              <>
-                <p>
-                  {impact.hunks.length} parti cambiate · <strong>{impact.touched.length} pannelli toccati</strong> · {impact.corrections.length} correzioni
-                  {impact.unassigned.length > 0 && ` · ${impact.unassigned.length} parti nuove fuori da ogni pannello, da impaginare`}
-                </p>
-                <div className="impact__panels">
-                  {impact.touched.map((t) => (
-                    <button key={t.panel.id} type="button" className="chip" onClick={() => onSelectPanel(t.panel.id)}>
-                      {t.panel.id}
-                    </button>
-                  ))}
-                </div>
-                <button type="button" className="btn btn--small btn--primary" onClick={() => void adoptScript()}>
-                  Importa le correzioni e adotta questo copione
-                </button>
-              </>
-            )}
+    <div className="revisions">
+      <div className="stack revisions__in">
+        <div className="card">
+          <p className="card__title">scambio con lo sceneggiatore</p>
+          <div className="tool-row">
+            <button type="button" className="btn btn--small" onClick={() => void exportForReview()}>
+              Esporta per la revisione (.md)
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => fileInput.current?.click()}>
+              Importa il file corretto…
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".md,.txt,text/markdown,text/plain"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void importAnnotated(file);
+              }}
+            />
           </div>
-        )}
+          <label className="field field--inline">
+            <span className="field__label">corretto da</span>
+            <input type="text" value={by} onChange={(e) => setBy(e.target.value)} />
+          </label>
+        </div>
+
+        <div className="card">
+          <p className="card__title">nuova versione del copione</p>
+          <textarea rows={4} placeholder="Incolla qui il capitolo come lo rimanda lo sceneggiatore…" value={newScript} onChange={(e) => setNewScript(e.target.value)} />
+          <div className="tool-row">
+            <button type="button" className="btn btn--small" onClick={() => scriptInput.current?.click()}>
+              Carica da file…
+            </button>
+            <input
+              ref={scriptInput}
+              type="file"
+              accept=".md,.txt,text/markdown,text/plain"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) setNewScript(await file.text());
+              }}
+            />
+            <button type="button" className="btn btn--small" disabled={!newScript.trim()} onClick={compareScript}>
+              Confronta
+            </button>
+          </div>
+          {!doc.scripts[chapterId] && <p className="field__hint">Questo capitolo non ha ancora un copione di riferimento: il confronto vedrà tutto come nuovo.</p>}
+          {impact && (
+            <div className="impact">
+              {impact.hunks.length === 0 ? (
+                <p className="field__hint">Nessuna differenza dal copione di riferimento.</p>
+              ) : (
+                <>
+                  <p>
+                    {impact.hunks.length} parti cambiate · <strong>{impact.touched.length} pannelli toccati</strong> · {impact.corrections.length} correzioni
+                    {impact.unassigned.length > 0 && ` · ${impact.unassigned.length} parti nuove fuori da ogni pannello, da impaginare`}
+                  </p>
+                  <div className="impact__panels">
+                    {impact.touched.map((t) => (
+                      <button key={t.panel.id} type="button" className="chip" onClick={() => onSelectPanel(t.panel.id)}>
+                        {t.panel.id}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="btn btn--small btn--primary" onClick={() => void adoptScript()}>
+                    Importa le correzioni e adotta questo copione
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {message && <p className="muted revisions__message">{message}</p>}
+        {warnings.map((w, i) => (
+          <p key={i} className="issue issue--warning">
+            {w}
+          </p>
+        ))}
       </div>
 
-      {message && <p className="muted revisions__message">{message}</p>}
-      {warnings.map((w, i) => (
-        <p key={i} className="issue issue--warning">
-          {w}
-        </p>
-      ))}
-
-      <div className="card">
+      <div className="card revisions__list">
         <p className="card__title card__title--row">
           <span>correzioni aperte ({open.length})</span>
           {open.length > 0 && (
@@ -219,11 +219,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               <button type="button" className="btn btn--small btn--primary" disabled={applicable.length === 0} onClick={() => accept(applicable.map((e) => e.id))}>
                 Accetta le applicabili ({applicable.length})
               </button>
-              <button
-                type="button"
-                className="btn btn--small"
-                onClick={() => run({ type: "revision.reject", chapterId, ids: open.map((e) => e.id), by: me, at: now() })}
-              >
+              <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: open.map((e) => e.id), by: me, at: now() })}>
                 Rifiuta tutte
               </button>
             </span>
@@ -252,9 +248,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
                   </p>
                 )}
                 {entry.kind === "note" && entry.origin === "script" && (
-                  <p className="field__hint">
-                    Il copione cambia qui, ma non c'è una battuta da aggiornare con certezza (prosa, o una battuta già diversa nel fumetto): decidi tu cosa toccare.
-                  </p>
+                  <p className="field__hint">Il copione cambia qui, ma non c'è una battuta da aggiornare con certezza (prosa, o una battuta già diversa nel fumetto): decidi tu cosa toccare.</p>
                 )}
                 {conflict && <p className="issue issue--warning">Non applicabile: {conflict}</p>}
                 <div className="tool-row tool-row--tight">
@@ -280,88 +274,93 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               <li key={e.id}>
                 <code>{e.id}</code> {e.status === "applied" ? "✓" : "✗"} {KIND_LABEL[e.kind]} {e.balloon ?? e.panel}
                 {e.rev !== null && <span className="muted"> · rev {e.rev}</span>}
-                <span className="muted"> · {e.resolved_by}, {e.resolved_at ? new Date(e.resolved_at).toLocaleString() : ""}</span>
+                <span className="muted">
+                  {" "}
+                  · {e.resolved_by}, {e.resolved_at ? new Date(e.resolved_at).toLocaleString() : ""}
+                </span>
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="card">
-        <p className="card__title">trova e sostituisci</p>
-        <div className="grid-2">
-          <label className="field">
-            <span className="field__label">trova</span>
-            <input type="text" value={find} onChange={(e) => setFind(e.target.value)} />
-          </label>
-          <label className="field">
-            <span className="field__label">sostituisci con</span>
-            <input type="text" value={replace} onChange={(e) => setReplace(e.target.value)} />
-          </label>
+      <div className="stack revisions__tools">
+        <div className="card">
+          <p className="card__title">trova e sostituisci</p>
+          <div className="grid-2">
+            <label className="field">
+              <span className="field__label">trova</span>
+              <input type="text" value={find} onChange={(e) => setFind(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field__label">sostituisci con</span>
+              <input type="text" value={replace} onChange={(e) => setReplace(e.target.value)} />
+            </label>
+          </div>
+          <div className="tool-row">
+            <label className="field field--row">
+              <input type="checkbox" checked={options.wholeWord ?? false} onChange={(e) => setOptions({ ...options, wholeWord: e.target.checked })} />
+              <span>parola intera</span>
+            </label>
+            <label className="field field--row">
+              <input type="checkbox" checked={options.matchCase ?? false} onChange={(e) => setOptions({ ...options, matchCase: e.target.checked })} />
+              <span>maiuscole</span>
+            </label>
+            <label className="field field--row">
+              <input type="checkbox" checked={options.scope === "both"} onChange={(e) => setOptions({ ...options, scope: e.target.checked ? "both" : "balloons" })} />
+              <span>anche nelle azioni</span>
+            </label>
+          </div>
+          {find && <p className="field__hint">{matches.length === 0 ? "Nessuna occorrenza." : `${matches.reduce((n, m) => n + m.count, 0)} occorrenze in ${matches.length} testi.`}</p>}
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={matches.length === 0}
+            onClick={() => {
+              if (run({ type: "text.replace", chapterId, find, replace, options, by: me, at: now() })) done(`«${find}» → «${replace}» in ${matches.length} testi, ognuno tracciato nel changelog.`);
+            }}
+          >
+            Sostituisci tutto
+          </button>
         </div>
-        <div className="tool-row">
-          <label className="field field--row">
-            <input type="checkbox" checked={options.wholeWord ?? false} onChange={(e) => setOptions({ ...options, wholeWord: e.target.checked })} />
-            <span>parola intera</span>
-          </label>
-          <label className="field field--row">
-            <input type="checkbox" checked={options.matchCase ?? false} onChange={(e) => setOptions({ ...options, matchCase: e.target.checked })} />
-            <span>maiuscole</span>
-          </label>
-          <label className="field field--row">
-            <input type="checkbox" checked={options.scope === "both"} onChange={(e) => setOptions({ ...options, scope: e.target.checked ? "both" : "balloons" })} />
-            <span>anche nelle azioni</span>
-          </label>
-        </div>
-        {find && <p className="field__hint">{matches.length === 0 ? "Nessuna occorrenza." : `${matches.reduce((n, m) => n + m.count, 0)} occorrenze in ${matches.length} testi.`}</p>}
-        <button
-          type="button"
-          className="btn btn--small"
-          disabled={matches.length === 0}
-          onClick={() => {
-            if (run({ type: "text.replace", chapterId, find, replace, options, by: me, at: now() })) done(`«${find}» → «${replace}» in ${matches.length} testi, ognuno tracciato nel changelog.`);
-          }}
-        >
-          Sostituisci tutto
-        </button>
-      </div>
 
-      <div className="card">
-        <p className="card__title">rinomina un personaggio</p>
-        <div className="grid-2">
-          <label className="field">
-            <span className="field__label">personaggio</span>
-            <select value={renameFrom} onChange={(e) => setRenameFrom(e.target.value)}>
-              <option value="">—</option>
-              {refs.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">nuovo nome</span>
-            <input type="text" value={renameTo} onChange={(e) => setRenameTo(e.target.value)} />
-          </label>
+        <div className="card">
+          <p className="card__title">rinomina un personaggio</p>
+          <div className="grid-2">
+            <label className="field">
+              <span className="field__label">personaggio</span>
+              <select value={renameFrom} onChange={(e) => setRenameFrom(e.target.value)}>
+                <option value="">—</option>
+                {refs.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">nuovo nome</span>
+              <input type="text" value={renameTo} onChange={(e) => setRenameTo(e.target.value)} />
+            </label>
+          </div>
+          <p className="field__hint">Cambia chi parla e chi è in vignetta in tutto il progetto. Il nome dentro le battute si cambia con trova e sostituisci.</p>
+          <button
+            type="button"
+            className="btn btn--small"
+            disabled={!renameFrom || !cleanRename}
+            onClick={() => {
+              if (run({ type: "character.rename", from: renameFrom, to: cleanRename })) {
+                done(`${renameFrom} ora si chiama ${cleanRename}.`);
+                setFind(renameFrom);
+                setReplace(cleanRename);
+                setRenameFrom("");
+                setRenameTo("");
+              }
+            }}
+          >
+            Rinomina
+          </button>
         </div>
-        <p className="field__hint">Cambia chi parla e chi è in vignetta in tutto il progetto. Il nome dentro le battute si cambia con trova e sostituisci.</p>
-        <button
-          type="button"
-          className="btn btn--small"
-          disabled={!renameFrom || !cleanRename}
-          onClick={() => {
-            if (run({ type: "character.rename", from: renameFrom, to: cleanRename })) {
-              done(`${renameFrom} ora si chiama ${cleanRename}.`);
-              setFind(renameFrom);
-              setReplace(cleanRename);
-              setRenameFrom("");
-              setRenameTo("");
-            }
-          }}
-        >
-          Rinomina
-        </button>
       </div>
     </div>
   );

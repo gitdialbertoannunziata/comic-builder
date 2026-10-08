@@ -1,4 +1,8 @@
+import { useRef } from "react";
+import type { Chapter } from "@comic-builder/core";
 import type { ProjectEditor, SaveStatus } from "../editor/useProjectEditor.js";
+import type { Area } from "./Workspace.js";
+import { Tabs } from "./Tabs.js";
 
 function statusText(status: SaveStatus, folder: string | null): string {
   switch (status.kind) {
@@ -17,17 +21,60 @@ function statusText(status: SaveStatus, folder: string | null): string {
   }
 }
 
+/** Lo stato in due parole, per la pillola: il testo intero sta nel `title`. */
+function statusShort(status: SaveStatus): string {
+  switch (status.kind) {
+    case "memory":
+      return "non salvato";
+    case "pending":
+      return "da salvare…";
+    case "saving":
+      return "salvo…";
+    case "saved":
+      return `salvato ${status.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    case "error":
+      return "salvataggio fallito";
+    case "locked-out":
+      return "sola lettura";
+  }
+}
+
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl+";
 
-export function ProjectBar({ editor, chapterLabel }: { editor: ProjectEditor; chapterLabel: string }) {
+interface Props {
+  editor: ProjectEditor;
+  chapters: readonly Chapter[];
+  chapterId: string;
+  onSelectChapter: (chapterId: string) => void;
+  area: Area;
+  onArea: (area: Area) => void;
+  openRevisions: number;
+}
+
+/**
+ * La barra: dove si è (opera, capitolo, area di lavoro) e se il lavoro è al
+ * sicuro. Una riga; avvisi ed errori ne aggiungono una solo quando ci sono.
+ */
+export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions }: Props) {
   const { status, folder } = editor;
-  const tone = status.kind === "error" || status.kind === "locked-out" ? "bar__status--error" : status.kind === "memory" ? "bar__status--warn" : "";
+  const tone = status.kind === "error" || status.kind === "locked-out" ? "error" : status.kind === "memory" ? "warn" : status.kind === "saved" ? "ok" : "busy";
+  const menu = useRef<HTMLDetailsElement>(null);
+  const ordered = [...chapters].sort((a, b) => a.number - b.number);
+
+  function newProject() {
+    const unsaved = !folder && editor.canUndo;
+    const title = window.prompt(
+      unsaved ? "Nome del nuovo progetto?\n\nAttenzione: il progetto aperto non è salvato in una cartella e andrà perso." : "Nome del nuovo progetto?",
+      "",
+    );
+    if (title !== null) void editor.newProject(title);
+  }
 
   return (
     <header className="bar">
-      <div className="bar__project">
-        <span className="bar__title">
+      <div className="bar__row">
+        <div className="bar__where">
           <input
             className="bar__name"
             value={editor.doc.project.title}
@@ -41,70 +88,83 @@ export function ProjectBar({ editor, chapterLabel }: { editor: ProjectEditor; ch
             }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           />
-          <span className="bar__chapter">— {chapterLabel}</span>
-        </span>
-        <span className="bar__folder">{folder ? `cartella: ${folder}` : "nessuna cartella"}</span>
-      </div>
+          <select className="bar__chapter" value={chapterId} onChange={(e) => onSelectChapter(e.target.value)} aria-label="Capitolo aperto" title="Capitolo aperto">
+            {ordered.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.number}. {c.title || "senza titolo"}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="bar__actions">
-        <button type="button" className="btn btn--small" onClick={editor.undo} disabled={!editor.canUndo} title={`${mod}Z`}>
-          ↶ {editor.undoLabel ? `Annulla «${editor.undoLabel}»` : "Annulla"}
-        </button>
-        <button type="button" className="btn btn--small" onClick={editor.redo} disabled={!editor.canRedo} title={`${mod}Shift+Z`}>
-          ↷ Ripeti
-        </button>
-      </div>
+        <Tabs<Area>
+          label="Area di lavoro"
+          className="tabs--areas"
+          value={area}
+          onChange={onArea}
+          items={[
+            { id: "copione", label: "Copione", title: "Capitoli, testo e spoglio" },
+            { id: "pagine", label: "Pagine", title: "Pagine, vignette, balloon, arte" },
+            { id: "personaggi", label: "Personaggi", title: "Le schede dei personaggi dell'opera" },
+            { id: "revisioni", label: "Revisioni", badge: openRevisions, title: "Correzioni dello sceneggiatore, trova e sostituisci" },
+            { id: "export", label: "Export", title: "Il capitolo nei formati del progetto" },
+          ]}
+        />
 
-      <div className="bar__actions">
-        {editor.reopenable && (
-          <button type="button" className="btn btn--small btn--primary" onClick={() => void editor.reopen()} title="Il browser chiede di nuovo il permesso per la cartella">
-            Riapri «{editor.reopenable}»
+        <div className="bar__tools">
+          <button type="button" className="btn btn--small btn--icon" onClick={editor.undo} disabled={!editor.canUndo} title={`${editor.undoLabel ? `Annulla «${editor.undoLabel}»` : "Annulla"} (${mod}Z)`} aria-label="Annulla">
+            ↶
           </button>
-        )}
-        <button
-          type="button"
-          className="btn btn--small"
-          onClick={() => {
-            const unsaved = !folder && editor.canUndo;
-            const title = window.prompt(
-              unsaved
-                ? "Nome del nuovo progetto?\n\nAttenzione: il progetto aperto non è salvato in una cartella e andrà perso."
-                : "Nome del nuovo progetto?",
-              "",
-            );
-            if (title !== null) void editor.newProject(title);
-          }}
-        >
-          Nuovo progetto…
-        </button>
-        {editor.canOpenFolders ? (
-          <>
-            <button type="button" className="btn btn--small" onClick={() => void editor.openFolder()}>
-              Apri progetto…
-            </button>
-            <button type="button" className="btn btn--small" onClick={() => void editor.saveToFolder()}>
-              {folder ? "Salva in un'altra cartella…" : "Salva in una cartella…"}
-            </button>
-          </>
-        ) : (
-          <span className="bar__hint">
-            Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.
+          <button type="button" className="btn btn--small btn--icon" onClick={editor.redo} disabled={!editor.canRedo} title={`Ripeti (${mod}Shift+Z)`} aria-label="Ripeti">
+            ↷
+          </button>
+          <span className={`pill pill--${tone}`} role="status" title={statusText(status, folder)}>
+            {statusShort(status)}
           </span>
-        )}
+          {editor.reopenable && (
+            <button type="button" className="btn btn--small btn--primary" onClick={() => void editor.reopen()} title="Il browser chiede di nuovo il permesso per la cartella">
+              Riapri «{editor.reopenable}»
+            </button>
+          )}
+          <details className="menu" ref={menu}>
+            <summary className="btn btn--small">Progetto</summary>
+            {/* Scelta una voce, il menu si richiude. */}
+            <div className="menu__list" onClick={() => menu.current?.removeAttribute("open")}>
+              <p className="menu__note">{folder ? `cartella: ${folder}` : "nessuna cartella"}</p>
+              <button type="button" className="menu__item" onClick={newProject}>
+                Nuovo progetto…
+              </button>
+              {editor.canOpenFolders ? (
+                <>
+                  <button type="button" className="menu__item" onClick={() => void editor.openFolder()}>
+                    Apri progetto…
+                  </button>
+                  <button type="button" className="menu__item" onClick={() => void editor.saveToFolder()}>
+                    {folder ? "Salva in un'altra cartella…" : "Salva in una cartella…"}
+                  </button>
+                </>
+              ) : (
+                <p className="menu__note">Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.</p>
+              )}
+            </div>
+          </details>
+        </div>
       </div>
 
-      <p className={`bar__status ${tone}`} role="status">
-        {statusText(status, folder)}
-        {editor.recoveredAt && !folder && (
-          <>
-            {" "}
-            Ripristinato il lavoro di questa scheda ({editor.recoveredAt.toLocaleString()}).{" "}
-            <button type="button" className="link-btn" onClick={() => void editor.startOver()}>
-              ricomincia da capo
-            </button>
-          </>
-        )}
-      </p>
+      {(tone === "error" || (editor.recoveredAt && !folder)) && (
+        <p className={`bar__status${tone === "error" ? " bar__status--error" : ""}`}>
+          {tone === "error" && statusText(status, folder)}
+          {editor.recoveredAt && !folder && (
+            <>
+              {" "}
+              Ripristinato il lavoro di questa scheda ({editor.recoveredAt.toLocaleString()}).{" "}
+              <button type="button" className="link-btn" onClick={() => void editor.startOver()}>
+                ricomincia da capo
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
       {editor.notice && (
         <p className="bar__notice" role="alert">
