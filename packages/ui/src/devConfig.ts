@@ -22,6 +22,12 @@ interface DevEnv {
   VITE_OPENAI_API_KEY?: string;
   VITE_OPENAI_MODEL?: string;
   VITE_OPENAI_BASE_URL?: string;
+  VITE_BFL_API_KEY?: string;
+  VITE_BFL_MODEL?: string;
+  VITE_BFL_BASE_URL?: string;
+  VITE_AZURE_FLUX_ENDPOINT?: string;
+  VITE_AZURE_FLUX_API_KEY?: string;
+  VITE_AZURE_FLUX_DEPLOYMENT?: string;
 }
 
 function devEnv(): DevEnv {
@@ -42,6 +48,14 @@ export interface PrefilledConfig {
   openaiModel: string;
   openaiBaseUrl: string;
   openaiKeyFromEnv: boolean;
+  bflKey: string;
+  bflModel: string;
+  bflBaseUrl: string;
+  bflKeyFromEnv: boolean;
+  azureFluxEndpoint: string;
+  azureFluxKey: string;
+  azureFluxDeployment: string;
+  azureFluxKeyFromEnv: boolean;
 }
 
 export function prefilledConfig(): PrefilledConfig {
@@ -49,6 +63,8 @@ export function prefilledConfig(): PrefilledConfig {
   const key = env.VITE_ANTHROPIC_API_KEY?.trim() ?? "";
   const deepseekKey = env.VITE_DEEPSEEK_API_KEY?.trim() ?? "";
   const openaiKey = env.VITE_OPENAI_API_KEY?.trim() ?? "";
+  const bflKey = env.VITE_BFL_API_KEY?.trim() ?? "";
+  const azureFluxKey = env.VITE_AZURE_FLUX_API_KEY?.trim() ?? "";
 
   return {
     anthropicKey: key,
@@ -63,5 +79,13 @@ export function prefilledConfig(): PrefilledConfig {
     openaiModel: env.VITE_OPENAI_MODEL?.trim() || "gpt-6-astra",
     openaiBaseUrl: env.VITE_OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1",
     openaiKeyFromEnv: openaiKey.length > 0,
+    bflKey,
+    bflModel: env.VITE_BFL_MODEL?.trim() || "flux-2-pro",
+    bflBaseUrl: env.VITE_BFL_BASE_URL?.trim() || "https://api.bfl.ai",
+    bflKeyFromEnv: bflKey.length > 0,
+    azureFluxEndpoint: env.VITE_AZURE_FLUX_ENDPOINT?.trim() ?? "",
+    azureFluxKey,
+    azureFluxDeployment: env.VITE_AZURE_FLUX_DEPLOYMENT?.trim() || "FLUX.2-pro",
+    azureFluxKeyFromEnv: azureFluxKey.length > 0,
   };
 }

@@ -3,6 +3,7 @@ import type { Chapter } from "../schema/chapters.js";
 import type { Page } from "../schema/page.js";
 import type { Scene } from "../schema/scenes.js";
 import { appearanceText } from "../compile/promptCompiler.js";
+import { seriesLessons } from "../revisions/lessons.js";
 
 /**
  * Un'opera ha più capitoli (§5.3: `chapters.json`). Qui le operazioni che
@@ -107,6 +108,12 @@ export interface ChapterContext {
   locations: string[];
   /** Le regole della serie (`project.series_notes`). */
   notes: string;
+  /**
+   * Ciò che l'autore ha tratto dalle correzioni già fatte, in tutti i
+   * capitoli (`lesson` sulle voci del changelog): perché lo stesso errore
+   * non torni allo spoglio dopo.
+   */
+  lessons: string[];
   previously: string | null;
 }
 
@@ -136,11 +143,12 @@ export function chapterContext(doc: ProjectDoc, chapterId: string, maxChars = 15
   const here = chapterSceneIds(doc, chapterId);
   const locations = [...new Set(doc.scenes.scenes.filter((s) => !here.has(s.id)).map((s) => s.location.trim()).filter(Boolean))];
   const notes = doc.project.series_notes.trim();
+  const lessons = seriesLessons(doc).map((l) => l.text);
 
   const chapters = [...doc.chapters.chapters].sort((a, b) => a.number - b.number);
   const index = chapters.findIndex((c) => c.id === chapterId);
   const previous = [...chapters.slice(0, Math.max(0, index))].reverse().find((c) => c.pages.length > 0);
-  if (!previous) return { characters, locations, notes, previously: null };
+  if (!previous) return { characters, locations, notes, lessons, previously: null };
 
   const sceneIds = chapterSceneIds(doc, previous.id);
   const lines = doc.scenes.scenes
@@ -148,5 +156,5 @@ export function chapterContext(doc: ProjectDoc, chapterId: string, maxChars = 15
     .map((s) => `- ${s.title} (${s.location}, ${s.time_of_day}): ${s.beats.map((b) => b.summary).filter(Boolean).slice(0, 3).join(" ")}`);
   let text = `Capitolo ${previous.number} «${previous.title}»:\n${lines.join("\n")}`;
   if (text.length > maxChars) text = `${text.slice(0, maxChars - 1)}…`;
-  return { characters, locations, notes, previously: text };
+  return { characters, locations, notes, lessons, previously: text };
 }

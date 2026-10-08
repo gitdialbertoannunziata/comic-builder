@@ -1,5 +1,5 @@
 import type { ProjectDoc } from "../document/projectDoc.js";
-import type { Balloon } from "../schema/balloon.js";
+import type { Balloon, BalloonType } from "../schema/balloon.js";
 import type { Panel } from "../schema/panel.js";
 import type { NewRevision } from "./revisionCommands.js";
 
@@ -64,8 +64,9 @@ export function exportReadable(doc: ProjectDoc, chapterId: string): string {
     "- cambia il testo di una battuta dopo i due punti; lascia com'è il codice fra parentesi quadre;",
     `- per togliere una battuta scrivi ${REMOVE_MARK} al posto del testo;`,
     "- per aggiungerne una, scrivi sotto il pannello una riga «+ NOME: testo»;",
-    "- per una nota su un pannello, scrivi sotto una riga che comincia con «>»;",
-    "- l'azione del pannello si corregge dopo «Azione:».",
+    "- per cambiare chi parla o come (sussurro, urlo, pensiero…), cambia il nome o la parola fra parentesi prima dei due punti;",
+    "- per una nota, scrivi una riga che comincia con «>»: sotto un pannello riguarda quel pannello, subito sotto «Pagina» tutta la pagina, qui in cima tutto il capitolo;",
+    "- l'azione del pannello si corregge dopo «Azione:», il luogo dopo «Luogo:».",
     "",
   ];
   for (const { order, panels } of chapterPanels(doc, chapterId)) {
@@ -73,6 +74,7 @@ export function exportReadable(doc: ProjectDoc, chapterId: string): string {
     for (const panel of panels) {
       lines.push(`### [${panel.id}]`);
       lines.push(`Azione: ${panel.action}`);
+      lines.push(`Luogo: ${panel.setting}`);
       for (const balloon of panel.balloons) lines.push(`- [${balloon.id}] ${label(balloon)}${plain(balloon)}`);
       lines.push("");
     }
@@ -96,14 +98,45 @@ export function normalizeForCompare(text: string): string {
     .trim();
 }
 
-/** Toglie l'etichetta generata («SARA: », «(didascalia) », «ELIO (sussurro): »), se c'è. */
-function stripLabel(rest: string): string {
-  const paren = /^\((?:[^)]*)\)\s*/.exec(rest);
-  if (paren) return rest.slice(paren[0].length);
+const TYPE_BY_LABEL = new Map<string, BalloonType>([
+  ...(Object.entries(TYPE_LABEL) as Array<[BalloonType, string]>).filter(([, text]) => text).map(([type, text]) => [text, type] as [string, BalloonType]),
+  ["senza voce", "speech"],
+]);
+
+interface ParsedLabel {
+  /** Il testo senza l'etichetta. */
+  text: string;
+  /** Chi parla secondo l'etichetta: `""` per nessuno, undefined se l'etichetta non lo dice. */
+  speaker?: string;
+  /** Il tipo di battuta secondo l'etichetta, se è uno di quelli che si esportano. */
+  type?: BalloonType;
+  /** Una parola fra parentesi che non è un tipo di battuta. */
+  unknownType?: string;
+}
+
+/**
+ * Separa l'etichetta generata («SARA: », «(didascalia) », «ELIO (sussurro): »)
+ * dal testo, e dice cosa c'è scritto: chi corregge il nome o la parola fra
+ * parentesi sta correggendo chi parla e come, non il testo.
+ */
+function parseLabel(rest: string): ParsedLabel {
+  const typeOf = (word: string | undefined): Pick<ParsedLabel, "type" | "unknownType"> => {
+    if (word === undefined) return {};
+    const type = TYPE_BY_LABEL.get(word.trim().toLowerCase());
+    return type ? { type } : { unknownType: word.trim() };
+  };
+  const paren = /^\(([^)]*)\)\s*/.exec(rest);
+  if (paren) {
+    const kind = typeOf(paren[1]);
+    return { text: rest.slice(paren[0].length), ...(kind.type ? { speaker: "", ...kind } : kind) };
+  }
   // Solo un nome tutto in maiuscolo conta come etichetta: «Attento: arriva!» è testo.
-  const named = /^([A-ZÀ-Ü0-9_' ]+?)(?:\s*\([^)]*\))?:\s*/.exec(rest);
-  if (named && /[A-ZÀ-Ü]/.test(named[1]!)) return rest.slice(named[0].length);
-  return rest;
+  const named = /^([A-ZÀ-Ü0-9_' ]+?)(?:\s*\(([^)]*)\))?:\s*/.exec(rest);
+  if (named && /[A-ZÀ-Ü]/.test(named[1]!)) {
+    const kind = named[2] === undefined ? { type: "speech" as BalloonType } : typeOf(named[2]);
+    return { text: rest.slice(named[0].length), speaker: refFromName(named[1]!), ...kind };
+  }
+  return { text: rest };
 }
 
 /** Da un nome scritto a mano al ref del personaggio: minuscolo, senza accenti né spazi (§5.3). */
@@ -125,7 +158,9 @@ export interface ImportResult {
 
 const PANEL_LINE = /^#{1,6}\s*\[([^\]]+)\]/;
 const BALLOON_LINE = /^\s*[-*•–—]\s*\[([^\]]+)\]\s?(.*)$/;
+const PAGE_LINE = /^#{1,6}\s*Pagina\s+(\d+)/i;
 const ACTION_LINE = /^\s*Azione:\s?(.*)$/i;
+const SETTING_LINE = /^\s*Luogo:\s?(.*)$/i;
 const ADD_LINE = /^\s*\+\s*(.+)$/;
 const NOTE_LINE = /^\s*>\s?(.+)$/;
 const CHAPTER_LINE = /^\s*Capitolo:\s*(\S+)/;
@@ -135,7 +170,9 @@ export function parseAnnotated(doc: ProjectDoc, chapterId: string, text: string)
   const warnings: string[] = [];
   const panels = new Map<string, Panel>();
   const balloons = new Map<string, { panel: Panel; balloon: Balloon }>();
-  for (const { panels: list } of chapterPanels(doc, chapterId)) {
+  const pageByOrder = new Map<number, string>();
+  for (const { pageId, order, panels: list } of chapterPanels(doc, chapterId)) {
+    pageByOrder.set(order, pageId);
     for (const panel of list) {
       panels.set(panel.id, panel);
       for (const balloon of panel.balloons) balloons.set(balloon.id, { panel, balloon });
@@ -144,6 +181,7 @@ export function parseAnnotated(doc: ProjectDoc, chapterId: string, text: string)
 
   const seen = new Set<string>();
   let current: Panel | null = null;
+  let currentPage: string | null = null;
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
 
   lines.forEach((line, index) => {
@@ -151,6 +189,14 @@ export function parseAnnotated(doc: ProjectDoc, chapterId: string, text: string)
     const chapterMatch = CHAPTER_LINE.exec(line);
     if (chapterMatch && chapterMatch[1] !== chapterId) {
       warnings.push(`Il file è del capitolo ${chapterMatch[1]}, non di ${chapterId}: controlla di aver scelto quello giusto.`);
+    }
+
+    const pageMatch = PAGE_LINE.exec(line);
+    if (pageMatch) {
+      current = null;
+      currentPage = pageByOrder.get(Number(pageMatch[1])) ?? null;
+      if (!currentPage) warnings.push(`Riga ${lineNumber}: la pagina ${pageMatch[1]} non esiste in questo capitolo.`);
+      return;
     }
 
     const panelMatch = PANEL_LINE.exec(line);
@@ -170,9 +216,23 @@ export function parseAnnotated(doc: ProjectDoc, chapterId: string, text: string)
         return;
       }
       seen.add(id);
-      const written = stripLabel(balloonMatch[2] ?? "").trim();
+      const parsed = parseLabel(balloonMatch[2] ?? "");
+      const written = parsed.text.trim();
       const before = plain(found.balloon);
       const base = { origin: "annotated" as const, panel: found.panel.id, balloon: id, speaker: null, source_line: found.panel.source?.from_line ?? null };
+      // L'etichetta corretta: chi parla, e come. Su una battuta da togliere non conta.
+      if (normalizeForCompare(written).toLowerCase() !== REMOVE_MARK) {
+        const speaker = found.balloon.speaker.ref ?? "";
+        if (parsed.speaker !== undefined && parsed.speaker !== speaker) {
+          corrections.push({ ...base, kind: "set", field: "speaker", from: speaker, to: parsed.speaker });
+        }
+        if (parsed.type !== undefined && parsed.type !== found.balloon.type) {
+          corrections.push({ ...base, kind: "set", field: "balloon_type", from: found.balloon.type, to: parsed.type });
+        }
+        if (parsed.unknownType !== undefined) {
+          warnings.push(`Riga ${lineNumber}: «(${parsed.unknownType})» non è un tipo di battuta (${[...TYPE_BY_LABEL.keys()].join(", ")}): il tipo di [${id}] resta com'era.`);
+        }
+      }
       if (normalizeForCompare(written).toLowerCase() === REMOVE_MARK) {
         corrections.push({ ...base, kind: "remove", from: before, to: null });
       } else if (normalizeForCompare(written) !== normalizeForCompare(before)) {
@@ -181,8 +241,24 @@ export function parseAnnotated(doc: ProjectDoc, chapterId: string, text: string)
       return;
     }
 
-    if (!current) return;
+    if (!current) {
+      // Fuori da ogni pannello una nota riguarda la pagina, o — prima della prima pagina — il capitolo.
+      const note = NOTE_LINE.exec(line);
+      if (note) {
+        corrections.push({ origin: "annotated", kind: "note", panel: null, balloon: null, page: currentPage, speaker: null, from: null, to: note[1]!.trim(), source_line: null });
+      }
+      return;
+    }
     const panel: Panel = current;
+
+    const settingMatch = SETTING_LINE.exec(line);
+    if (settingMatch) {
+      const written = (settingMatch[1] ?? "").trim();
+      if (normalizeForCompare(written) !== normalizeForCompare(panel.setting)) {
+        corrections.push({ origin: "annotated", kind: "set", field: "setting", panel: panel.id, balloon: null, speaker: null, from: panel.setting, to: written, source_line: panel.source?.from_line ?? null });
+      }
+      return;
+    }
 
     const actionMatch = ACTION_LINE.exec(line);
     if (actionMatch) {

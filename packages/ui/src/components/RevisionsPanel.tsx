@@ -1,17 +1,26 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  canForceRevision,
+  chapterSceneIds,
   characterRefs,
+  diffWords,
   exportReadable,
   findMatches,
+  lintRevisions,
   parseAnnotated,
+  partitionIncoming,
   revisionConflict,
+  revisionScope,
+  revisionState,
   scriptImpact,
+  suggestLesson,
   type Command,
   type ExportFile,
   type FindOptions,
+  type NewRevision,
   type ProjectDoc,
   type RevisionEntry,
-  type ScriptImpact,
+  type RevisionState,
 } from "@comic-builder/core";
 
 interface Props {
@@ -21,6 +30,9 @@ interface Props {
   endGesture: () => void;
   onSelectPanel: (panelId: string) => void;
   write: (files: ExportFile[]) => Promise<string>;
+  /** Mostra solo le voci di questa vignetta o di questa pagina: ci si arriva dall'editor. */
+  filter?: string | null;
+  onClearFilter?: () => void;
 }
 
 const KIND_LABEL: Record<RevisionEntry["kind"], string> = {
@@ -29,7 +41,51 @@ const KIND_LABEL: Record<RevisionEntry["kind"], string> = {
   add: "battuta nuova",
   remove: "togli battuta",
   note: "nota",
+  set: "campo",
 };
+
+const FIELD_LABEL: Record<NonNullable<RevisionEntry["field"]>, string> = {
+  setting: "luogo",
+  continuity_notes: "continuità",
+  speaker: "chi parla",
+  balloon_type: "tipo di battuta",
+};
+
+const STATE_LABEL: Record<RevisionState, string> = {
+  current: "in vigore",
+  superseded: "poi modificata",
+  lost: "non più nel documento",
+};
+
+const kindLabel = (e: RevisionEntry) => (e.kind === "set" && e.field ? FIELD_LABEL[e.field] : KIND_LABEL[e.kind]);
+
+/** Il prima e il dopo: parola per parola dove è testo, uno accanto all'altro dove è un valore. */
+function Change({ entry }: { entry: RevisionEntry }) {
+  const speaker = entry.kind === "add" && entry.speaker ? `${entry.speaker.toUpperCase()}: ` : "";
+  if (entry.kind === "remove") return <p className="revision__from">{entry.from}</p>;
+  if (entry.kind === "add" || entry.kind === "note" || entry.from === null) {
+    return entry.to === null ? null : (
+      <p className={entry.kind === "note" ? "revision__note" : "revision__to"}>
+        {speaker}
+        {entry.to}
+      </p>
+    );
+  }
+  if (entry.kind === "set" && (entry.field === "speaker" || entry.field === "balloon_type")) {
+    return (
+      <p className="revision__diff">
+        <del>{entry.from || "nessuno"}</del> → <ins>{entry.to || "nessuno"}</ins>
+      </p>
+    );
+  }
+  return (
+    <p className="revision__diff">
+      {diffWords(entry.from, entry.to ?? "").map((seg, i) => (seg.kind === "same" ? <span key={i}>{seg.text}</span> : seg.kind === "del" ? <del key={i}>{seg.text}</del> : <ins key={i}>{seg.text}</ins>))}
+    </p>
+  );
+}
+
+type Asking = { id: string; what: "edit" | "done" | "reject" | "lesson"; text: string };
 
 const ORIGIN_LABEL: Record<RevisionEntry["origin"], string> = {
   annotated: "file corretto",
@@ -51,13 +107,16 @@ let batch = 0;
  * correzione da accettare o rifiutare. Accettare riscrive solo i balloon
  * coinvolti, e la cache del lettering rimisura solo quelli.
  */
-export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel, write }: Props) {
+export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel, write, filter = null, onClearFilter }: Props) {
   const [by, setBy] = useState("sceneggiatore");
   const [me] = useState("autore");
   const [message, setMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [newScript, setNewScript] = useState("");
-  const [impact, setImpact] = useState<ScriptImpact | null>(null);
+  const [compared, setCompared] = useState<string | null>(null);
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteTarget, setNoteTarget] = useState("chapter");
   const [showHistory, setShowHistory] = useState(false);
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
@@ -67,10 +126,25 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
   const fileInput = useRef<HTMLInputElement>(null);
   const scriptInput = useRef<HTMLInputElement>(null);
 
-  const entries = doc.revisions[chapterId]?.entries ?? [];
+  const chapter = doc.chapters.chapters.find((c) => c.id === chapterId);
+  const chapterPages = useMemo(() => (chapter?.pages ?? []).flatMap((id) => (doc.pages[id] ? [doc.pages[id]] : [])), [chapter, doc.pages]);
+  const scenes = useMemo(() => {
+    const ids = chapterSceneIds(doc, chapterId);
+    return doc.scenes.scenes.filter((s) => ids.has(s.id));
+  }, [doc, chapterId]);
+  // Il confronto segue il documento: se cambia sotto, i pannelli toccati si ricalcolano.
+  const impact = useMemo(() => (compared === null ? null : scriptImpact(doc, chapterId, compared)), [doc, chapterId, compared]);
+
+  const all = doc.revisions[chapterId]?.entries ?? [];
+  const entries = useMemo(() => {
+    if (!filter) return all;
+    const onPage = new Set(doc.pages[filter]?.panels.map((p) => p.id) ?? []);
+    return all.filter((e) => e.panel === filter || e.page === filter || (e.panel !== null && onPage.has(e.panel)));
+  }, [all, filter, doc.pages]);
   const open = entries.filter((e) => e.status === "open");
   const closed = entries.filter((e) => e.status !== "open");
-  const conflicts = useMemo(() => new Map(open.map((e) => [e.id, revisionConflict(doc, e)])), [doc, open]);
+  const conflicts = useMemo(() => new Map(open.map((e) => [e.id, revisionConflict(doc, e, chapterId)])), [doc, open, chapterId]);
+  const changelogIssues = useMemo(() => lintRevisions(doc).filter((i) => i.path.startsWith(`revisions[${chapterId}]`)), [doc, chapterId]);
   const applicable = open.filter((e) => conflicts.get(e.id) === null);
   const matches = useMemo(() => (find ? findMatches(doc, chapterId, find, replace, options) : []), [doc, chapterId, find, replace, options]);
   const refs = useMemo(() => [...characterRefs(doc)].sort(), [doc]);
@@ -93,31 +167,134 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
       done("Nessuna differenza nel file: niente da correggere.");
       return;
     }
+    const parts = partitionIncoming(doc, chapterId, result.corrections);
+    const skipped = [
+      parts.alreadyOpen.length > 0 ? `${parts.alreadyOpen.length} già in attesa` : "",
+      parts.alreadyRejected.length > 0 ? `${parts.alreadyRejected.length} già rifiutate, non riproposte (si riaprono dallo storico)` : "",
+    ].filter(Boolean);
+    const tail = skipped.length > 0 ? ` ${skipped.join("; ")}.` : "";
+    if (parts.fresh.length === 0) {
+      done(`Niente di nuovo in «${file.name}».${tail}`);
+      return;
+    }
     if (run({ type: "revision.add", chapterId, entries: result.corrections, by, at: now() })) {
-      done(`${result.corrections.length} correzioni importate da «${file.name}». Accettale o rifiutale qui sotto.`);
+      done(`${parts.fresh.length} correzioni importate da «${file.name}». Accettale o rifiutale qui sotto.${tail}`);
     }
   }
 
   function compareScript() {
-    setImpact(scriptImpact(doc, chapterId, newScript));
+    setCompared(newScript);
+  }
+
+  function addNote() {
+    const text = noteText.trim();
+    if (!text) return;
+    const [scope, id] = noteTarget.split(":");
+    const note: NewRevision = { origin: "manual", kind: "note", panel: null, balloon: null, speaker: null, from: null, to: text, source_line: null, page: scope === "page" ? id! : null, scene: scope === "scene" ? id! : null };
+    if (run({ type: "revision.add", chapterId, entries: [note], by: me, at: now(), again: true })) setNoteText("");
+  }
+
+  /** A cosa si riferisce una voce, come lo legge chi lavora: la battuta, la vignetta, «pagina 3». */
+  function targetOf(entry: RevisionEntry): { label: string; panel: string | null } {
+    switch (revisionScope(entry)) {
+      case "balloon":
+        return { label: entry.balloon!, panel: entry.panel };
+      case "panel":
+        return { label: entry.panel!, panel: entry.panel };
+      case "page": {
+        const page = doc.pages[entry.page!];
+        return { label: page ? `pagina ${page.order}` : `pagina ${entry.page} (non c'è più)`, panel: page?.panels[0]?.id ?? null };
+      }
+      case "scene": {
+        const scene = doc.scenes.scenes.find((s) => s.id === entry.scene);
+        const first = chapterPages.flatMap((p) => p.panels).find((p) => p.scene_id === entry.scene);
+        return { label: scene ? `scena «${scene.title}»` : `scena ${entry.scene} (non c'è più)`, panel: first?.id ?? null };
+      }
+      case "chapter":
+        return { label: "tutto il capitolo", panel: null };
+    }
+  }
+
+  function confirmAsking() {
+    if (!asking) return;
+    const text = asking.text.trim();
+    const { id } = asking;
+    const ok =
+      asking.what === "edit"
+        ? text.length > 0 && run({ type: "revision.edit", chapterId, id, to: text })
+        : asking.what === "done"
+          ? run({ type: "revision.apply", chapterId, ids: [id], by: me, at: now(), ...(text ? { resolution: text } : {}) })
+          : asking.what === "reject"
+            ? run({ type: "revision.reject", chapterId, ids: [id], by: me, at: now(), ...(text ? { resolution: text } : {}) })
+            : run({ type: "revision.lesson", chapterId, id, lesson: text || null });
+    if (ok) {
+      if (asking.what === "lesson" && text) done("Regola aggiunta alla serie: arriva allo spoglio di ogni capitolo (la vedi in Copione, «cosa riceve il modello»).");
+      setAsking(null);
+    }
+  }
+
+  const ASK: Record<Asking["what"], { label: string; confirm: string }> = {
+    edit: { label: "testo proposto", confirm: "Salva" },
+    done: { label: "cosa hai fatto (facoltativo)", confirm: "Fatta" },
+    reject: { label: "perché (facoltativo)", confirm: "Rifiuta" },
+    lesson: { label: "regola per la serie: vale per ogni capitolo", confirm: "Salva la regola" },
+  };
+
+  function askBox(entry: RevisionEntry) {
+    if (asking?.id !== entry.id) return null;
+    return (
+      <div className="revision__ask">
+        <label className="field">
+          <span className="field__label">{ASK[asking.what].label}</span>
+          <textarea rows={2} autoFocus value={asking.text} onChange={(e) => setAsking({ ...asking, text: e.target.value })} />
+        </label>
+        <div className="tool-row tool-row--tight">
+          <button type="button" className="btn btn--small btn--primary" disabled={asking.what === "edit" && !asking.text.trim()} onClick={confirmAsking}>
+            {ASK[asking.what].confirm}
+          </button>
+          <button type="button" className="link-btn" onClick={() => setAsking(null)}>
+            annulla
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function lessonRow(entry: RevisionEntry) {
+    return (
+      <p className="revision__lesson">
+        {entry.lesson && <span>regola per la serie: «{entry.lesson}» </span>}
+        <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "lesson", text: entry.lesson ?? suggestLesson(entry) })}>
+          {entry.lesson ? "cambia" : "vale per la serie…"}
+        </button>
+        {entry.lesson && (
+          <>
+            {" "}
+            <button type="button" className="link-btn" onClick={() => run({ type: "revision.lesson", chapterId, id: entry.id, lesson: null })}>
+              togli
+            </button>
+          </>
+        )}
+      </p>
+    );
   }
 
   async function adoptScript() {
-    if (!impact) return;
+    if (!impact || compared === null) return;
     // Correzioni e copione nuovo sono un passo solo: un Ctrl+Z torna al prima.
     const gesture = `script-${++batch}`;
     if (impact.corrections.length > 0) run({ type: "revision.add", chapterId, entries: impact.corrections, by, at: now() }, { gesture });
-    run({ type: "script.set", chapterId, text: newScript, sha: await sha256(newScript) }, { gesture });
+    run({ type: "script.set", chapterId, text: compared, sha: await sha256(compared) }, { gesture });
     endGesture();
     done(`Copione aggiornato: ${impact.touched.length} pannelli toccati, ${impact.corrections.length} correzioni da decidere.`);
-    setImpact(null);
+    setCompared(null);
     setNewScript("");
   }
 
-  function accept(ids: string[]) {
+  function accept(ids: string[], force = false) {
     const touched = entries.filter((e) => ids.includes(e.id));
-    if (run({ type: "revision.apply", chapterId, ids, by: me, at: now() })) {
-      const balloons = touched.filter((e) => e.kind !== "note" && e.kind !== "action").length;
+    if (run({ type: "revision.apply", chapterId, ids, by: me, at: now(), ...(force ? { force } : {}) })) {
+      const balloons = touched.filter((e) => e.kind === "text" || e.kind === "add" || e.kind === "remove").length;
       done(`${ids.length} correzioni applicate: ${balloons} battute riletterate, il resto della pagina non si tocca.`);
     }
   }
@@ -203,6 +380,33 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
           )}
         </div>
 
+        <div className="card">
+          <p className="card__title">nuova nota</p>
+          <label className="field field--inline">
+            <span className="field__label">su</span>
+            <select value={noteTarget} onChange={(e) => setNoteTarget(e.target.value)}>
+              <option value="chapter">tutto il capitolo</option>
+              {scenes.map((s) => (
+                <option key={s.id} value={`scene:${s.id}`}>
+                  scena «{s.title}»
+                </option>
+              ))}
+              {chapterPages.map((p) => (
+                <option key={p.id} value={`page:${p.id}`}>
+                  pagina {p.order}
+                </option>
+              ))}
+            </select>
+          </label>
+          <textarea rows={2} placeholder="Cosa c'è da rivedere: ritmo, layout, inquadrature, disegno…" value={noteText} onChange={(e) => setNoteText(e.target.value)} />
+          <div className="tool-row">
+            <button type="button" className="btn btn--small" disabled={!noteText.trim()} onClick={addNote}>
+              Aggiungi la nota
+            </button>
+          </div>
+          <p className="field__hint">Una vignetta o una battuta si annotano dall'editor, con «annota…».</p>
+        </div>
+
         {message && <p className="muted revisions__message">{message}</p>}
         {warnings.map((w, i) => (
           <p key={i} className="issue issue--warning">
@@ -212,53 +416,88 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
       </div>
 
       <div className="card revisions__list">
+        {filter && (
+          <p className="revisions__filter">
+            Solo le voci di <strong>{doc.pages[filter] ? `pagina ${doc.pages[filter].order}` : filter}</strong>.{" "}
+            <button type="button" className="link-btn" onClick={onClearFilter}>
+              mostra tutto il capitolo
+            </button>
+          </p>
+        )}
+        {changelogIssues.map((i) => (
+          <p key={i.path + i.code} className="issue issue--warning">
+            {i.message}
+          </p>
+        ))}
         <p className="card__title card__title--row">
-          <span>correzioni aperte ({open.length})</span>
+          <span>revisioni aperte ({open.length})</span>
           {open.length > 0 && (
             <span className="tool-row tool-row--tight">
               <button type="button" className="btn btn--small btn--primary" disabled={applicable.length === 0} onClick={() => accept(applicable.map((e) => e.id))}>
                 Accetta le applicabili ({applicable.length})
               </button>
-              <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: open.map((e) => e.id), by: me, at: now() })}>
+              <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: open.filter((e) => e.kind !== "note").map((e) => e.id), by: me, at: now() })}>
                 Rifiuta tutte
               </button>
             </span>
           )}
         </p>
-        {open.length === 0 && <p className="field__hint">Nessuna correzione in attesa.</p>}
+        {open.length === 0 && <p className="field__hint">Nessuna revisione in attesa.</p>}
         <ul className="revision-list">
           {open.map((entry) => {
-            const conflict = conflicts.get(entry.id);
+            const conflict = conflicts.get(entry.id) ?? null;
+            const target = targetOf(entry);
+            const note = entry.kind === "note";
             return (
               <li key={entry.id} className={`revision${conflict ? " revision--conflict" : ""}`}>
                 <div className="revision__head">
-                  <span className="revision__kind">{KIND_LABEL[entry.kind]}</span>
-                  <button type="button" className="link-btn" onClick={() => entry.panel && onSelectPanel(entry.panel)}>
-                    {entry.balloon ?? entry.panel}
-                  </button>
+                  <span className="revision__kind">{kindLabel(entry)}</span>
+                  {target.panel ? (
+                    <button type="button" className="link-btn" onClick={() => onSelectPanel(target.panel!)}>
+                      {target.label}
+                    </button>
+                  ) : (
+                    <span>{target.label}</span>
+                  )}
                   <span className="muted">
                     {ORIGIN_LABEL[entry.origin]} · {entry.by}
                   </span>
                 </div>
-                {entry.from !== null && entry.kind !== "add" && <p className="revision__from">{entry.from}</p>}
-                {entry.to !== null && entry.kind !== "remove" && (
-                  <p className="revision__to">
-                    {entry.kind === "add" && entry.speaker ? `${entry.speaker.toUpperCase()}: ` : ""}
-                    {entry.to}
-                  </p>
-                )}
-                {entry.kind === "note" && entry.origin === "script" && (
+                <Change entry={entry} />
+                {note && entry.origin === "script" && (
                   <p className="field__hint">Il copione cambia qui, ma non c'è una battuta da aggiornare con certezza (prosa, o una battuta già diversa nel fumetto): decidi tu cosa toccare.</p>
                 )}
                 {conflict && <p className="issue issue--warning">Non applicabile: {conflict}</p>}
-                <div className="tool-row tool-row--tight">
-                  <button type="button" className="btn btn--small" disabled={conflict !== null} onClick={() => accept([entry.id])}>
-                    {entry.kind === "note" ? "Presa visione" : "Accetta"}
-                  </button>
-                  <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: [entry.id], by: me, at: now() })}>
-                    Rifiuta
-                  </button>
-                </div>
+                {askBox(entry) ?? (
+                  <div className="tool-row tool-row--tight">
+                    {note ? (
+                      <button type="button" className="btn btn--small" onClick={() => setAsking({ id: entry.id, what: "done", text: "" })}>
+                        Fatta…
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn--small" disabled={conflict !== null} onClick={() => accept([entry.id])}>
+                        Accetta
+                      </button>
+                    )}
+                    {conflict && canForceRevision(doc, entry, chapterId) && (
+                      <button type="button" className="btn btn--small" onClick={() => accept([entry.id], true)} title="Sovrascrive ciò che c'è ora; il changelog registra cosa c'era">
+                        Applica comunque
+                      </button>
+                    )}
+                    <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: [entry.id], by: me, at: now() })}>
+                      {note ? "Scarta" : "Rifiuta"}
+                    </button>
+                    {entry.kind !== "remove" && entry.field !== "speaker" && entry.field !== "balloon_type" && (
+                      <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "edit", text: entry.to ?? "" })}>
+                        modifica
+                      </button>
+                    )}
+                    <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "reject", text: "" })}>
+                      {note ? "scarta" : "rifiuta"} con motivo
+                    </button>
+                  </div>
+                )}
+                {asking?.id !== entry.id && lessonRow(entry)}
               </li>
             );
           })}
@@ -270,16 +509,38 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
         )}
         {showHistory && (
           <ul className="revision-list revision-list--history">
-            {closed.map((e) => (
-              <li key={e.id}>
-                <code>{e.id}</code> {e.status === "applied" ? "✓" : "✗"} {KIND_LABEL[e.kind]} {e.balloon ?? e.panel}
-                {e.rev !== null && <span className="muted"> · rev {e.rev}</span>}
-                <span className="muted">
-                  {" "}
-                  · {e.resolved_by}, {e.resolved_at ? new Date(e.resolved_at).toLocaleString() : ""}
-                </span>
-              </li>
-            ))}
+            {closed.map((e) => {
+              const state = revisionState(doc, e, chapterId);
+              const reopenable = e.status === "rejected" || e.kind === "note";
+              return (
+                <li key={e.id} className="revision-past">
+                  <code>{e.id}</code> {e.status === "applied" ? "✓" : "✗"} {kindLabel(e)} {targetOf(e).label}
+                  {state && <span className={`revision-past__state revision-past__state--${state}`}> · {STATE_LABEL[state]}</span>}
+                  <span className="muted">
+                    {" "}
+                    · {e.resolved_by}, {e.resolved_at ? new Date(e.resolved_at).toLocaleString() : ""}
+                  </span>
+                  <Change entry={e} />
+                  {e.replaced !== null && <p className="field__hint">Applicata sopra un testo diverso da quello atteso: «{e.replaced}».</p>}
+                  {e.resolution && <p className="field__hint">{e.status === "rejected" ? "Motivo" : "Fatto"}: {e.resolution}</p>}
+                  {askBox(e) ?? (
+                    <div className="tool-row tool-row--tight">
+                      {reopenable && (
+                        <button type="button" className="link-btn" onClick={() => run({ type: "revision.reopen", chapterId, ids: [e.id] })}>
+                          riapri
+                        </button>
+                      )}
+                      {state === "current" && e.kind !== "remove" && (
+                        <button type="button" className="link-btn" onClick={() => run({ type: "revision.revert", chapterId, id: e.id, by: me, at: now() })} title="Torna al testo di prima, con una correzione inversa nel changelog">
+                          ripristina
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {asking?.id !== e.id && lessonRow(e)}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

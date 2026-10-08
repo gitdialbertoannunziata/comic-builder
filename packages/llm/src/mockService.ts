@@ -1,5 +1,5 @@
 import type { LlmService, LlmRequest, LlmResponse } from "./service.js";
-import type { Breakdown, BreakdownBeat, BreakdownScene } from "./breakdownSchema.js";
+import type { Breakdown, BreakdownBeat, BreakdownCast, BreakdownScene } from "./breakdownSchema.js";
 
 /**
  * Spoglio euristico deterministico, senza alcun modello.
@@ -173,6 +173,25 @@ function sceneFrom(raw: RawScene, index: number): BreakdownScene {
 }
 
 /**
+ * Il cast che l'euristica conosce: chi parla, con il nome come lo scrive il
+ * copione. Dell'aspetto non sa nulla e non lo finge: la scheda nasce con il
+ * nome, il resto lo scrive l'autore.
+ */
+function castFrom(script: string): BreakdownCast[] {
+  const names = new Map<string, string>();
+  for (const line of script.split("\n")) {
+    const written = DIALOGUE.exec(line)?.[1]?.trim();
+    if (!written) continue;
+    const ref = refFor(written);
+    if (!ref || names.has(ref)) continue;
+    // «SARA:» è una convenzione di sceneggiatura, non il nome: si riporta a «Sara».
+    const name = written === written.toUpperCase() ? written.toLowerCase().replace(/(^|[\s'_.])(\p{L})/gu, (_, sep: string, c: string) => sep + c.toUpperCase()) : written;
+    names.set(ref, name);
+  }
+  return [...names].map(([ref, name]) => ({ ref, name, summary: "", age: "", build: "", face: "", hair: "", eyes: "", skin: "", distinguishing: "" }));
+}
+
+/**
  * Il prompt consegna le righe numerate (`12\ttesto`) preceduto da un
  * preambolo. L'euristica lavora sul testo vero, quindi lo ricostruisce: così
  * accetta indifferentemente uno script grezzo o il prompt completo, e i numeri
@@ -198,11 +217,12 @@ function unnumber(text: string): string {
 export function heuristicBreakdown(input: string): Breakdown {
   const script = unnumber(input);
   const scenes = splitScenes(script).map(sceneFrom);
-  if (scenes.length > 0) return { scenes };
+  if (scenes.length > 0) return { scenes, cast: castFrom(script) };
 
   // Uno script senza struttura riconoscibile resta una scena sola: meglio un
   // documento povero ma valido che un errore che blocca la catena.
   return {
+    cast: [],
     scenes: [
       {
         title: "Scena 1",

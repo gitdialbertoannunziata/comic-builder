@@ -102,4 +102,13 @@ describe("Contesto per la continuità fra capitoli", () => {
     // I luoghi del capitolo stesso non contano come «già visti».
     expect(chapterContext(d, "ep001").locations).toEqual([]);
   });
+
+  it("porta ciò che l'autore ha tratto dalle correzioni, in ogni capitolo", () => {
+    expect(chapterContext(doc, "ep001").lessons).toEqual([]);
+    const panel = doc.pages[doc.chapters.chapters[0]!.pages[0]!]!.panels[0]!;
+    let d = applyCommand(doc, { type: "revision.add", chapterId: "ep001", entries: [{ origin: "manual", kind: "note", panel: panel.id, balloon: null, speaker: null, from: null, to: "x", source_line: null }], by: "autore", at: "2026-10-08T10:00:00Z" });
+    d = applyCommand(d, { type: "revision.lesson", chapterId: "ep001", id: "r-0001", lesson: "Sara non dà mai del lei." });
+    d = applyCommand(d, { type: "chapter.add", title: "B" });
+    expect(chapterContext(d, "ep002").lessons).toEqual(["Sara non dà mai del lei."]);
+  });
 });

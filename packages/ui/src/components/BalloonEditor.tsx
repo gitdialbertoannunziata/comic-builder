@@ -1,5 +1,6 @@
 import type { Balloon, TextRun, Tail } from "@comic-builder/core";
 import { Section } from "./Section.js";
+import { NoteButton } from "./NoteButton.js";
 
 interface Props {
   balloon: Balloon;
@@ -16,6 +17,8 @@ interface Props {
   /** È il balloon scelto sulla pagina: si distingue dagli altri. */
   selected?: boolean;
   onSelect?: () => void;
+  /** Una nota su questa battuta, nel changelog delle revisioni. */
+  onAnnotate?: (text: string) => void;
   /** Fine di un'interazione continua (digitazione, trascinamento): chiude il passo di undo. */
   onCommit: () => void;
 }
@@ -29,7 +32,7 @@ const round = (v: number) => Math.round(v * 1000) / 1000;
  * successivo. Ancora e coda si spostano anche trascinando sulla pagina;
  * i numeri qui servono alla regolazione fine.
  */
-export function BalloonEditor({ balloon, selected, onSelect, shown, target, onText, onAnchor, onTail, onScale, onReset, onRemove, onCommit }: Props) {
+export function BalloonEditor({ balloon, selected, onSelect, shown, target, onText, onAnchor, onTail, onScale, onReset, onRemove, onCommit, onAnnotate }: Props) {
   const plainText = balloon.text.map((r) => r.t).join("");
   const tailTarget = shown.tail.target ?? { x: 0.5, y: 0.5 };
   const tuned = target !== null && balloon.per_target[target] !== undefined;
@@ -129,6 +132,7 @@ export function BalloonEditor({ balloon, selected, onSelect, shown, target, onTe
             </label>
           </div>
         </Section>
+        {onAnnotate && <NoteButton what="la battuta" onAdd={onAnnotate} />}
       </div>
     </div>
   );

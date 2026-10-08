@@ -131,5 +131,10 @@ export async function copyTree(from: ProjectStore, to: ProjectStore, directory: 
   return copied;
 }
 
-/** Le cartelle di file binari che un progetto porta con sé (§5.1): arte sorgente e riferimenti dei personaggi. */
-export const ASSET_DIRECTORIES = ["art", "characters"] as const;
+/**
+ * Le cartelle di file binari che un progetto porta con sé (§5.1): arte
+ * sorgente, riferimenti dei personaggi e render. I render si possono
+ * rigenerare (§5.8), ma ognuno è costato tempo e denaro: non si perdono
+ * perché il progetto ha cambiato cartella.
+ */
+export const ASSET_DIRECTORIES = ["art", "characters", "renders"] as const;

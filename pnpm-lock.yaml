@@ -50,6 +50,19 @@ importers:
         specifier: ^2.1.5
         version: 2.1.9(@types/node@22.20.2)
 
+  packages/image:
+    dependencies:
+      '@comic-builder/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      vitest:
+        specifier: ^2.1.5
+        version: 2.1.9(@types/node@22.20.2)
+
   packages/lettering:
     dependencies:
       '@comic-builder/core':
@@ -96,6 +109,9 @@ importers:
       '@comic-builder/core':
         specifier: workspace:*
         version: link:../core
+      '@comic-builder/image':
+        specifier: workspace:*
+        version: link:../image
       '@comic-builder/lettering':
         specifier: workspace:*
         version: link:../lettering

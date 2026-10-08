@@ -36,8 +36,11 @@ export function splitLines(text: string): string[] {
  * le parti cambiate, già raggruppate.
  */
 export function diffLines(oldText: string, newText: string): Hunk[] {
-  const a = splitLines(oldText);
-  const b = splitLines(newText);
+  return diffSequences(splitLines(oldText), splitLines(newText));
+}
+
+/** Lo stesso diff su due sequenze qualunque: righe di un copione, o parole di una battuta. */
+export function diffSequences(a: readonly string[], b: readonly string[]): Hunk[] {
   const n = a.length;
   const m = b.length;
   const max = n + m;

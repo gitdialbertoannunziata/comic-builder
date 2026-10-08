@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { chapterContext, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
+import { chapterContext, issue, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { runBreakdown } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
+import { useRenders } from "./editor/useRenders.js";
+import type { ImageConfig } from "./components/GenerateCard.js";
 import { ChapterBar } from "./components/ChapterBar.js";
 import { BreakdownContext } from "./components/BreakdownContext.js";
 import { CharactersPanel } from "./components/CharactersPanel.js";
@@ -43,7 +45,9 @@ const initialDoc = projectDocFrom({
 export function App() {
   const editor = useProjectEditor(initialDoc);
   const { doc, run, endGesture } = editor;
-  const art = useArtWatcher(editor.assets, doc, run, endGesture);
+  const watched = useArtWatcher(editor.assets, doc, run, endGesture);
+  // Arte dell'autore e render insieme: chi disegna la pagina non distingue.
+  const art = useRenders(editor.assets, doc, watched);
   const chapters = doc.chapters.chapters;
   // Il capitolo aperto, per progetto: dopo un F5 si riparte da lì.
   const [chapterId, setChapterId] = usePreference(`chapter:${doc.project.id}`, chapters[0]!.id);
@@ -76,6 +80,32 @@ export function App() {
   const [openaiKey, setOpenaiKey] = useState(prefilled.openaiKey);
   const [openaiModel, setOpenaiModel] = usePreference("openaiModel", prefilled.openaiModel);
   const [openaiBaseUrl, setOpenaiBaseUrl] = usePreference("openaiBaseUrl", prefilled.openaiBaseUrl);
+  const [imageService, setImageService] = usePreference<ImageConfig["service"]>("imageService", prefilled.azureFluxKeyFromEnv || !prefilled.bflKeyFromEnv ? "azure" : "flux");
+  const [bflKey, setBflKey] = useState(prefilled.bflKey);
+  const [bflModel, setBflModel] = usePreference("bflModel", prefilled.bflModel);
+  const [azureFluxKey, setAzureFluxKey] = useState(prefilled.azureFluxKey);
+  const [azureFluxEndpoint, setAzureFluxEndpoint] = usePreference("azureFluxEndpoint", prefilled.azureFluxEndpoint);
+  const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
+  const [megapixels, setMegapixels] = usePreference("imageMegapixels", 1);
+  const image: ImageConfig = {
+    service: imageService,
+    onService: setImageService,
+    apiKey: bflKey,
+    onApiKey: setBflKey,
+    keyFromEnv: prefilled.bflKeyFromEnv,
+    model: bflModel,
+    onModel: setBflModel,
+    baseUrl: prefilled.bflBaseUrl,
+    azureKey: azureFluxKey,
+    onAzureKey: setAzureFluxKey,
+    azureKeyFromEnv: prefilled.azureFluxKeyFromEnv,
+    azureEndpoint: azureFluxEndpoint,
+    onAzureEndpoint: setAzureFluxEndpoint,
+    azureDeployment: azureFluxDeployment,
+    onAzureDeployment: setAzureFluxDeployment,
+    megapixels,
+    onMegapixels: setMegapixels,
+  };
   const [running, setRunning] = useState(false);
   const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
@@ -109,12 +139,38 @@ export function App() {
       // sono. È un passo della cronologia: Ctrl+Z riporta il capitolo di prima.
       const gesture = `breakdown-${chapter.id}-${Date.now()}`;
       run({ type: "chapter.set-content", chapterId: chapter.id, pages: result.pages, scenes: result.scenes, script }, { gesture });
+      // Chi compare entra fra i personaggi con ciò che il testo ne dice. Di
+      // una scheda che c'è già si riempiono solo i campi vuoti: ciò che
+      // l'autore ha scritto resta suo.
+      const filled: string[] = [];
+      for (const member of result.cast) {
+        const sheet = doc.characters[member.ref];
+        const appearance = Object.fromEntries(Object.entries(member.appearance).filter(([key, value]) => value && !sheet?.appearance[key as keyof typeof member.appearance]?.trim()));
+        const patch = {
+          ...(!sheet?.name.trim() ? { name: member.name } : {}),
+          ...(member.summary && !sheet?.summary.trim() ? { summary: member.summary } : {}),
+          ...(Object.keys(appearance).length > 0 ? { appearance } : {}),
+        };
+        if (sheet && Object.keys(patch).length === 0) continue;
+        run({ type: "character.upsert", ref: member.ref, patch }, { gesture });
+        filled.push(sheet?.name.trim() || member.name);
+      }
       if (!chapter.title.trim() || /^Capitolo \d+$/.test(chapter.title)) {
         run({ type: "chapter.update", chapterId: chapter.id, title: result.scenes[0]?.title ?? chapter.title }, { gesture });
       }
       endGesture();
       setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([key]) => key !== draftKey)));
-      setSummary(result.summary);
+      setSummary(
+        filled.length > 0
+          ? {
+              ...result.summary,
+              issues: [
+                ...result.summary.issues,
+                issue("info", "breakdown.cast-added", `Schede personaggio riempite dallo spoglio (dove il testo tace è una proposta), da rivedere: ${filled.join(", ")}`, "characters"),
+              ],
+            }
+          : result.summary,
+      );
       // Le pagine sono nate: si va a vederle. L'esito resta nell'area Copione.
       setArea("pagine");
     } catch (error) {
@@ -200,12 +256,12 @@ export function App() {
             <h2 className="area__title">Personaggi</h2>
             <p className="area__lead">Sono dell'opera, non del capitolo: com'è fatto ognuno si dice qui una volta, e vale in ogni vignetta.</p>
           </header>
-          <CharactersPanel doc={doc} store={editor.assets} run={run} endGesture={endGesture} />
+          <CharactersPanel doc={doc} store={editor.assets} image={image} run={run} endGesture={endGesture} />
         </div>
       </div>
 
       {pages.length > 0 ? (
-        <Workspace key={chapter.id} editor={editor} art={art} platform={platform} chapter={chapter} pages={pages} font={font} fontBytes={fontBytes} fontError={fontError} area={area} onArea={setArea} />
+        <Workspace key={chapter.id} editor={editor} art={art} platform={platform} image={image} chapter={chapter} pages={pages} font={font} fontBytes={fontBytes} fontError={fontError} area={area} onArea={setArea} />
       ) : (
         <div className="area area--empty" hidden={area === "copione" || area === "personaggi"}>
           <div className="empty-chapter">

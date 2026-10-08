@@ -105,6 +105,8 @@ export interface ProjectEditor {
   startOver: () => Promise<void>;
   /** Un'opera nuova e vuota, col nome dato: parte in memoria, si salva poi in una cartella. */
   newProject: (title: string) => Promise<void>;
+  /** Salva subito: sulla cartella del progetto, o in una da scegliere se non c'è ancora. */
+  save: () => Promise<void>;
   saveToFolder: () => Promise<void>;
   dismissNotice: () => void;
 }
@@ -157,27 +159,28 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
 
   // --- Autosave: solo ciò che è cambiato, un attimo dopo l'ultima modifica ---
   const saving = useRef(false);
+  /** Scrive `target` sulla cartella. Se una scrittura è già in corso non fa nulla: finita quella, l'autosave riparte da sé. */
+  const write = useCallback((to: ProjectStore, target: ProjectDoc, previous: ProjectDoc | null) => {
+    if (saving.current) return;
+    saving.current = true;
+    setStatus({ kind: "saving" });
+    saveProject(to, target, previous)
+      .then(() => {
+        setSaved(target);
+        setStatus({ kind: "saved", at: new Date() });
+      })
+      .catch((error: unknown) => setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) }))
+      .finally(() => {
+        saving.current = false;
+      });
+  }, []);
   useEffect(() => {
     if (!store || status.kind === "locked-out") return;
     if (history.present === saved) return;
     setStatus((s) => (s.kind === "saving" ? s : { kind: "pending" }));
-    const timer = setTimeout(() => {
-      if (saving.current) return;
-      saving.current = true;
-      setStatus({ kind: "saving" });
-      const target = history.present;
-      saveProject(store, target, saved)
-        .then(() => {
-          setSaved(target);
-          setStatus({ kind: "saved", at: new Date() });
-        })
-        .catch((error: unknown) => setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) }))
-        .finally(() => {
-          saving.current = false;
-        });
-    }, AUTOSAVE_DELAY_MS);
+    const timer = setTimeout(() => write(store, history.present, saved), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [history.present, saved, store, status.kind]);
+  }, [history.present, saved, store, status.kind, write]);
 
   // --- Lock: rinnovato finché la sessione è aperta, rilasciato alla chiusura ---
   useEffect(() => {
@@ -212,7 +215,8 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  // --- Scorciatoie: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y ---
+  // --- Scorciatoie: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y, Ctrl/Cmd+S ---
+  const saveRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.ctrlKey || event.metaKey;
@@ -226,6 +230,10 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       } else if ((key === "z" && event.shiftKey) || key === "y") {
         event.preventDefault();
         redo();
+      } else if (key === "s" && !event.shiftKey && !event.altKey) {
+        // Anche quando non c'è nulla da salvare: altrimenti il browser propone di salvare la pagina web.
+        event.preventDefault();
+        if (!event.repeat) void saveRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -382,6 +390,25 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     }
   }
 
+  /**
+   * Salva adesso, senza aspettare l'autosave. Senza cartella, salvare vuol
+   * dire sceglierne una.
+   */
+  async function save() {
+    if (!store) {
+      if (canOpenFolders()) await saveToFolder();
+      else setNotice("Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.");
+      return;
+    }
+    if (status.kind === "locked-out") {
+      setNotice(status.message);
+      return;
+    }
+    const target = historyRef.current.present;
+    if (target !== saved) write(store, target, saved);
+  }
+  saveRef.current = save;
+
   return {
     doc: history.present,
     history,
@@ -407,6 +434,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     recoveredAt,
     startOver,
     newProject,
+    save,
     saveToFolder,
     dismissNotice: () => setNotice(null),
   };

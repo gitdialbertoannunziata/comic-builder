@@ -30,7 +30,14 @@ export const CharacterReferenceSchema = z.object({
   /** Percorso nel progetto, es. `characters/sara/fronte.png`. */
   path: z.string(),
   note: z.string().default(""),
+  /**
+   * Se va allegata al modello quando si genera (F5): la curatela è questa.
+   * Una scheda raccoglie anche schizzi e prove; il modello copia ciò che
+   * vede, quindi gli si danno solo le immagini in cui il personaggio è lui.
+   */
+  use: z.boolean().default(true),
 });
+export type CharacterReference = z.infer<typeof CharacterReferenceSchema>;
 
 export const CharacterSheetSchema = z.object({
   schema: z.literal(1),

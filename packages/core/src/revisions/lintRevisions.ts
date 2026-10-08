@@ -1,6 +1,6 @@
 import type { ProjectDoc } from "../document/projectDoc.js";
 import { issue, type ValidationIssue } from "../validate/issue.js";
-import { locate } from "./revisionCommands.js";
+import { locate, revisionState } from "./revisionCommands.js";
 
 /**
  * Regole di produzione sul changelog (Appendice A).
@@ -10,6 +10,10 @@ import { locate } from "./revisionCommands.js";
  * applicata: di solito un file di pagina rimesso da un backup, o modificato
  * a mano fuori dallo strumento. Un balloon da riletterare, e non lo si vede
  * a occhio.
+ *
+ * Lo stesso vale, più in grande, quando il bersaglio di una correzione
+ * applicata non c'è più — uno spoglio rifatto sopra il capitolo: il changelog
+ * la dice applicata, il documento non la contiene.
  */
 export function lintRevisions(doc: ProjectDoc): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -20,17 +24,30 @@ export function lintRevisions(doc: ProjectDoc): ValidationIssue[] {
         latest.set(entry.balloon, Math.max(latest.get(entry.balloon) ?? 0, entry.rev));
       }
     }
+    const stale = new Set<string>();
     for (const [balloonId, rev] of latest) {
-      const found = locate(doc, { panel: null, balloon: balloonId });
+      const found = locate(doc, { panel: null, balloon: balloonId }, chapterId);
       if (found?.balloon && found.balloon.rev < rev) {
+        stale.add(balloonId);
         issues.push(
           issue("warning", "production.stale-rev", `${balloonId}: rev ${found.balloon.rev}, ma il changelog registra una correzione applicata alla rev ${rev}`, `revisions[${chapterId}].${balloonId}`),
         );
       }
     }
+    const lost = revs.entries.filter((e) => !(e.balloon && stale.has(e.balloon)) && revisionState(doc, e, chapterId) === "lost").map((e) => e.id);
+    if (lost.length > 0) {
+      issues.push(
+        issue(
+          "warning",
+          "revision.lost",
+          `${lost.length === 1 ? "1 correzione applicata non è" : `${lost.length} correzioni applicate non sono`} più nel documento (${lost.slice(0, 5).join(", ")}${lost.length > 5 ? ", …" : ""}): il loro pannello non esiste più`,
+          `revisions[${chapterId}]`,
+        ),
+      );
+    }
     for (const entry of revs.entries) {
       if (entry.status !== "open" || entry.kind === "note") continue;
-      if (!locate(doc, entry)) {
+      if (!locate(doc, entry, chapterId)) {
         issues.push(issue("warning", "revision.orphan", `${entry.id}: ${entry.balloon ?? entry.panel} non esiste più`, `revisions[${chapterId}].${entry.id}`));
       }
     }

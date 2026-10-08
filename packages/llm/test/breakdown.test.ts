@@ -333,3 +333,64 @@ describe("Schema JSON per il decoding vincolato", () => {
     }
   });
 });
+
+describe("cast — chi compare nel capitolo, per le schede di chi non ne ha (§5.1)", () => {
+  const scene = (characters: string[]) => ({
+    title: "T",
+    location: "L",
+    time_of_day: "sera",
+    characters,
+    mood: "calm",
+    lighting: "flat",
+    beats: [{ function: "establish", summary: "s", intense: false, lines: [], characters: null, mood: null, props: [], from_line: 1, to_line: 1 }],
+  });
+  const answering = (data: unknown): LlmService => ({
+    name: "finto",
+    constraint: "none",
+    complete: async () => ({ data, meta: { model: "x", durationMs: 1 } }),
+  });
+  const blank = { summary: "", age: "", build: "", face: "", hair: "", eyes: "", skin: "", distinguishing: "" };
+
+  it("l'euristico presenta chi parla, con il nome come si scrive e senza inventarne l'aspetto", async () => {
+    const result = await breakdownScript({ llm: new MockLlmService(), script: SCRIPT, scriptFile: "script/ep001.md" });
+    expect(result.cast.map((c) => [c.ref, c.name])).toEqual([
+      ["sara", "Sara"],
+      ["elio", "Elio"],
+    ]);
+    expect(result.cast.every((c) => Object.values(c.appearance).every((v) => v === ""))).toBe(true);
+  });
+
+  it("porta nel cast ciò che il modello ha letto nel testo", async () => {
+    const result = await breakdownScript({
+      llm: answering({
+        scenes: [scene(["sara"])],
+        cast: [{ ...blank, ref: "sara", name: "Sara Bellini", summary: "Tecnica dei fari", hair: "corti, grigi", distinguishing: " cicatrice sul sopracciglio " }],
+      }),
+      script: "riga",
+      scriptFile: "script/ep001.md",
+    });
+    expect(result.cast).toEqual([
+      {
+        ref: "sara",
+        name: "Sara Bellini",
+        summary: "Tecnica dei fari",
+        appearance: { age: "", build: "", face: "", hair: "corti, grigi", eyes: "", skin: "", distinguishing: "cicatrice sul sopracciglio" },
+      },
+    ]);
+  });
+
+  it("chi è nelle scene ma non nel cast ha almeno un nome, e chi non è nelle scene si scarta", async () => {
+    const result = await breakdownScript({
+      llm: answering({ scenes: [scene(["la_dottoressa"])], cast: [{ ...blank, ref: "fantasma", name: "Fantasma" }] }),
+      script: "riga",
+      scriptFile: "script/ep001.md",
+    });
+    expect(result.cast.map((c) => [c.ref, c.name])).toEqual([["la_dottoressa", "La dottoressa"]]);
+  });
+
+  it("uno spoglio senza cast resta valido: le scene non si buttano", async () => {
+    const result = await breakdownScript({ llm: answering({ scenes: [scene(["sara"])] }), script: "riga", scriptFile: "script/ep001.md" });
+    expect(result.scenes).toHaveLength(1);
+    expect(result.cast.map((c) => c.name)).toEqual(["Sara"]);
+  });
+});

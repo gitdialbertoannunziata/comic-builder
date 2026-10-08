@@ -118,6 +118,15 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
           <button type="button" className="btn btn--small btn--icon" onClick={editor.redo} disabled={!editor.canRedo} title={`Ripeti (${mod}Shift+Z)`} aria-label="Ripeti">
             ↷
           </button>
+          <button
+            type="button"
+            className={`btn btn--small${status.kind === "memory" ? " btn--primary" : ""}`}
+            onClick={() => void editor.save()}
+            disabled={status.kind === "saved" || status.kind === "saving" || status.kind === "locked-out"}
+            title={`${folder ? `Salva in «${folder}»` : "Salva il progetto in una cartella"} (${mod}S)`}
+          >
+            {folder ? "Salva" : "Salva…"}
+          </button>
           <span className={`pill pill--${tone}`} role="status" title={statusText(status, folder)}>
             {statusShort(status)}
           </span>

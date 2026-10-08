@@ -18,7 +18,7 @@ const withSara = applyCommand(doc, {
     appearance: { age: "woman in her 30s", hair: "short black hair", distinguishing: "scar on left eyebrow" },
     wardrobe: { default: "grey work overalls, tool belt", notte: "dark raincoat, hood up" },
     palette: "slate grey, rust orange",
-    references: [{ path: "characters/sara/fronte.png", note: "" }],
+    references: [{ path: "characters/sara/fronte.png", note: "", use: true }],
   },
 });
 
@@ -63,7 +63,7 @@ describe("Il compilatore usa le schede", () => {
   const sheet = applyCommand(doc, {
     type: "character.upsert",
     ref,
-    patch: { name: "Alex", appearance: { age: "man in his 40s", hair: "short grey beard" }, wardrobe: { default: "worn leather jacket" }, references: [{ path: `characters/${ref}/a.png`, note: "" }] },
+    patch: { name: "Alex", appearance: { age: "man in his 40s", hair: "short grey beard" }, wardrobe: { default: "worn leather jacket" }, references: [{ path: `characters/${ref}/a.png`, note: "", use: true }] },
   }).characters;
   const compile = (characters = sheet) => compilePanel({ project: sampleProject, page: samplePage, panel, panelBox: boxes.get(panel.id)!, targetId: "t", characters });
 

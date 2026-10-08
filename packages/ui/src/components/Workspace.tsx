@@ -4,7 +4,9 @@ import {
   characterRefs,
   compilePageBrief,
   compilePanel,
+  compileRenderSpec,
   lintCharacters,
+  lintRevisions,
   lintPage,
   PageSchema,
   pageForTarget,
@@ -35,7 +37,9 @@ import { PageList } from "./PageList.js";
 import { ArtCard } from "./ArtCard.js";
 import { StripView } from "./StripView.js";
 import { RevisionsPanel } from "./RevisionsPanel.js";
+import { NoteButton } from "./NoteButton.js";
 import { PromptCard } from "./PromptCard.js";
+import { GenerateCard, specModel, type ImageConfig } from "./GenerateCard.js";
 import { PanelCharacters } from "./PanelCharacters.js";
 import { ExportPanel } from "./ExportPanel.js";
 import { Tabs } from "./Tabs.js";
@@ -94,6 +98,7 @@ interface WorkspaceProps {
   editor: ProjectEditor;
   art: ArtWatcher;
   platform: BrowserPlatformService;
+  image: ImageConfig;
   chapter: Chapter;
   pages: Page[];
   font: ReturnType<typeof useFont>["font"];
@@ -108,7 +113,7 @@ interface WorkspaceProps {
  * Revisioni e l'Export. Le tre aree restano montate e si nascondono: ciò
  * che si è incollato o scelto in una non si perde passando a un'altra.
  */
-export function Workspace({ editor, art, platform, chapter, pages, font, fontBytes, fontError, area, onArea }: WorkspaceProps) {
+export function Workspace({ editor, art, platform, image, chapter, pages, font, fontBytes, fontError, area, onArea }: WorkspaceProps) {
   const { doc, run, endGesture } = editor;
   // La selezione non è documento: non entra nella cronologia né nel file.
   // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
@@ -281,6 +286,17 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
   }, [preview, doc.project, doc.characters, scene]);
   const refs = useMemo(() => [...characterRefs(doc)].sort(), [doc]);
 
+  // Gli spec di generazione (§9.1) per la pagina, solo sul formato principale:
+  // è lì che `panel.render` conta per l'anteprima e per l'export.
+  const model = specModel(image);
+  const generation = useMemo(() => {
+    if (!briefs || !preview || preview.targetId !== primaryTarget.id) return null;
+    return briefs.list.flatMap((brief) => {
+      const panel = page.panels.find((p) => p.id === brief.panelId);
+      return panel ? [{ pageId: page.id, panel, spec: compileRenderSpec({ brief, panel, characters: doc.characters, model, megapixels: image.megapixels }) }] : [];
+    });
+  }, [briefs, preview, page, doc.characters, model, image.megapixels]);
+
   // Avvisi sui personaggi (Appendice A) che riguardano la pagina aperta.
   const characterIssues = useMemo(() => {
     const onPage = new Set(page.panels.flatMap((p) => p.characters.map((c) => c.ref)));
@@ -334,7 +350,9 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
     if (selectedBalloonId) document.getElementById(`balloon-${selectedBalloonId}`)?.scrollIntoView({ block: "nearest" });
   }, [selectedBalloonId, inspectorTab]);
 
-  const pageIssues = useMemo(() => [...editor.loadIssues, ...issues, ...characterIssues], [editor.loadIssues, issues, characterIssues]);
+  // Il changelog che non corrisponde più al documento è un avviso del capitolo, visibile da ogni sua pagina.
+  const revisionIssues = useMemo(() => lintRevisions(doc).filter((i) => i.path.startsWith(`revisions[${chapter.id}]`)), [doc, chapter.id]);
+  const pageIssues = useMemo(() => [...editor.loadIssues, ...issues, ...characterIssues, ...revisionIssues], [editor.loadIssues, issues, characterIssues, revisionIssues]);
   const pageCounts = useMemo(() => {
     const counts = countByLevel(pageIssues);
     return { ...counts, error: counts.error + schemaIssues.length };
@@ -355,14 +373,41 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
     const order = page.layout.mode === "page" ? page.layout.reading_order : page.panels.map((p) => p.id);
     return order.indexOf(panelId) + 1;
   };
-  const openRevisions = (doc.revisions[chapter.id]?.entries ?? []).filter((e) => e.status === "open").length;
+  const openEntries = useMemo(() => (doc.revisions[chapter.id]?.entries ?? []).filter((e) => e.status === "open"), [doc.revisions, chapter.id]);
+  const openRevisions = openEntries.length;
+  // Quante voci aperte su ogni vignetta e su ogni pagina (le sue e quelle delle sue vignette).
+  const openBy = useMemo(() => {
+    const panelPage = new Map(pages.flatMap((p) => p.panels.map((x) => [x.id, p.id] as const)));
+    const counts = new Map<string, number>();
+    const bump = (id: string | null | undefined) => id && counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const e of openEntries) {
+      bump(e.panel);
+      bump(e.panel ? panelPage.get(e.panel) : e.page);
+    }
+    return counts;
+  }, [openEntries, pages]);
+  const [revisionFilter, setRevisionFilter] = useState<string | null>(null);
+  const showRevisions = (id: string) => {
+    setRevisionFilter(id);
+    onArea("revisioni");
+  };
+  const annotate = (target: { panel?: string; balloon?: string; page?: string }, text: string) =>
+    run({
+      type: "revision.add",
+      chapterId: chapter.id,
+      entries: [{ origin: "manual", kind: "note", panel: target.panel ?? null, balloon: target.balloon ?? null, page: target.page ?? null, speaker: null, from: null, to: text, source_line: null }],
+      by: "autore",
+      at: new Date().toISOString(),
+      again: true,
+    });
 
   return (
     <>
       <div className="area editor" hidden={area !== "pagine"}>
         <aside className="col editor__nav">
           <p className="eyebrow">Pagine</p>
-          <PageList chapterId={chapter.id} pages={pages} currentPageId={page.id} sceneId={scene.id} onSelectPage={goToPage} run={run} />
+          <PageList chapterId={chapter.id} pages={pages} currentPageId={page.id} sceneId={scene.id} onSelectPage={goToPage} run={run} openRevisions={openBy} />
+          <NoteButton what="la pagina" onAdd={(text) => annotate({ page: page.id }, text)} open={openBy.get(page.id) ?? 0} onShow={() => showRevisions(page.id)} />
           <p className="page-meta">
             <strong>{page.layout.mode === "page" ? page.layout.template_id : "strip"}</strong> · {page.panels.length} vignette
           </p>
@@ -383,6 +428,7 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
                     </span>
                     <span className="panel-row__badges">
                       {panel.balloons.length > 0 && <span className="panel-row__count" title={`${panel.balloons.length} balloon`}>{panel.balloons.length}</span>}
+                      {openBy.has(panel.id) && <span className="panel-row__notes" title={`${openBy.get(panel.id)} revisioni aperte`}>✎{openBy.get(panel.id)}</span>}
                       {level && <span className={`dot dot--${level}`} title={`${level} su questa vignetta`} />}
                     </span>
                   </button>
@@ -529,7 +575,7 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
             items={[
               { id: "vignetta", label: "Vignetta", title: "Azione, inquadratura, griglia, personaggi" },
               { id: "balloon", label: "Balloon", badge: selectedPanel.balloons.length, title: "Testi, posizione e coda" },
-              { id: "arte", label: "Arte", title: "Immagine della vignetta e istruzioni per un modello esterno" },
+              { id: "arte", label: "Arte", title: "Immagine della vignetta, generazione e istruzioni per un modello esterno" },
             ]}
           />
 
@@ -549,6 +595,13 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
               </div>
             </div>
 
+            <NoteButton
+              what="la vignetta"
+              onAdd={(text) => annotate({ panel: selectedPanel.id }, text)}
+              open={openBy.get(selectedPanel.id) ?? 0}
+              onShow={() => showRevisions(selectedPanel.id)}
+            />
+
             <PanelTools page={page} panel={selectedPanel} run={run} onSelectPanel={selectPanel} />
 
             <PanelCharacters pageId={page.id} panel={selectedPanel} refs={refs} sheets={doc.characters} run={run} endGesture={endGesture} />
@@ -563,6 +616,7 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
             {selectedPanel.balloons.map((balloon) => (
               <BalloonEditor
                 key={balloon.id}
+                onAnnotate={(text) => annotate({ panel: selectedPanel.id, balloon: balloon.id }, text)}
                 balloon={balloon}
                 selected={balloon.id === selectedBalloonId}
                 onSelect={() => setSelectedBalloonId(balloon.id)}
@@ -599,6 +653,19 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
               }}
             />
 
+            <GenerateCard
+              config={image}
+              store={editor.assets}
+              project={doc.project}
+              characters={doc.characters}
+              pageId={page.id}
+              panel={selectedPanel}
+              items={generation}
+              primaryLabel={targetLabel(primaryTarget.id)}
+              run={run}
+              endGesture={endGesture}
+            />
+
             {selectedBrief && briefs && (
               <PromptCard brief={selectedBrief} pageBrief={briefs.page} panel={selectedPanel} pageId={page.id} project={doc.project} run={run} endGesture={endGesture} />
             )}
@@ -615,7 +682,7 @@ export function Workspace({ editor, art, platform, chapter, pages, font, fontByt
               correzione riscrive solo i balloon coinvolti.
             </p>
           </header>
-          <RevisionsPanel doc={doc} chapterId={chapter.id} run={run} endGesture={endGesture} onSelectPanel={revealPanel} write={async (files) => (await platform.write(files)).destination} />
+          <RevisionsPanel doc={doc} chapterId={chapter.id} run={run} endGesture={endGesture} onSelectPanel={revealPanel} write={async (files) => (await platform.write(files)).destination} filter={revisionFilter} onClearFilter={() => setRevisionFilter(null)} />
         </div>
       </div>
 

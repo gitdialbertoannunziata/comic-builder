@@ -84,3 +84,43 @@ describe("Import annotato (§10.1, passo 3)", () => {
     expect(refFromName("Élio")).toBe("elio");
   });
 });
+
+describe("Import annotato: oltre il testo", () => {
+  const firstPage = pages[0]!;
+
+  it("l'export porta il luogo di ogni pannello", () => {
+    expect(md).toContain(`Luogo: ${talking.setting}`);
+  });
+
+  it("un nome cambiato nell'etichetta è una correzione di chi parla, non si perde", () => {
+    const edited = md.replace(lineOf(md, balloon.id), `- [${balloon.id}] ELIO: ${text}`);
+    expect(parseAnnotated(doc, "ep001", edited).corrections).toEqual([
+      expect.objectContaining({ kind: "set", field: "speaker", balloon: balloon.id, from: balloon.speaker.ref, to: "elio" }),
+    ]);
+  });
+
+  it("la parola fra parentesi cambia il tipo di battuta; una sconosciuta è un avviso", () => {
+    const who = balloon.speaker.ref!.toUpperCase();
+    const whisper = parseAnnotated(doc, "ep001", md.replace(lineOf(md, balloon.id), `- [${balloon.id}] ${who} (sussurro): ${text}`));
+    expect(whisper.corrections).toEqual([expect.objectContaining({ kind: "set", field: "balloon_type", from: balloon.type, to: "whisper" })]);
+    const odd = parseAnnotated(doc, "ep001", md.replace(lineOf(md, balloon.id), `- [${balloon.id}] ${who} (cantato): ${text}`));
+    expect(odd.corrections).toEqual([]);
+    expect(odd.warnings.join(" ")).toMatch(/cantato/);
+  });
+
+  it("il luogo corretto è una correzione sul pannello", () => {
+    const edited = md.replace(`### [${talking.id}]\nAzione: ${talking.action}\nLuogo: ${talking.setting}`, `### [${talking.id}]\nAzione: ${talking.action}\nLuogo: molo, notte`);
+    expect(parseAnnotated(doc, "ep001", edited).corrections).toEqual([
+      expect.objectContaining({ kind: "set", field: "setting", panel: talking.id, balloon: null, from: talking.setting, to: "molo, notte" }),
+    ]);
+  });
+
+  it("una nota sotto «Pagina» è della pagina, in cima è del capitolo", () => {
+    const edited = md.replace("Come correggere:", "> Troppo lento in apertura\n\nCome correggere:").replace(`## Pagina ${firstPage.order}\n`, `## Pagina ${firstPage.order}\n> Da spezzare in due\n`);
+    expect(parseAnnotated(doc, "ep001", edited).corrections).toEqual([
+      expect.objectContaining({ kind: "note", panel: null, to: "Troppo lento in apertura" }),
+      expect.objectContaining({ kind: "note", panel: null, page: firstPage.id, to: "Da spezzare in due" }),
+    ]);
+    expect(parseAnnotated(doc, "ep001", edited).corrections[0]!.page ?? null).toBeNull();
+  });
+});

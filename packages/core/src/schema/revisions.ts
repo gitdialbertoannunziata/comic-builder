@@ -19,8 +19,13 @@ export const RevisionKindSchema = z.enum([
   "add",
   /** Toglie un balloon. */
   "remove",
-  /** Una nota libera sul pannello: non cambia nulla, si prende visione. */
+  /**
+   * Una nota: non cambia nulla da sola, è una cosa da fare (camera, layout,
+   * arte…). Si chiude come fatta, dicendo cosa si è fatto.
+   */
   "note",
+  /** Cambia un campo fra quelli di `field`: chi parla, il tipo di battuta, il luogo. */
+  "set",
 ]);
 export type RevisionKind = z.infer<typeof RevisionKindSchema>;
 
@@ -30,6 +35,10 @@ export type RevisionStatus = z.infer<typeof RevisionStatusSchema>;
 /** Da dove viene la correzione: cambia quanto fidarsene e come mostrarla. */
 export const RevisionOriginSchema = z.enum(["annotated", "script", "find-replace", "manual"]);
 
+/** I campi che una correzione `set` può cambiare. */
+export const RevisionFieldSchema = z.enum(["setting", "continuity_notes", "speaker", "balloon_type"]);
+export type RevisionField = z.infer<typeof RevisionFieldSchema>;
+
 export const RevisionEntrySchema = z.object({
   id: IdSchema,
   at: z.string(),
@@ -38,6 +47,15 @@ export const RevisionEntrySchema = z.object({
   kind: RevisionKindSchema,
   panel: IdSchema.nullable(),
   balloon: IdSchema.nullable(),
+  /**
+   * Bersagli sopra il pannello, per le note: una pagina, una scena. Con tutti
+   * e quattro a null la voce riguarda il capitolo intero. L'ambito si deriva
+   * da qui (`revisionScope`), non si salva.
+   */
+  page: IdSchema.nullable().default(null),
+  scene: IdSchema.nullable().default(null),
+  /** Per `set`: quale campo cambia. `from` e `to` ne sono il valore, come testo. */
+  field: RevisionFieldSchema.nullable().default(null),
   /** Per `add`: chi parla. */
   speaker: IdSchema.nullable().default(null),
   from: z.string().nullable(),
@@ -49,6 +67,15 @@ export const RevisionEntrySchema = z.object({
   rev: z.number().int().nonnegative().nullable().default(null),
   resolved_at: z.string().nullable().default(null),
   resolved_by: z.string().nullable().default(null),
+  /** Perché è stata rifiutata, o cosa si è fatto per chiudere una nota. */
+  resolution: z.string().nullable().default(null),
+  /** Il testo davvero sovrascritto, quando si è applicata nonostante il «prima» non corrispondesse più. */
+  replaced: z.string().nullable().default(null),
+  /**
+   * La regola per la serie che l'autore ha tratto da questa voce: arriva allo
+   * spoglio di ogni capitolo, perché lo stesso errore non torni.
+   */
+  lesson: z.string().nullable().default(null),
 });
 export type RevisionEntry = z.infer<typeof RevisionEntrySchema>;
 

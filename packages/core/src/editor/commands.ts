@@ -15,7 +15,19 @@ import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.
 import type { Chapter } from "../schema/chapters.js";
 import type { Scene } from "../schema/scenes.js";
 import { addChapter, setChapterContent, updateChapter } from "./chapters.js";
-import { addRevisions, applyRevisions, emptyRevisions, rejectRevisions, RevisionConflict, type NewRevision } from "../revisions/revisionCommands.js";
+import {
+  addRevisions,
+  applyRevisions,
+  editRevision,
+  emptyRevisions,
+  openMatching,
+  rejectRevisions,
+  reopenRevisions,
+  revertRevision,
+  RevisionConflict,
+  setRevisionLesson,
+  type NewRevision,
+} from "../revisions/revisionCommands.js";
 
 /**
  * Comandi tipizzati (§11.3): l'unico modo di modificare il documento.
@@ -48,9 +60,13 @@ export type Command =
   | { type: "page.add"; chapterId: string; templateId: string; after?: string; sceneId: string }
   | { type: "page.remove"; pageId: string }
   | { type: "page.move"; pageId: string; toIndex: number }
-  | { type: "revision.add"; chapterId: string; entries: NewRevision[]; by: string; at: string }
-  | { type: "revision.apply"; chapterId: string; ids: string[]; by: string; at: string }
-  | { type: "revision.reject"; chapterId: string; ids: string[]; by: string; at: string }
+  | { type: "revision.add"; chapterId: string; entries: NewRevision[]; by: string; at: string; again?: boolean }
+  | { type: "revision.apply"; chapterId: string; ids: string[]; by: string; at: string; force?: boolean; resolution?: string }
+  | { type: "revision.reject"; chapterId: string; ids: string[]; by: string; at: string; resolution?: string }
+  | { type: "revision.edit"; chapterId: string; id: string; to: string }
+  | { type: "revision.reopen"; chapterId: string; ids: string[] }
+  | { type: "revision.revert"; chapterId: string; id: string; by: string; at: string }
+  | { type: "revision.lesson"; chapterId: string; id: string; lesson: string | null }
   | { type: "script.set"; chapterId: string; text: string; sha: string }
   | { type: "text.replace"; chapterId: string; find: string; replace: string; options: FindOptions; by: string; at: string }
   | { type: "character.rename"; from: string; to: string }
@@ -72,7 +88,7 @@ export interface Point {
 
 export type BalloonPatch = Partial<Pick<Balloon, "type" | "font_scale" | "speaker" | "size_mode" | "z">>;
 export type PanelPatch = Partial<
-  Pick<Panel, "action" | "setting" | "props" | "continuity_notes" | "characters" | "border" | "art" | "slice_avoid" | "prompt">
+  Pick<Panel, "action" | "setting" | "props" | "continuity_notes" | "characters" | "border" | "art" | "slice_avoid" | "prompt" | "seed" | "render">
 >;
 
 export class CommandError extends Error {}
@@ -602,23 +618,46 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       return withChapterPages(doc, chapter.id, chapter.pages.filter((id) => id !== command.pageId), pages, trailingIndex(command.pageId));
     }
     case "revision.add":
-      return addRevisions(doc, command.chapterId, command.entries, command.by, command.at);
+      return addRevisions(doc, command.chapterId, command.entries, command.by, command.at, { again: command.again ?? false });
     case "revision.apply":
       try {
-        return applyRevisions(doc, command.chapterId, command.ids, command.by, command.at, applyCommand);
+        return applyRevisions(doc, command.chapterId, command.ids, command.by, command.at, applyCommand, {
+          force: command.force ?? false,
+          resolution: command.resolution ?? null,
+        });
       } catch (error) {
         if (error instanceof RevisionConflict) throw new CommandError(`Correzioni non applicabili: ${error.message}`);
         throw error;
       }
     case "revision.reject":
-      return rejectRevisions(doc, command.chapterId, command.ids, command.by, command.at);
+      return rejectRevisions(doc, command.chapterId, command.ids, command.by, command.at, command.resolution ?? null);
+    case "revision.edit":
+    case "revision.revert":
+      try {
+        return command.type === "revision.edit"
+          ? editRevision(doc, command.chapterId, command.id, command.to)
+          : revertRevision(doc, command.chapterId, command.id, command.by, command.at, applyCommand);
+      } catch (error) {
+        if (error instanceof RevisionConflict) throw new CommandError(error.message);
+        throw error;
+      }
+    case "revision.reopen":
+      return reopenRevisions(doc, command.chapterId, command.ids);
+    case "revision.lesson":
+      return setRevisionLesson(doc, command.chapterId, command.id, command.lesson);
     case "text.replace": {
       const matches = findMatches(doc, command.chapterId, command.find, command.replace, command.options);
       if (matches.length === 0) throw new CommandError(`Nessuna occorrenza di «${command.find}» da sostituire`);
       // Ogni sostituzione è una correzione tracciata, già applicata.
+      // Chi ordina la sostituzione la vuole tutta: anche dove la stessa
+      // correzione era già in attesa, o era stata rifiutata.
+      const incoming = matchesAsRevisions(matches);
       const before = new Set((doc.revisions[command.chapterId]?.entries ?? []).map((e) => e.id));
-      const added = addRevisions(doc, command.chapterId, matchesAsRevisions(matches), command.by, command.at);
-      const ids = (added.revisions[command.chapterId]?.entries ?? []).filter((e) => !before.has(e.id)).map((e) => e.id);
+      const added = addRevisions(doc, command.chapterId, incoming, command.by, command.at, { again: true });
+      const ids = [
+        ...openMatching(doc, command.chapterId, incoming),
+        ...(added.revisions[command.chapterId]?.entries ?? []).filter((e) => !before.has(e.id)).map((e) => e.id),
+      ];
       return applyRevisions(added, command.chapterId, ids, command.by, command.at, applyCommand);
     }
     case "character.rename": {
@@ -737,6 +776,14 @@ export function describeCommand(command: Command): string {
       return command.ids.length === 1 ? "Applica correzione" : `Applica ${command.ids.length} correzioni`;
     case "revision.reject":
       return command.ids.length === 1 ? "Rifiuta correzione" : `Rifiuta ${command.ids.length} correzioni`;
+    case "revision.edit":
+      return "Modifica correzione";
+    case "revision.reopen":
+      return command.ids.length === 1 ? "Riapri correzione" : `Riapri ${command.ids.length} correzioni`;
+    case "revision.revert":
+      return "Ripristina correzione";
+    case "revision.lesson":
+      return command.lesson ? "Regola per la serie" : "Togli regola per la serie";
     case "script.set":
       return "Aggiorna il copione";
     case "text.replace":

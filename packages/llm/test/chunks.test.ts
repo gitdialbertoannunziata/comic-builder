@@ -154,6 +154,21 @@ describe("Continuità fra capitoli: schede, costumi, luoghi, regole della serie"
     expect(users[0]).toContain("Luoghi già visti (se la scena è lì, usa lo stesso nome): faro di Capo Vento; molo vecchio.");
     expect(systems[0]).toContain("Regole di questa serie, scritte dall'autore");
     expect(systems[0]).toContain("Sara non dice mai parolacce.");
+    expect(systems[0]).not.toContain("Correzioni che l'autore ha già fatto");
+  });
+
+  it("ciò che l'autore ha tratto dalle correzioni arriva nelle istruzioni di sistema", async () => {
+    const systems: string[] = [];
+    const llm: LlmService = {
+      name: "spia",
+      constraint: "grammar",
+      complete(request) {
+        systems.push(request.system);
+        return Promise.resolve({ data: heuristicBreakdown(request.user), meta: { model: "spia", durationMs: 1 } });
+      },
+    };
+    await breakdownScript({ llm, script: "# Scena\n\nSARA: ciao", scriptFile: "cap2.md", context: { ...context, lessons: ["Sara non dà mai del lei.", "  "] } });
+    expect(systems[0]).toContain("Correzioni che l'autore ha già fatto nei capitoli precedenti: non ripetere gli stessi errori.\n- Sara non dà mai del lei.\n\nRispondi");
   });
 
   it("il costume scelto dal modello si tiene se la scheda lo conosce; uno inventato torna quello di sempre, e lo si dice", async () => {

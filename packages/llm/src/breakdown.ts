@@ -1,5 +1,5 @@
-import { SceneSchema, beatId, issue, type Scene, type ValidationIssue } from "@comic-builder/core";
-import { BreakdownSchema, breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME, type BreakdownScene } from "./breakdownSchema.js";
+import { SceneSchema, beatId, issue, type Appearance, type Scene, type ValidationIssue } from "@comic-builder/core";
+import { BreakdownSchema, breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME, type BreakdownCast, type BreakdownScene } from "./breakdownSchema.js";
 import { breakdownSystemPrompt, breakdownUserPrompt, type CharacterContext } from "./prompt.js";
 import { LlmError, LlmTruncatedError, type LlmService } from "./service.js";
 
@@ -30,13 +30,29 @@ export interface BreakdownInput {
     locations?: readonly string[];
     /** Le regole della serie: vanno nelle istruzioni di sistema, a ogni capitolo. */
     notes?: string;
+    /** Ciò che l'autore ha tratto dalle correzioni già fatte: nelle istruzioni di sistema, come le regole. */
+    lessons?: readonly string[];
   };
   /** Avanzamento, per chi aspetta: «parte 2 di 4». */
   onProgress?: (progress: { done: number; total: number }) => void;
 }
 
+/** Un personaggio del capitolo come il testo lo presenta: la materia di una scheda nuova (§5.1). */
+export interface BreakdownCastMember {
+  ref: string;
+  name: string;
+  summary: string;
+  appearance: Appearance;
+}
+
 export interface BreakdownResult {
   scenes: Scene[];
+  /**
+   * Chi compare nelle scene, con ciò che il testo ne dice. Ci sono tutti, anche
+   * quelli che lo spoglio non ha descritto (solo il nome, ricavato dal ref):
+   * chi riceve crea la scheda a chi non l'ha, e non tocca le altre.
+   */
+  cast: BreakdownCastMember[];
   /** Cosa non tornava nell'output del modello e come è stato sistemato. */
   issues: ValidationIssue[];
   meta: { service: string; model: string; durationMs: number };
@@ -252,6 +268,7 @@ export function halveChunk(chunk: ScriptChunk): [ScriptChunk, ScriptChunk] | nul
 
 interface PartResult {
   scenes: BreakdownScene[];
+  cast: BreakdownCast[];
   continuation: boolean;
   model: string;
   durationMs: number;
@@ -277,6 +294,39 @@ function stitch(parts: readonly PartResult[]): BreakdownScene[] {
   return scenes;
 }
 
+/** `la_dottoressa` → «La dottoressa»: il nome di ripiego per chi lo spoglio non ha presentato. */
+function nameFromRef(ref: string): string {
+  const words = ref.replace(/_+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Il cast del capitolo: uno per ref presente nelle scene. Le parti possono
+ * descrivere lo stesso personaggio più volte: per ogni campo vale la prima
+ * che dice qualcosa. Una voce per chi nelle scene non compare si scarta.
+ */
+function castFor(scenes: readonly Scene[], parts: readonly PartResult[]): BreakdownCastMember[] {
+  const members = new Map<string, BreakdownCastMember>();
+  for (const scene of scenes) {
+    for (const ref of scene.characters) {
+      if (!members.has(ref)) {
+        members.set(ref, { ref, name: "", summary: "", appearance: { age: "", build: "", face: "", hair: "", eyes: "", skin: "", distinguishing: "" } });
+      }
+    }
+  }
+  for (const part of parts) {
+    for (const { ref, name, summary, ...appearance } of part.cast) {
+      const member = members.get(ref.trim());
+      if (!member) continue;
+      member.name ||= name.trim();
+      member.summary ||= summary.trim();
+      for (const key of Object.keys(member.appearance) as Array<keyof Appearance>) member.appearance[key] ||= appearance[key].trim();
+    }
+  }
+  for (const member of members.values()) member.name ||= nameFromRef(member.ref);
+  return [...members.values()];
+}
+
 export async function breakdownScript(input: BreakdownInput): Promise<BreakdownResult> {
   const issues: ValidationIssue[] = [];
   const scriptLines = input.script.split("\n").length;
@@ -295,7 +345,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
     let response;
     try {
       response = await input.llm.complete({
-        system: breakdownSystemPrompt({ seriesNotes: input.context?.notes ?? "" }),
+        system: breakdownSystemPrompt({ seriesNotes: input.context?.notes ?? "", lessons: input.context?.lessons ?? [] }),
         user: breakdownUserPrompt(chunk.text, {
           firstLine: chunk.firstLine,
           knownCharacters: [...known].sort(),
@@ -323,7 +373,10 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
       throw error;
     }
 
-    const parsed = BreakdownSchema.safeParse(response.data);
+    // Il cast è un di più: un fornitore che non vincola allo schema può
+    // ometterlo, e lo spoglio delle scene non va buttato per questo.
+    const data = response.data && typeof response.data === "object" && !("cast" in response.data) ? { ...response.data, cast: [] } : response.data;
+    const parsed = BreakdownSchema.safeParse(data);
     if (!parsed.success) {
       // Nessuna riparazione possibile: se la forma non regge, non c'è nulla da
       // cui partire. Meglio fallire chiaro che costruire un documento inventato.
@@ -339,7 +392,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
       scene.characters.forEach((c) => known.add(c));
       scene.beats.forEach((b) => b.lines.forEach((l) => l.speaker && known.add(l.speaker)));
     }
-    parts.push({ scenes: parsed.data.scenes, continuation: chunk.continuation, model: response.meta.model, durationMs: response.meta.durationMs });
+    parts.push({ scenes: parsed.data.scenes, cast: parsed.data.cast, continuation: chunk.continuation, model: response.meta.model, durationMs: response.meta.durationMs });
     done++;
   }
   input.onProgress?.({ done, total: done });
@@ -349,6 +402,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
 
   return {
     scenes,
+    cast: castFor(scenes, parts),
     issues,
     meta: {
       service: input.llm.name,

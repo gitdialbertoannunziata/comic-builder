@@ -6,6 +6,7 @@ import {
   DeepSeekLlmService,
   OpenAiLlmService,
   breakdownScript,
+  type BreakdownCastMember,
   type LlmService,
 } from "@comic-builder/llm";
 import { TARGET } from "./renderPreview.js";
@@ -34,6 +35,8 @@ export interface RunBreakdownInput {
 export interface RunBreakdownResult {
   pages: Page[];
   scenes: Scene[];
+  /** Chi compare nel capitolo, con ciò che il testo ne dice: le schede di chi non ne ha una nascono da qui. */
+  cast: BreakdownCastMember[];
   summary: BreakdownSummary;
 }
 
@@ -96,6 +99,7 @@ export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdo
   return {
     pages,
     scenes: result.scenes,
+    cast: result.cast,
     summary: {
       scenes: result.scenes.length,
       beats: result.scenes.reduce((sum, s) => sum + s.beats.length, 0),

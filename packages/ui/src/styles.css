@@ -10,11 +10,11 @@
  */
 
 :root {
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --surface-sunken: #f0f0ed;
-  --border: #dedcd6;
-  --border-strong: #c4c1b8;
+  --bg: #f6f3ea;
+  --surface: #fffdf8;
+  --surface-sunken: #ece8dc;
+  --border: #d9d4c5;
+  --border-strong: #b9b3a1;
 
   --text: #1c1c1a;
   --text-muted: #6b6a64;
@@ -33,6 +33,15 @@
   --info: #3a5a99;
   --info-soft: #ecf1fa;
   --ok: #1f7a4d;
+
+  /* China e giallo da tavola: il contorno "inchiostrato" di ciò che conta
+     (schede, pagina, azione principale) e l'evidenziatore di dove si è. */
+  --ink-line: #1c1c1a;
+  --ink-shadow: #1c1c1a;
+  --pop: #ffd23f;
+  --pop-soft: #ffe27a;
+  --on-pop: #1c1c1a;
+  --halftone: rgba(28, 28, 26, 0.09);
 
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -67,6 +76,11 @@
     --info: #90aee2;
     --info-soft: #1d2735;
     --ok: #67c496;
+
+    --ink-line: #5c6068;
+    --ink-shadow: #000000;
+    --pop-soft: rgba(255, 210, 63, 0.26);
+    --halftone: rgba(236, 234, 229, 0.07);
 
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.35);
   }
@@ -2057,4 +2071,340 @@ code {
 
 .field--inline input[type="number"] {
   width: 96px;
+}
+
+/* Revisioni: diff a parole, note, regole per la serie, storico. */
+.revision__diff,
+.revision__note {
+  margin: 2px 0;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  white-space: pre-wrap;
+}
+
+.revision__diff del {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.revision__diff ins {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+  text-decoration: none;
+}
+
+.revision__ask {
+  margin-top: 6px;
+}
+
+.revision__lesson {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+}
+
+.revisions__filter {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.revision-past {
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.revision-past__state--superseded {
+  color: var(--text-faint);
+}
+
+.revision-past__state--lost {
+  color: var(--warning);
+}
+
+.note-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-button__open,
+.panel-row__notes {
+  color: var(--warning);
+}
+
+.panel-row__notes {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.lesson-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+/* ---------- la mano di china ----------
+   Lo strumento resta denso; quello che cambia è il segno. Contorno di china e
+   ombra piena, come una vignetta, solo su ciò che regge la pagina (schede,
+   tavola, azione principale, menu); retino dove si lavora; giallo per dire
+   "sei qui". Tutto con i font che ci sono già: niente da scaricare (§14.4). */
+
+::selection {
+  background: var(--pop);
+  color: var(--on-pop);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Barra: china sotto, retino che sfuma da destra. */
+.bar {
+  position: relative;
+  z-index: 5;
+  border-bottom: 2px solid var(--ink-line);
+  background:
+    linear-gradient(to right, var(--surface) 35%, transparent),
+    radial-gradient(circle, var(--halftone) 1.2px, transparent 1.7px) 0 0 / 10px 10px,
+    var(--surface);
+}
+
+.tabs--areas {
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+}
+
+.tabs--areas .tab {
+  min-height: 30px;
+  padding: 0 13px;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.tabs--areas .tab:hover:not([aria-selected="true"]) {
+  background: var(--surface-sunken);
+}
+
+.tabs--areas .tab[aria-selected="true"] {
+  background: var(--pop);
+  color: var(--on-pop);
+  border-color: var(--ink-line);
+  box-shadow: 2px 2px 0 var(--ink-shadow);
+  transform: translate(-1px, -1px) rotate(-1deg);
+}
+
+.tabs--areas .tab[aria-selected="true"] .tab__badge {
+  background: var(--on-pop);
+  color: var(--pop);
+}
+
+/* Titoli d'area: una passata di evidenziatore sotto. */
+.area__title {
+  display: inline-block;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  padding: 0 4px;
+  margin-left: -4px;
+  background: linear-gradient(transparent 58%, var(--pop-soft) 58%, var(--pop-soft) 92%, transparent 92%);
+}
+
+.area:not([hidden]) {
+  animation: area-in 0.18s ease-out;
+}
+
+@keyframes area-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Schede come vignette. */
+.card {
+  border: 1.5px solid var(--ink-line);
+  box-shadow: 3px 3px 0 var(--ink-shadow);
+}
+
+.card--selected {
+  border-color: var(--accent);
+  box-shadow: 3px 3px 0 var(--accent);
+}
+
+/* Bottoni: si alzano sotto il puntatore, affondano nell'ombra al clic. */
+.btn {
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s,
+    border-color 0.12s,
+    filter 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-line);
+  box-shadow: 2px 2px 0 var(--ink-shadow);
+  transform: translate(-1px, -1px);
+}
+
+.btn:active:not(:disabled) {
+  box-shadow: none;
+  transform: translate(1px, 1px);
+}
+
+.btn--primary {
+  border-color: var(--ink-line);
+  box-shadow: 2px 2px 0 var(--ink-shadow);
+}
+
+.btn--primary:hover:not(:disabled) {
+  box-shadow: 3px 3px 0 var(--ink-shadow);
+}
+
+.btn--primary:disabled {
+  box-shadow: none;
+}
+
+.seg,
+.page-chip,
+.shot,
+.chip,
+.character-chip,
+.chapter-chip,
+.template-choice,
+.panel-row,
+.check-row,
+.menu__item {
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s,
+    transform 0.08s;
+}
+
+.seg:active,
+.page-chip:active,
+.shot:active,
+.chip:active,
+.character-chip:active,
+.template-choice:active {
+  transform: translateY(1px);
+}
+
+.page-chip[aria-pressed="true"],
+.chapter-chip[aria-pressed="true"],
+.character-chip[aria-pressed="true"] {
+  box-shadow: 2px 2px 0 var(--ink-shadow);
+}
+
+.panel-row[aria-current="true"] {
+  box-shadow: 2px 2px 0 var(--accent);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+select,
+textarea {
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="password"]:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* La tavola sta su un piano a retino, inchiostrata come il resto. */
+.canvas__stage {
+  background: radial-gradient(circle, var(--halftone) 1.2px, transparent 1.7px) 0 0 / 12px 12px;
+}
+
+.preview {
+  border: 2px solid var(--ink-line);
+  border-radius: var(--r-sm);
+  box-shadow: 6px 6px 0 var(--ink-shadow);
+}
+
+/* 2px di china per lato: la tavola intera deve restare nella tela con l'ombra. */
+.canvas__stage--page .preview {
+  width: min(100cqw - 8px, (100cqh - 8px) * var(--page-ratio, 0.667));
+}
+
+.strip-view__strip {
+  outline: 2px solid var(--ink-line);
+  box-shadow: 6px 6px 0 var(--ink-shadow);
+}
+
+.menu__list {
+  border: 1.5px solid var(--ink-line);
+  box-shadow: 4px 4px 0 var(--ink-shadow);
+  transform-origin: top right;
+  animation: pop-in 0.12s ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-4px);
+  }
+}
+
+.pill {
+  background: var(--surface);
+}
+
+.pill--warn::before {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Il capitolo vuoto lo dice un balloon. */
+.empty-chapter {
+  position: relative;
+  padding: 22px 26px 20px;
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--ink-line);
+  border-radius: 26px;
+  box-shadow: 5px 5px 0 var(--ink-shadow);
+}
+
+.empty-chapter::after {
+  content: "";
+  position: absolute;
+  left: 54px;
+  bottom: -13px;
+  width: 22px;
+  height: 22px;
+  background: var(--surface);
+  border-right: 2px solid var(--ink-line);
+  border-bottom: 2px solid var(--ink-line);
+  transform: skewX(28deg) rotate(45deg);
+}
+
+.empty-chapter p:last-of-type {
+  margin-bottom: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

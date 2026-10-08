@@ -351,7 +351,7 @@ renders/ep012-p003-03@digital-page.9f2ab31c.png    # l'immagine
 renders/ep012-p003-03@digital-page.9f2ab31c.json   # lo spec che l'ha prodotta
 ```
 
-La cache è **indirizzata per contenuto**: l'hash è quello dello `RenderSpec` canonico (§9.1), che include modello, sampler, passi, cfg, versioni degli asset, pesi, seed, dimensioni e target. Conseguenze:
+La cache è **indirizzata per contenuto**: l'hash è quello dello `RenderSpec` canonico (§9.1), che include modello, prompt, riferimenti, seed, dimensioni e target. Conseguenze:
 
 - Niente sovrascritture accidentali, storia dei render, GC banale.
 - **La staleness è calcolata, non salvata**: `stale(panel, target) = spec_hash != hash(compile(panel, target))`. Il flag `dirty` della bozza sparisce: un booleano che qualcuno deve ricordarsi di aggiornare è una fonte garantita di stati incoerenti.
@@ -565,19 +565,24 @@ Questa è la parte che nella bozza mancava del tutto: fra il documento e l'immag
 
 ```json
 {
+  "panel": "ep012-p003-03",
   "target": "digital-page",
-  "width": 832, "height": 1248, "aspect": "2:3",
-  "positive": "medium shot, low angle looking up, imposing, 35mm lens, backlit, rim light, dusty garage at dusk, man in his 40s, short beard, worn leather jacket, tense expression, clean ink lineart, flat cel shading, muted palette",
-  "negative": "photo, 3d render, text, watermark, extra fingers, cropped head, deformed hands",
+  "width": 832, "height": 1264, "aspect": "2:3",
+  "prompt": "Comic panel, aspect 2:3. Draw the image only: no text, no speech balloons…\nFraming: medium shot, waist up; low angle looking up, imposing; 35mm lens.\n…\nReference images (identity only…):\n- image 1 and image 2 show marco: draw marco as the same person.",
   "seed": 44812,
-  "model": "sdxl-base@6f7c...",
-  "sampler": { "name": "dpmpp_2m", "steps": 28, "cfg": 5.5 },
-  "ip_adapter": [ { "ref": "characters/marco-sheet/03.png", "sha": "a91f...", "weight": 0.75 } ],
-  "loras": [ { "ref": "characters/marco.safetensors", "sha": "77c2...", "weight": 0.8 } ],
+  "model": "flux-2-pro",
+  "prompt_upsampling": false,
+  "output_format": "png",
+  "references": [
+    { "character": "marco", "path": "characters/marco/fronte.png" },
+    { "character": "marco", "path": "characters/marco/tre-quarti.png" }
+  ],
   "control_image": null,
-  "workflow": "comfy/txt2img-character@v3"
+  "compiler": 1
 }
 ```
+
+La forma è quella del modello scelto per il ramo AI (§9.5): **FLUX.2 [pro]** prende un prompt in chiaro e fino a otto immagini di riferimento. Non ha prompt negativo, sampler, passi, cfg né LoRA, quindi quei campi della bozza non esistono più: ciò che si voleva evitare sta nel prompt («Avoid: …»), e la coerenza dei personaggi sta in `references`.
 
 Perché questo oggetto conta:
 
@@ -613,6 +618,22 @@ Nel ramo AI servono, prima di poter contare sulla generazione: coda con concorre
 
 `control_image` nello `RenderSpec` e nel pannello (§5.5) è predisposto per un eventuale ControlNet scribble/lineart: se un giorno l'autore vuole l'assist sul proprio tratto, il documento non va toccato. Predisporre il campo ora costa zero, aggiungerlo dopo costa una migrazione.
 
+### 9.5 Decisione: F3 e F5 su FLUX.2 [pro] (8 ottobre 2026)
+
+Il ramo AI si costruisce, e con un modello solo: **FLUX.2 [pro]**, raggiunto dal deployment su **Azure AI Foundry** (`AzureFluxImageService`) oppure dall'API di Black Forest Labs (`FluxImageService`): stesso modello, stesso spec, stesso hash. F4 (ComfyUI locale) resta fuori. La scelta del modello cambia la forma delle due fasi:
+
+- **F3** è com'era pensata: `ImageService` (pacchetto `image`, con un `MockImageService` per i test), `RenderQueue` con concorrenza limitata, retry, annullamento, stima e tetto di spesa; snap delle dimensioni ai multipli di 16; render in `renders/` col nome dell'hash e sidecar; staleness calcolata. Al posto dell'IP-Adapter ci sono le immagini di riferimento native del modello.
+- **F5 non è più LoRA.** FLUX.2 [pro] è un modello solo-API: non si addestra e non carica pesi. Di F5 resta ciò che non dipendeva dal training — la **scheda personaggio e la curatela**: ogni riferimento ha un flag «per generare», i posti (otto per vignetta) si dividono a giro fra i personaggi partendo dal protagonista, il prompt li nomina per numero, un render riuscito si promuove a riferimento con un clic, e la **scheda si genera** dall'aspetto scritto: fronte, tre quarti e figura intera, una dopo l'altra, ognuna guardando quelle già tenute. «Training in background» e «pesi in UI» cadono. Se la verifica qui sotto non passa, la strada è un modello che accetta LoRA dietro la stessa `ImageService`: una seconda implementazione, non una modifica al documento.
+
+Quattro cose che il modello impone e che conviene sapere:
+
+1. **Niente CORS**, da nessuno dei due fornitori: dal browser si passa da un proxy (`/image-proxy/` nel server di sviluppo). In un'applicazione desktop non serve.
+2. **Il fornitore riscrive il prompt** se non glielo si vieta: lo spec lo vieta sempre (`prompt_upsampling: false`), altrimenti il sidecar registrerebbe un prompt diverso da quello usato.
+3. **Su Azure il limite è di richieste al minuto** (quattro, al livello base del deployment): la coda aspetta il tempo che il 429 dichiara e riprova, quindi una pagina intera può metterci più di un minuto.
+4. **La spesa mostrata è una stima** (0,03 $ il primo megapixel, 0,015 $ ogni megapixel in più, riferimenti compresi); quella vera la dichiara l'API a immagine fatta, e finisce nel sidecar.
+
+**Ancora da fare, e non è codice:** la verifica cieca di F3 (≥ 70% «stesso personaggio») e la misura di F5 (coerenza coi riferimenti curati contro la sola descrizione) vanno fatte su pagine vere, con una chiave vera.
+
 ## 10. Revisioni con lo sceneggiatore
 
 È il dolore settimanale di un autore seriale ed è la funzione che nella bozza mancava del tutto. Non richiede collaborazione in tempo reale, che resta un non-obiettivo: si scambiano **file**.
@@ -647,6 +668,15 @@ File `revisions/cap-012.json`:
 
 `balloon.rev` (§5.6) e le voci del changelog si tengono allineati: è ciò che permette di sapere *quali* balloon vanno riletterati senza ricontrollare l'episodio a occhio.
 
+Oltre al testo di una battuta, una voce può riguardare:
+
+- **un campo** (`kind: "set"` con `field`: `speaker`, `balloon_type`, `setting`, `continuity_notes`): chi parla, come lo dice, dove siamo. Nel file annotato si corregge cambiando il nome o la parola fra parentesi dell'etichetta, o la riga `Luogo:`;
+- **una pagina, una scena o il capitolo intero** (`page`, `scene`, oppure nessun bersaglio): sono **note** — camera, layout, ritmo, disegno. Non cambiano nulla da sole: restano aperte finché non si chiudono dicendo cosa si è fatto (`resolution`). Si scrivono anche dentro lo strumento (`origin: "manual"`), sulla vignetta, sulla battuta o sulla pagina che si ha davanti.
+
+Tre campi tengono onesto il changelog: `resolution` (perché una voce è stata rifiutata), `replaced` (cosa si è sovrascritto applicandola nonostante il «prima» non corrispondesse più) e lo stato **calcolato** di una voce applicata — in vigore, poi modificata, non più nel documento — che come la staleness dei render (§5.7) non si salva.
+
+**Memoria.** Una correzione vale per il suo balloon; ciò che se ne impara vale per la serie. L'autore lo scrive in una riga sulla voce (`lesson`), e quelle righe arrivano allo spoglio di ogni capitolo insieme alle regole della serie. È una scelta esplicita, non un automatismo: solo chi scrive sa quale correzione generalizza.
+
 ### 10.3 Regole che proteggono il lavoro dell'autore
 
 - **Re-run senza distruzione.** Gli id sono stabili e derivabili (§5.3), quindi rigenerare una scena non sovrascrive le modifiche a mano: le differenze finiscono in una revisione da approvare, con **merge a tre vie** (versione precedente, nuova proposta, versione modificata a mano).
@@ -668,9 +698,9 @@ UI (React, nessuna API specifica di piattaforma)
         │                             │                   │
 ┌───────▼─────────┐       ┌───────────▼─────────┐  ┌──────▼──────────┐
 │ LlmService      │       │ ImageService        │  │ PlatformService │
-│ script → scene  │       │ Mock | fal | Comfy  │  │ fs · dialoghi   │
+│ script → scene  │       │ Mock | FLUX.2 [pro] │  │ fs · dialoghi   │
 │ scene → panel   │       │ + RenderQueue       │  │ processi · LFS  │
-└─────────────────┘       │ (opzionale, F3+)    │  └─────────────────┘
+└─────────────────┘       │ (F3, F5 — §9.5)     │  └─────────────────┘
                           └─────────────────────┘
 ```
 
@@ -721,9 +751,9 @@ Durate in settimane serali (8–10 h/settimana), una persona sola. F3–F5 sono 
 | **F2** — Editor | 4–5 sett | Vista pagina e vista scroll, drag dei balloon, gutter trascinabili, merge/split dei pannelli, camera rapida a icone, undo/redo, import arte con sorveglianza della cartella, salvataggio atomico, virtualizzazione | Monti una pagina intera senza toccare il JSON; importi l'arte disegnata fuori e la pagina si aggiorna |
 | **F2.1** — Export multi-formato | 2–2,5 sett | Pagina stampa e digitale, striscia con slicing testato, regioni per il guided view, CBZ, specifiche come configurazione | Un episodio intero esce in tre formati dallo stesso documento, senza interventi manuali sull'impaginazione |
 | **F2.2** — Revisioni | 1,5–2 sett | Diff dello script e provenienza, export leggibile, import annotato, lista di correzioni, changelog, find/replace, re-lettering selettivo | Applichi una revisione di 12 correzioni toccando solo i balloon coinvolti, in meno di un minuto |
-| **F3** — Arte AI su cloud *(opzionale)* | 2–3 sett | `ImageService` su un servizio cloud, IP-Adapter per la coerenza, coda con stima di tempo e spesa, snap dell'aspect ratio | Una pagina con arte generata e personaggi riconoscibili; verifica cieca ≥ 70% "stesso personaggio" |
+| **F3** — Arte AI su cloud *(deciso, §9.5)* | 2–3 sett | `ImageService` su FLUX.2 [pro], immagini di riferimento per la coerenza, coda con stima di tempo e spesa, snap dell'aspect ratio | Una pagina con arte generata e personaggi riconoscibili; verifica cieca ≥ 70% "stesso personaggio" |
 | **F4** — ComfyUI locale *(opzionale)* | 2 sett | Seconda implementazione di `ImageService`, workflow versionati, rilevamento della GPU, toggle locale/remoto | Stesso `RenderSpec`, risultato equivalente su locale e cloud |
-| **F5** — LoRA *(opzionale)* | 3–5 sett | Character sheet, curatela delle immagini buone, training in background, pesi in UI. È la fase più incerta | Coerenza *misurata* migliore di IP-Adapter, non solo "sembra meglio" |
+| **F5** — Riferimenti curati *(deciso, §9.5; era LoRA)* | 1–2 sett | Character sheet, curatela delle immagini buone, promozione dei render a riferimento. Niente training: FLUX.2 [pro] non carica LoRA | Coerenza *misurata* migliore della sola descrizione, non solo "sembra meglio" |
 | **F6** — Packaging | aperta | Installer, primo avvio, aggiornamenti; nel ramo AI anche il bundling di ComfyUI e il download dei modelli (6–12 GB) | Un utente non tecnico arriva al primo export da solo |
 
 **v1 utile = F0 → F2.2: 13–16 settimane**, senza nessun modello di immagini.
@@ -761,8 +791,9 @@ Se il tempo stringe: F0, F0.5, F1, un F2 ridotto (un solo target ritoccabile, ne
 | Prestazioni su 200+ pagine e migliaia di balloon | Medio | Virtualizzazione, miniature in cache, operazioni batch (§12, F2) |
 | Concorrenza: Clip Studio fa già balloon, template ed export | Medio | Non vincere sul singolo pezzo: vinci sul documento, sulle revisioni e sul guided view |
 | Stima temporale ottimistica di circa due volte | Alto | Roadmap con gate (§12.2) e versione ridotta già definita (§12.3) |
-| Coerenza dei personaggi insufficiente anche con IP-Adapter | Basso (solo ramo AI) | Verifica in F3; se non passa, il ramo AI non si costruisce e la v1 resta il prodotto |
-| Stacking di più LoRA ingestibile | Basso (solo ramo AI) | Vincolo dichiarato: in v1 un solo personaggio e uno stile per pannello |
+| Coerenza dei personaggi insufficiente anche coi riferimenti | Medio (solo ramo AI) | Verifica cieca di F3; se non passa, un modello con LoRA dietro la stessa `ImageService` (§9.5) |
+| Troppi personaggi per otto riferimenti | Basso (solo ramo AI) | I posti si dividono a giro, protagonista per primo; oltre quattro personaggi ne resta uno a testa |
+| Fornitore unico per l'arte: prezzi, filtri e disponibilità cambiano | Medio (solo ramo AI) | `ImageService` è un'interfaccia; lo spec e i sidecar restano leggibili senza il fornitore |
 | Packaging più costoso del previsto | Basso (solo ramo AI) | Il bundling di ComfyUI e dei modelli riguarda solo F6 del ramo AI |
 | Modelli generali che generano pagine coerenti | Medio | Il documento strutturato, le revisioni e la riformattazione sopravvivono comunque |
 
@@ -812,6 +843,7 @@ Chiuse perché costano poco oggi e molto dopo, e perché tutte le alternative so
 - `schema: 1` e catena di migrazioni dal primo giorno.
 - Undo/redo su comandi tipizzati con patch inverse; scritture atomiche.
 - Webtoon scroll e riformattazione **dentro** il perimetro; pubblicazione e collaborazione **fuori**.
+- Ramo AI: F3 e F5 su FLUX.2 [pro], F5 come riferimenti curati e non LoRA; F4 fuori (§9.5).
 
 ### 14.8 Decisioni minori da prendere entro F0
 

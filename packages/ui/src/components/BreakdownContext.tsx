@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { chapterContext, type Command, type ProjectDoc } from "@comic-builder/core";
+import { chapterContext, seriesLessons, type Command, type ProjectDoc } from "@comic-builder/core";
 import { breakdownSystemPrompt, breakdownUserPrompt, splitScript } from "@comic-builder/llm";
 
 interface Props {
@@ -19,13 +19,15 @@ interface Props {
 export function BreakdownContext({ doc, chapterId, script, run, endGesture }: Props) {
   const [showPrompt, setShowPrompt] = useState(false);
   const context = useMemo(() => chapterContext(doc, chapterId), [doc, chapterId]);
+  const lessons = useMemo(() => seriesLessons(doc), [doc]);
+  const chapterNumber = (id: string) => doc.chapters.chapters.find((c) => c.id === id)?.number ?? id;
   const preview = useMemo(() => {
     if (!showPrompt) return null;
     const parts = splitScript(script, 6000);
     const first = parts[0];
     return {
       parts: parts.length,
-      system: breakdownSystemPrompt({ seriesNotes: context.notes }),
+      system: breakdownSystemPrompt({ seriesNotes: context.notes, lessons: context.lessons }),
       user: first
         ? breakdownUserPrompt(first.text, {
             firstLine: first.firstLine,
@@ -53,9 +55,28 @@ export function BreakdownContext({ doc, chapterId, script, run, endGesture }: Pr
           onBlur={endGesture}
         />
       </label>
+      {lessons.length > 0 && (
+        <div className="field">
+          <span className="field__label">imparato dalle revisioni</span>
+          <ul className="lesson-list">
+            {lessons.map((l) => (
+              <li key={`${l.chapterId}:${l.id}`}>
+                {l.text}{" "}
+                <span className="muted">
+                  (cap. {chapterNumber(l.chapterId)}, {l.id})
+                </span>{" "}
+                <button type="button" className="link-btn" onClick={() => run({ type: "revision.lesson", chapterId: l.chapterId, id: l.id, lesson: null })}>
+                  togli
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="field__hint">
         Allo spoglio arrivano anche {context.characters.length} personaggi ({withSheet} con scheda: aspetto e costumi),{" "}
         {context.locations.length} luoghi già visti{context.previously ? " e il riassunto del capitolo precedente" : ""}.
+        {lessons.length === 0 && " Una correzione che vale per tutta la serie si segna in Revisioni, con «vale per la serie…»: da lì arriva qui."}
       </p>
       <button type="button" className="link-btn" onClick={() => setShowPrompt((v) => !v)}>
         {showPrompt ? "nascondi cosa riceve il modello" : "cosa riceve il modello"}

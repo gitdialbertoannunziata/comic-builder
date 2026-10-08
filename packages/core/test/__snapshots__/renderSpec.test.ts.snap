@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RenderSpec (§9.1) > lo spec, per intero 1`] = `
+{
+  "aspect": "9:16",
+  "compiler": 1,
+  "control_image": null,
+  "height": 1312,
+  "model": "flux-2-pro",
+  "output_format": "png",
+  "panel": "sample-page-01",
+  "prompt": "Comic panel, aspect 9:16. Draw the image only: no text, no speech balloons, no captions, no panel border.
+Framing: wide shot, full figure in environment; high angle looking down, vulnerable; 35mm lens.
+Characters (keep each one consistent with this description in every panel):
+- sara (lead; head and torso).
+- marco (support; head and torso).
+Composition: subject centered.
+Action: Il garage vuoto, polvere controluce
+Setting: garage, sera
+Lighting: even flat lighting.
+Tone (composition and palette, not a subject): calm: balanced composition, open space, gentle palette.
+Avoid: text, lettering, speech balloons, captions, watermark, signature, panel borders.
+Reference images (identity only — take face, hair, build and costume from them; pose, framing and lighting come from this description):
+- image 1 and image 2 show sara: draw sara as the same person.
+- image 3 shows marco: draw marco as the same person.",
+  "prompt_upsampling": false,
+  "references": [
+    {
+      "character": "sara",
+      "path": "characters/sara/a.png",
+    },
+    {
+      "character": "sara",
+      "path": "characters/sara/b.png",
+    },
+    {
+      "character": "marco",
+      "path": "characters/marco/a.png",
+    },
+  ],
+  "seed": 2671592254,
+  "target": "digital-page",
+  "width": 800,
+}
+`;

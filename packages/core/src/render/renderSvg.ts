@@ -153,7 +153,9 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
  * silenzio; nell'export finale resta vuoto, e lo segnala il piano d'export.
  */
 function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
-  if (!panel.art.source) return "";
+  // L'arte dell'autore vince; senza, vale il render di questo target (§5.7).
+  const source = panel.art.source ?? panel.render[config.target]?.file ?? null;
+  if (!source) return "";
   const href = config.art?.get(panel.id);
   const clipId = `cb-clip-${panel.id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
   const radius = panel.border.radius * (config.strokeScale ?? 1);
@@ -161,7 +163,7 @@ function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
     const clip = `<clipPath id="${clipId}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}"/></clipPath>`;
     // Con le dimensioni dell'immagine si applica l'inquadratura dell'autore;
     // senza, il ripiego è il riempimento centrato di sempre.
-    if (panel.art.size) {
+    if (panel.art.source && panel.art.size) {
       const at = artPlacement(box, panel.art.size, panel.art.frame);
       return (
         clip +
@@ -177,7 +179,7 @@ function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
   const size = config.baseFontSizePx * 0.6;
   return (
     `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="#fdf3e0"/>` +
-    `<text x="${box.x + box.width / 2}" y="${box.y + box.height / 2}" font-family="${escapeXml(config.fontFamily)}" font-size="${size}" text-anchor="middle" fill="#8a5a00">arte non trovata: ${escapeXml(panel.art.source)}</text>`
+    `<text x="${box.x + box.width / 2}" y="${box.y + box.height / 2}" font-family="${escapeXml(config.fontFamily)}" font-size="${size}" text-anchor="middle" fill="#8a5a00">arte non trovata: ${escapeXml(source)}</text>`
   );
 }
 

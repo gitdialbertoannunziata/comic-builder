@@ -8,6 +8,8 @@ interface Props {
   sceneId: string;
   onSelectPage: (pageId: string) => void;
   run: (command: Command) => boolean;
+  /** Revisioni aperte per pagina: si segnano sulla miniatura. */
+  openRevisions?: ReadonlyMap<string, number>;
 }
 
 /** Miniatura di un template: le sue aree, nelle proporzioni della pagina. */
@@ -38,7 +40,7 @@ export function TemplateThumb({ template }: { template: Pick<PageTemplate, "cols
   );
 }
 
-export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPage, run }: Props) {
+export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPage, run, openRevisions }: Props) {
   const [picking, setPicking] = useState(false);
   // Gli id presenti prima di un'aggiunta: l'id nuovo lo deriva il Core, e la
   // UI lo scopre al render successivo per selezionare la pagina appena nata.
@@ -71,10 +73,13 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
             className="page-chip"
             aria-pressed={p.id === currentPageId}
             onClick={() => onSelectPage(p.id)}
-            title={`Pagina ${p.order}`}
+            title={`Pagina ${p.order}${openRevisions?.has(p.id) ? ` · ${openRevisions.get(p.id)} revisioni aperte` : ""}`}
           >
             {p.layout.mode === "page" && <TemplateThumb template={{ cols: p.layout.cols, rows: p.layout.rows, areas: p.panels.map((x) => x.area) }} />}
-            <span>{p.order}</span>
+            <span>
+              {p.order}
+              {openRevisions?.has(p.id) && <span className="panel-row__notes"> ✎</span>}
+            </span>
           </button>
         ))}
         <button type="button" className="page-chip page-chip--add" aria-expanded={picking} onClick={() => setPicking((v) => !v)} title="Aggiungi una pagina">

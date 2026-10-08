@@ -72,13 +72,39 @@ export const BreakdownSceneSchema = z.object({
   beats: z.array(BreakdownBeatSchema).min(1),
 });
 
+/**
+ * Un personaggio come il testo lo presenta: ciò da cui nasce la sua scheda
+ * (§5.1), o i campi che le mancano. Dove il copione tace lo spoglio propone
+ * un aspetto plausibile: una scheda vuota lascia che ogni pannello reinventi
+ * il personaggio, una proposta l'autore la corregge una volta. Campi piatti
+ * e tutti obbligatori, come il resto del contratto.
+ */
+export const BreakdownCastSchema = z.object({
+  /** Lo stesso ref usato in `speaker` e in `characters`. */
+  ref: z.string(),
+  /** Il nome come lo scrive il testo: «Sara Bellini». */
+  name: z.string(),
+  /** Una riga: chi è. */
+  summary: z.string(),
+  age: z.string(),
+  build: z.string(),
+  face: z.string(),
+  hair: z.string(),
+  eyes: z.string(),
+  skin: z.string(),
+  distinguishing: z.string(),
+});
+
 export const BreakdownSchema = z.object({
   scenes: z.array(BreakdownSceneSchema).min(1),
+  /** I personaggi che compaiono nel capitolo, con ciò che il testo ne dice. */
+  cast: z.array(BreakdownCastSchema),
 });
 
 export type Breakdown = z.infer<typeof BreakdownSchema>;
 export type BreakdownScene = z.infer<typeof BreakdownSceneSchema>;
 export type BreakdownBeat = z.infer<typeof BreakdownBeatSchema>;
+export type BreakdownCast = z.infer<typeof BreakdownCastSchema>;
 
 /**
  * Lo stesso schema in JSON Schema, per il decoding vincolato. Derivato e non

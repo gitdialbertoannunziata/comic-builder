@@ -85,7 +85,7 @@ function nearestByRatio<T>(ratio: number, items: T[], ratioOf: (item: T) => numb
 }
 
 /** FNV-1a a 32 bit: il seed automatico deriva da serie, pannello ed epoca (§5.7), senza dipendenze. */
-function hash32(text: string): number {
+export function hash32(text: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);

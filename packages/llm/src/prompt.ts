@@ -21,10 +21,13 @@ const BEAT_FUNCTIONS = [
 export interface SystemPromptOptions {
   /** Le regole della serie scritte dall'autore: valgono per ogni capitolo. */
   seriesNotes?: string;
+  /** Ciò che l'autore ha tratto dalle correzioni dei capitoli già fatti. */
+  lessons?: readonly string[];
 }
 
 export function breakdownSystemPrompt(options: SystemPromptOptions = {}): string {
   const functions = BEAT_FUNCTIONS.map(([id, meaning]) => `- ${id}: ${meaning}`).join("\n");
+  const lessons = (options.lessons ?? []).map((l) => l.trim()).filter(Boolean);
 
   return [
     "Sei uno spogliatore di sceneggiature per fumetti. Dividi il testo in scene e, dentro ogni scena, in beat.",
@@ -52,12 +55,22 @@ export function breakdownSystemPrompt(options: SystemPromptOptions = {}): string
     "- `location` della scena: se è uno dei luoghi già visti elencati, usa esattamente lo stesso nome.",
     "- Un personaggio già elencato si riconosce anche quando il testo lo descrive senza nominarlo: usa il suo ref.",
     "- `from_line` e `to_line` sono le righe dello script da cui il beat nasce, numerate da 1.",
+    "- `cast` (fuori dalle scene) ha una voce per ogni personaggio che compare nel testo, anche se è già fra quelli elencati: `ref` come in `speaker`, `name` come lo scrive il testo, `summary` chi è nella storia in una riga (va sempre scritto: ruolo, mestiere, rapporto con gli altri), e l'aspetto nei suoi campi (`age`, `build`, `face`, `hair`, `eyes`, `skin`, `distinguishing` per i segni particolari).",
+    "- L'aspetto nel `cast` si ricava da tutto il testo, non solo da dove il personaggio viene presentato: descrizioni dirette, dettagli sparsi nelle azioni («si sistema gli occhiali», «i capelli grigi al vento») e ciò che il testo fa capire (l'età da ruolo e rapporti: «circa 60 anni» per un vecchio guardiano). Scrivi frasi brevi, da scheda.",
+    "- Dove il testo non dà alcun appiglio sull'aspetto, proponilo tu: un tratto plausibile e preciso, coerente con il personaggio, l'ambientazione e l'epoca, e diverso da quello degli altri perché si distinguano a colpo d'occhio. Ciò che il testo dice o fa capire ha sempre la precedenza. Nessun campo dell'aspetto resta vuoto, salvo `distinguishing` se il personaggio non ha segni particolari.",
     "",
     ...(options.seriesNotes?.trim()
       ? [
           "",
           "Regole di questa serie, scritte dall'autore: valgono per ogni capitolo e hanno la precedenza sulle indicazioni generali qui sopra (non sul formato della risposta):",
           options.seriesNotes.trim(),
+        ]
+      : []),
+    ...(lessons.length > 0
+      ? [
+          "",
+          "Correzioni che l'autore ha già fatto nei capitoli precedenti: non ripetere gli stessi errori.",
+          ...lessons.map((l) => `- ${l}`),
         ]
       : []),
     "",
