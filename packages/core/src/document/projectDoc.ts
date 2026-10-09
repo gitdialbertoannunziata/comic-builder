@@ -213,6 +213,9 @@ export function changedFiles(next: ProjectDoc, previous: ProjectDoc | null): Jou
     for (const id of Object.keys(previous.pages)) if (!next.pages[id]) removes.push(pagePath(id));
     // Una scheda rinominata o tolta: il file vecchio se ne va, le immagini di riferimento restano.
     for (const ref of Object.keys(previous.characters)) if (!next.characters[ref]) removes.push(characterPath(ref));
+    // Un capitolo eliminato porta via changelog e copione. Arte e render restano nella cartella.
+    for (const id of Object.keys(previous.revisions)) if (!next.revisions[id]) removes.push(revisionsPath(id));
+    for (const id of Object.keys(previous.scripts)) if (next.scripts[id] === undefined) removes.push(scriptPath(id));
   }
   return { at: "", writes, removes };
 }

@@ -39,6 +39,8 @@ export interface RenderSpec {
 export const RENDER_COMPILER_VERSION = 1;
 export const RENDERS_DIR = "renders";
 export const FLUX2_PRO = "flux-2-pro";
+/** FLUX.2 [flex]: stesso spec e stessi riferimenti di [pro]. Passi e guidance non si mandano: valgono quelli del fornitore. */
+export const FLUX2_FLEX = "flux-2-flex";
 /** `input_image` … `input_image_8` nell'API di FLUX.2. */
 export const FLUX2_MAX_REFERENCES = 8;
 

@@ -1,6 +1,15 @@
 import { useRef, useState } from "react";
-import { panelSeed, renderState, type CharacterSheet, type Command, type Panel, type Project, type ProjectStore } from "@comic-builder/core";
-import { AzureFluxImageService, estimateQueue, FluxImageService, MockImageService, type ImageService } from "@comic-builder/image";
+import { FLUX2_FLEX, FLUX2_PRO, panelSeed, renderState, type CharacterSheet, type Command, type Panel, type Project, type ProjectStore } from "@comic-builder/core";
+import {
+  AZURE_FLUX_DEPLOYMENT,
+  AZURE_FLUX_FLEX_DEPLOYMENT,
+  AzureFluxImageService,
+  azureFluxModel,
+  estimateQueue,
+  FluxImageService,
+  MockImageService,
+  type ImageService,
+} from "@comic-builder/image";
 import { generatePanels, promoteRender, type GenerationItem, type GenerationReport } from "../editor/generateArt.js";
 import { usePreference } from "../usePreference.js";
 
@@ -14,7 +23,7 @@ export interface ImageConfig {
   model: string;
   onModel: (model: string) => void;
   baseUrl: string;
-  /** FLUX.2 [pro] distribuito su Azure AI Foundry: endpoint della risorsa, sua chiave, nome del deployment. */
+  /** FLUX.2 distribuito su Azure AI Foundry: endpoint della risorsa, sua chiave, nome del deployment (da cui si riconosce il modello). */
   azureKey: string;
   onAzureKey: (key: string) => void;
   azureKeyFromEnv: boolean;
@@ -33,8 +42,10 @@ export interface ImageConfig {
  */
 export function specModel(config: ImageConfig): string {
   if (config.service === "mock") return "mock-image";
-  return config.service === "azure" ? "flux-2-pro" : config.model.trim() || "flux-2-pro";
+  return config.service === "azure" ? azureFluxModel(config.azureDeployment) : config.model.trim() || FLUX2_PRO;
 }
+
+const MODEL_LABEL: Readonly<Record<string, string>> = { [FLUX2_PRO]: "FLUX.2 [pro]", [FLUX2_FLEX]: "FLUX.2 [flex]" };
 
 // Nessuno dei due fornitori abilita CORS: si passa dal server di sviluppo (vite.config.ts).
 const viaProxy = (url: string) => `/image-proxy/${url.replace(/^https:\/\//, "")}`;
@@ -77,7 +88,7 @@ const usd = (value: number) => `${value.toFixed(2).replace(".", ",")} $`;
 const STATE_LABEL = { none: "mai generata", fresh: "aggiornata", stale: "da rigenerare: la vignetta è cambiata dopo il render" } as const;
 
 /**
- * Arte generata (F3) con FLUX.2 [pro]. Lo spec viene dal documento (§9.1):
+ * Arte generata (F3) con FLUX.2. Lo spec viene dal documento (§9.1):
  * qui si vede cosa partirà — riferimenti, spesa — e si decide quando. La
  * coerenza dei personaggi (F5) sta nei riferimenti delle schede: un render
  * riuscito si può tenere come riferimento, ed è così che la scheda cresce.
@@ -161,7 +172,7 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
     <div className="card">
       <p className="card__title card__title--row">
         <span>genera l'arte</span>
-        <span className="muted">{config.service === "mock" ? "servizio di prova" : config.service === "azure" ? "FLUX.2 [pro] · Azure" : specModel(config)}</span>
+        <span className="muted">{config.service === "mock" ? "servizio di prova" : config.service === "azure" ? `${MODEL_LABEL[specModel(config)]} · Azure` : specModel(config)}</span>
       </p>
 
       <div className="stack">
@@ -246,7 +257,7 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
           <label className="field">
             <span className="field__label">servizio</span>
             <select value={config.service} onChange={(e) => config.onService(e.target.value as ImageConfig["service"])}>
-              <option value="azure">FLUX.2 [pro] — Azure AI Foundry</option>
+              <option value="azure">FLUX.2 — Azure AI Foundry</option>
               <option value="flux">FLUX.2 — Black Forest Labs</option>
               <option value="mock">prova, senza rete né spesa (immagine grigia)</option>
             </select>
@@ -267,9 +278,19 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
                 </span>
               </label>
               <label className="field">
+                <span className="field__label">modello</span>
+                <select value={specModel(config)} onChange={(e) => config.onAzureDeployment(e.target.value === FLUX2_FLEX ? AZURE_FLUX_FLEX_DEPLOYMENT : AZURE_FLUX_DEPLOYMENT)}>
+                  <option value={FLUX2_PRO}>{MODEL_LABEL[FLUX2_PRO]}</option>
+                  <option value={FLUX2_FLEX}>{MODEL_LABEL[FLUX2_FLEX]}</option>
+                </select>
+                <span className="field__hint">Cambiarlo rende «da rigenerare» le vignette fatte con l'altro; i loro file restano in renders/, e tornando indietro si ritrovano senza spesa.</span>
+              </label>
+              <label className="field">
                 <span className="field__label">nome del deployment</span>
-                <input type="text" value={config.azureDeployment} onChange={(e) => config.onAzureDeployment(e.target.value)} placeholder="FLUX.2-pro" />
-                <span className="field__hint">Il deployment ha un limite di richieste al minuto: una pagina intera può fermarsi ad aspettare, ed è normale.</span>
+                <input type="text" value={config.azureDeployment} onChange={(e) => config.onAzureDeployment(e.target.value)} placeholder={AZURE_FLUX_DEPLOYMENT} />
+                <span className="field__hint">
+                  Il modello si riconosce da qui: [flex] se il nome contiene «flex», altrimenti [pro]. Il deployment ha un limite di richieste al minuto: una pagina intera può fermarsi ad aspettare, ed è normale.
+                </span>
               </label>
             </>
           )}

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { sampleProject, sampleScene } from "../src/fixtures/index.js";
 import { buildPagesFromScene } from "../src/script/buildPages.js";
-import { changedFiles, projectDocFrom, type ProjectDoc } from "../src/document/projectDoc.js";
+import { changedFiles, loadProject, pagePath, PROJECT_FILE, projectDocFrom, saveProject, type ProjectDoc } from "../src/document/projectDoc.js";
+import { MemoryProjectStore } from "../src/document/store.js";
 import { applyCommand, CommandError } from "../src/editor/commands.js";
-import { chapterContext } from "../src/editor/chapters.js";
+import { chapterContext, nextChapterId } from "../src/editor/chapters.js";
 import { SceneSchema } from "../src/schema/scenes.js";
 
 const build = (chapterId: string, scene = sampleScene) =>
@@ -51,6 +52,97 @@ describe("Più capitoli in un'opera", () => {
   it("titolo e stato si modificano", () => {
     const next = applyCommand(doc, { type: "chapter.update", chapterId: "ep001", title: "Il faro spento", status: "in-production" });
     expect(next.chapters.chapters[0]).toMatchObject({ title: "Il faro spento", status: "in-production" });
+  });
+});
+
+describe("Spostare ed eliminare un capitolo", () => {
+  // Tre capitoli: il primo e il secondo spogliati, il terzo vuoto. Il secondo ha una correzione che vale per la serie.
+  const filled = applyCommand(applyCommand(doc, { type: "chapter.add", title: "La barca" }), { type: "chapter.set-content", chapterId: "ep002", pages: build("ep002", scene2), scenes: [scene2], script: "copione 2" });
+  const panel2 = filled.pages[filled.chapters.chapters[1]!.pages[0]!]!.panels[0]!;
+  let three = applyCommand(filled, { type: "chapter.add", title: "Il molo" });
+  three = applyCommand(three, { type: "revision.add", chapterId: "ep002", entries: [{ origin: "manual", kind: "note", panel: panel2.id, balloon: null, speaker: null, from: null, to: "x", source_line: null }], by: "autore", at: "2026-10-08T10:00:00Z" });
+  three = applyCommand(three, { type: "revision.lesson", chapterId: "ep002", id: "r-0001", lesson: "Sara non dà mai del lei." });
+  const order = (d: ProjectDoc) => d.chapters.chapters.map((c) => [c.id, c.number]);
+
+  it("spostare cambia i numeri, non gli id, e riscrive solo l'indice dei capitoli", () => {
+    const moved = applyCommand(three, { type: "chapter.move", chapterId: "ep003", toIndex: 0 });
+    expect(order(moved)).toEqual([["ep003", 1], ["ep001", 2], ["ep002", 3]]);
+    expect(moved.pages).toBe(three.pages);
+    expect(changedFiles(moved, three)).toMatchObject({ writes: [{ path: three.project.chapters }], removes: [] });
+    // Il capitolo «precedente» per lo spoglio è quello che ora viene prima.
+    expect(chapterContext(moved, "ep001").previously).toBeNull();
+    expect(chapterContext(moved, "ep002").previously).toMatch(/^Capitolo 2 «La lanterna»:/);
+  });
+
+  it("uno spostamento che non sposta niente non è un passo: il documento è lo stesso", () => {
+    expect(applyCommand(three, { type: "chapter.move", chapterId: "ep001", toIndex: 0 })).toBe(three);
+    expect(applyCommand(three, { type: "chapter.move", chapterId: "ep003", toIndex: 99 })).toBe(three);
+    expect(order(applyCommand(three, { type: "chapter.move", chapterId: "ep001", toIndex: 99 }))).toEqual([["ep002", 1], ["ep003", 2], ["ep001", 3]]);
+  });
+
+  it("un'opera che parte dal capitolo 12 resta dal 12", () => {
+    const from12: ProjectDoc = { ...three, chapters: { ...three.chapters, chapters: three.chapters.chapters.map((c) => ({ ...c, number: c.number + 11 })) } };
+    expect(order(applyCommand(from12, { type: "chapter.move", chapterId: "ep002", toIndex: 0 }))).toEqual([["ep002", 12], ["ep001", 13], ["ep003", 14]]);
+    expect(order(applyCommand(from12, { type: "chapter.remove", chapterId: "ep001" }))).toEqual([["ep002", 12], ["ep003", 13]]);
+  });
+
+  it("eliminare porta via pagine, scene, copione e changelog del capitolo, e i successivi scalano", () => {
+    const removed = applyCommand(three, { type: "chapter.remove", chapterId: "ep002" });
+    expect(order(removed)).toEqual([["ep001", 1], ["ep003", 2]]);
+    expect(Object.keys(removed.pages).filter((id) => id.startsWith("ep002"))).toEqual([]);
+    for (const id of doc.chapters.chapters[0]!.pages) expect(removed.pages[id]).toBe(doc.pages[id]);
+    expect(removed.scenes.scenes.map((s) => s.id)).toEqual([sampleScene.id]);
+    expect(removed.scripts).toEqual({ ep001: "copione 1" });
+    expect(removed.revisions).toEqual({});
+
+    const plan = changedFiles(removed, three);
+    expect(plan.removes.sort()).toEqual([...filled.chapters.chapters[1]!.pages.map(pagePath), "revisions/ep002.json", "script/ep002.md"].sort());
+    expect(plan.writes.map((w) => w.path).sort()).toEqual([PROJECT_FILE, three.project.scenes, three.project.chapters].sort());
+  });
+
+  it("una scena che usa anche un altro capitolo resta", () => {
+    // Il terzo capitolo riusa la scena del secondo.
+    const shared = applyCommand(three, { type: "chapter.set-content", chapterId: "ep003", pages: build("ep003", scene2), scenes: [scene2] });
+    const removed = applyCommand(shared, { type: "chapter.remove", chapterId: "ep002" });
+    expect(removed.scenes.scenes.map((s) => s.id)).toEqual([sampleScene.id, "ep002-s001"]);
+  });
+
+  it("ciò che l'autore ha tratto dalle correzioni del capitolo passa fra le regole della serie", () => {
+    const noted = applyCommand(three, { type: "project.notes", notes: "Dialoghi brevi.\n" });
+    const removed = applyCommand(noted, { type: "chapter.remove", chapterId: "ep002" });
+    expect(removed.project.series_notes).toBe("Dialoghi brevi.\nSara non dà mai del lei.");
+    expect(chapterContext(removed, "ep003").notes).toContain("Sara non dà mai del lei.");
+    // Se è già fra le regole, o la ripete un altro capitolo, non si scrive due volte.
+    const already = applyCommand(three, { type: "project.notes", notes: "sara non dà mai del lei." });
+    expect(applyCommand(already, { type: "chapter.remove", chapterId: "ep002" }).project).toBe(already.project);
+  });
+
+  it("l'ultimo capitolo non si elimina, e uno che non c'è nemmeno", () => {
+    expect(() => applyCommand(doc, { type: "chapter.remove", chapterId: "ep001" })).toThrow(CommandError);
+    expect(() => applyCommand(three, { type: "chapter.remove", chapterId: "ep009" })).toThrow(CommandError);
+    expect(() => applyCommand(three, { type: "chapter.move", chapterId: "ep009", toIndex: 0 })).toThrow(CommandError);
+  });
+
+  it("l'id di un capitolo eliminato non si riusa: in art/ ci sono ancora le sue immagini", () => {
+    const removed = applyCommand(three, { type: "chapter.remove", chapterId: "ep003" });
+    expect(nextChapterId(removed)).toEqual({ id: "ep004", number: 3 });
+    expect(order(applyCommand(removed, { type: "chapter.add", title: "" }))).toEqual([["ep001", 1], ["ep002", 2], ["ep004", 3]]);
+  });
+
+  it("sul disco non resta niente del capitolo, e annullare lo riporta intero", async () => {
+    const store = new MemoryProjectStore();
+    await saveProject(store, three, null);
+    const before = store.paths();
+    const removed = applyCommand(three, { type: "chapter.remove", chapterId: "ep002" });
+    await saveProject(store, removed, three);
+    expect(store.paths().filter((path) => path.includes("ep002"))).toEqual([]);
+    const reopened = await loadProject(store);
+    expect(reopened.issues).toEqual([]);
+    expect(order(reopened.doc)).toEqual([["ep001", 1], ["ep003", 2]]);
+    // Ctrl+Z, poi il salvataggio: tornano gli stessi file di prima.
+    await saveProject(store, three, removed);
+    expect(store.paths()).toEqual(before);
+    expect(order((await loadProject(store)).doc)).toEqual([["ep001", 1], ["ep002", 2], ["ep003", 3]]);
   });
 });
 

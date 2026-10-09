@@ -50,13 +50,15 @@ interface Props {
   area: Area;
   onArea: (area: Area) => void;
   openRevisions: number;
+  /** Apre la legenda delle scorciatoie. */
+  onHelp: () => void;
 }
 
 /**
  * La barra: dove si è (opera, capitolo, area di lavoro) e se il lavoro è al
  * sicuro. Una riga; avvisi ed errori ne aggiungono una solo quando ci sono.
  */
-export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions }: Props) {
+export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp }: Props) {
   const { status, folder } = editor;
   const tone = status.kind === "error" || status.kind === "locked-out" ? "error" : status.kind === "memory" ? "warn" : status.kind === "saved" ? "ok" : "busy";
   const menu = useRef<HTMLDetailsElement>(null);
@@ -135,6 +137,9 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
               Riapri «{editor.reopenable}»
             </button>
           )}
+          <button type="button" className="btn btn--small btn--icon" onClick={onHelp} title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
+            ?
+          </button>
           <details className="menu" ref={menu}>
             <summary className="btn btn--small">Progetto</summary>
             {/* Scelta una voce, il menu si richiude. */}

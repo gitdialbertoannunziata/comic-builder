@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { samplePage } from "../src/fixtures/index.js";
 import { resolvePageLayout } from "../src/layout/resolveLayout.js";
-import { anchorFor, balloonBox, dragTrackBoundary, gutterHandles, tailPoint } from "../src/render/geometry.js";
+import { anchorFor, balloonBox, dragTrackBoundary, gutterHandles, neighbourPanel, tailPoint } from "../src/render/geometry.js";
 
 const layout = samplePage.layout;
 if (layout.mode !== "page") throw new Error();
@@ -64,5 +64,58 @@ describe("Trascinare un confine fra tracce", () => {
     expect((next[0]! / 2) * 600).toBeCloseTo(48, 9);
     const other = dragTrackBoundary([1, 1], 0, 0, 600, 5000, 20, 48);
     expect((other[1]! / 2) * 600).toBeCloseTo(48, 9);
+  });
+});
+
+describe("Il pannello accanto, per le frecce", () => {
+  // Una fascia in alto, sotto una colonna alta a sinistra e due pannelli impilati a destra.
+  const t = new Map([
+    ["top", { x: 0, y: 0, width: 300, height: 100 }],
+    ["tall", { x: 0, y: 110, width: 140, height: 200 }],
+    ["r1", { x: 150, y: 110, width: 150, height: 95 }],
+    ["r2", { x: 150, y: 215, width: 150, height: 95 }],
+  ]);
+
+  it("va al più vicino fra quelli di fronte", () => {
+    expect(neighbourPanel(t, "r2", "left")).toBe("tall");
+    expect(neighbourPanel(t, "r2", "up")).toBe("r1");
+    expect(neighbourPanel(t, "r1", "up")).toBe("top");
+    expect(neighbourPanel(t, "tall", "up")).toBe("top");
+    expect(neighbourPanel(t, "r1", "down")).toBe("r2");
+  });
+
+  it("fra più pannelli di fronte alla stessa distanza sceglie il più allineato, poi il primo", () => {
+    // Sotto la fascia ce ne sono due: quello di destra ha il centro più vicino al suo.
+    expect(neighbourPanel(t, "top", "down")).toBe("r1");
+    // A destra della colonna alta, due pannelli ugualmente allineati: il primo.
+    expect(neighbourPanel(t, "tall", "right")).toBe("r1");
+  });
+
+  it("al bordo della pagina non c'è nessuno", () => {
+    expect(neighbourPanel(t, "top", "up")).toBeNull();
+    expect(neighbourPanel(t, "top", "left")).toBeNull();
+    expect(neighbourPanel(t, "r2", "down")).toBeNull();
+    expect(neighbourPanel(t, "r2", "right")).toBeNull();
+    expect(neighbourPanel(t, "manca", "right")).toBeNull();
+  });
+
+  it("se di fronte non c'è nessuno, il più vicino in quella direzione", () => {
+    const diagonal = new Map([
+      ["a", { x: 0, y: 0, width: 50, height: 50 }],
+      ["b", { x: 100, y: 100, width: 50, height: 50 }],
+    ]);
+    expect(neighbourPanel(diagonal, "a", "right")).toBe("b");
+    expect(neighbourPanel(diagonal, "a", "down")).toBe("b");
+    expect(neighbourPanel(diagonal, "b", "left")).toBe("a");
+    expect(neighbourPanel(diagonal, "a", "left")).toBeNull();
+  });
+
+  it("sulla pagina d'esempio si torna da dove si è partiti", () => {
+    for (const id of boxes.keys()) {
+      for (const [there, back] of [["right", "left"], ["down", "up"]] as const) {
+        const next = neighbourPanel(boxes, id, there);
+        if (next) expect(neighbourPanel(boxes, next, back)).not.toBeNull();
+      }
+    }
   });
 });

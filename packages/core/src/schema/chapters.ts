@@ -24,5 +24,12 @@ export type Chapter = z.infer<typeof ChapterSchema>;
 export const ChaptersDocSchema = z.object({
   schema: z.literal(1),
   chapters: z.array(ChapterSchema),
+  /**
+   * Indice più alto mai assegnato a un capitolo. Come `page_seq`: di un capitolo
+   * eliminato restano i file in `art/` e `renders/`, e un capitolo nuovo con lo
+   * stesso id se li ritroverebbe collegati alle sue vignette. Assente nei
+   * documenti vecchi: vale il massimo presente.
+   */
+  chapter_seq: z.number().int().nonnegative().optional(),
 });
 export type ChaptersDoc = z.infer<typeof ChaptersDocSchema>;

@@ -7,18 +7,34 @@ import { seriesLessons } from "../revisions/lessons.js";
 
 /**
  * Un'opera ha più capitoli (§5.3: `chapters.json`). Qui le operazioni che
- * li riguardano interi: aggiungerne uno, rinominarlo, riempirlo con uno
- * spoglio — senza mai toccare gli altri.
+ * li riguardano interi: aggiungerne uno, rinominarlo, spostarlo, eliminarlo,
+ * riempirlo con uno spoglio — senza mai toccare gli altri.
  */
 
-/** Id del prossimo capitolo: `ep` + numero a tre cifre, oltre il più alto mai usato. */
+/** L'indice in fondo all'id di un capitolo (`ep012` → 12); 0 se l'id ha un'altra forma. */
+function chapterIndex(id: string): number {
+  return Number(/^ep(\d+)$/.exec(id)?.[1] ?? 0);
+}
+
+/** I capitoli nell'ordine dell'opera: per numero, e a parità come stanno nel file. */
+function inOrder(chapters: readonly Chapter[]): Chapter[] {
+  return [...chapters].sort((a, b) => a.number - b.number);
+}
+
+/**
+ * Id e numero del prossimo capitolo. L'id è `ep` + tre cifre, oltre il più
+ * alto mai usato — anche da un capitolo eliminato (`chapter_seq`). Il numero
+ * è il posto nell'opera, dopo l'ultimo: da quando i capitoli si spostano e si
+ * eliminano le due cose non coincidono più, come `id` e `order` di una pagina.
+ */
 export function nextChapterId(doc: ProjectDoc): { id: string; number: number } {
-  let highest = 0;
+  let index = doc.chapters.chapter_seq ?? 0;
+  let number = 0;
   for (const chapter of doc.chapters.chapters) {
-    highest = Math.max(highest, chapter.number, Number(/^ep(\d+)$/.exec(chapter.id)?.[1] ?? 0));
+    index = Math.max(index, chapterIndex(chapter.id));
+    number = Math.max(number, chapter.number);
   }
-  const number = highest + 1;
-  return { id: `ep${String(number).padStart(3, "0")}`, number };
+  return { id: `ep${String(index + 1).padStart(3, "0")}`, number: number + 1 };
 }
 
 export function addChapter(doc: ProjectDoc, title: string): ProjectDoc {
@@ -31,6 +47,89 @@ export function updateChapter(doc: ProjectDoc, chapterId: string, patch: Partial
   return {
     ...doc,
     chapters: { ...doc.chapters, chapters: doc.chapters.chapters.map((c) => (c.id === chapterId ? { ...c, ...patch } : c)) },
+  };
+}
+
+/**
+ * I capitoli nell'ordine dato, coi numeri ridistribuiti in fila: `number`
+ * segue la posizione come `order` quella di una pagina (§5.4), mentre l'id
+ * resta quello (§5.3) — `ep003` può diventare il capitolo 1. I numeri in uso
+ * restano gli stessi e cambiano di mano: un'opera che parte dal 12 resta dal 12.
+ */
+function renumbered(ordered: readonly Chapter[], numbers: readonly number[]): Chapter[] {
+  return ordered.map((c, i) => (c.number === numbers[i] ? c : { ...c, number: numbers[i]! }));
+}
+
+/** Sposta un capitolo al posto `toIndex` nell'ordine dell'opera (0 = primo). Gli altri scalano. */
+export function moveChapter(doc: ProjectDoc, chapterId: string, toIndex: number): ProjectDoc {
+  const ordered = inOrder(doc.chapters.chapters);
+  const numbers = ordered.map((c) => c.number);
+  const from = ordered.findIndex((c) => c.id === chapterId);
+  if (from < 0) throw new Error(`Capitolo ${chapterId} inesistente`);
+  const [moved] = ordered.splice(from, 1);
+  const to = Math.max(0, Math.min(ordered.length, toIndex));
+  if (to === from) return doc;
+  ordered.splice(to, 0, moved!);
+  return { ...doc, chapters: { ...doc.chapters, chapters: renumbered(ordered, numbers) } };
+}
+
+/**
+ * Le regole per la serie (`lesson`, vedi `seriesLessons`) che stanno solo nel
+ * changelog di un capitolo: non le ripete un altro capitolo e non sono già
+ * fra le regole della serie. Eliminando il capitolo sparirebbero con lui.
+ */
+export function lessonsOnlyIn(doc: ProjectDoc, chapterId: string): string[] {
+  const key = (text: string) => text.trim().toLowerCase();
+  const elsewhere = new Set(doc.project.series_notes.split("\n").map(key));
+  for (const [id, revs] of Object.entries(doc.revisions)) {
+    if (id !== chapterId) for (const entry of revs.entries) if (entry.lesson?.trim()) elsewhere.add(key(entry.lesson));
+  }
+  const own: string[] = [];
+  for (const entry of doc.revisions[chapterId]?.entries ?? []) {
+    const text = entry.lesson?.trim();
+    if (!text || elsewhere.has(key(text))) continue;
+    elsewhere.add(key(text));
+    own.push(text);
+  }
+  return own;
+}
+
+/**
+ * Elimina un capitolo con ciò che è solo suo: pagine, copione, changelog e
+ * le scene che nessun altro capitolo usa. I capitoli dopo scalano di un
+ * numero. Restano i personaggi, che sono dell'opera, e ciò che l'autore ha
+ * tratto dalle sue correzioni: quelle regole valgono per la serie, e passano
+ * fra le regole scritte (`series_notes`) invece di sparire dallo spoglio dei
+ * capitoli che restano. I file in `art/` e `renders/` non si toccano: l'arte
+ * dell'autore non la cancella lo strumento (§5.1), ed è per questo che l'id
+ * del capitolo resta speso.
+ */
+export function removeChapter(doc: ProjectDoc, chapterId: string): ProjectDoc {
+  const ordered = inOrder(doc.chapters.chapters);
+  const chapter = ordered.find((c) => c.id === chapterId);
+  if (!chapter) throw new Error(`Capitolo ${chapterId} inesistente`);
+  const rest = ordered.filter((c) => c.id !== chapterId);
+
+  const own = chapterSceneIds(doc, chapterId);
+  for (const other of rest) chapterSceneIds(doc, other.id).forEach((id) => own.delete(id));
+  const scenes = doc.scenes.scenes.filter((s) => !own.has(s.id));
+
+  const without = <T>(record: Readonly<Record<string, T>>, gone: (id: string) => boolean) =>
+    Object.keys(record).some(gone) ? Object.fromEntries(Object.entries(record).filter(([id]) => !gone(id))) : record;
+
+  const lessons = lessonsOnlyIn(doc, chapterId);
+  return {
+    ...doc,
+    project: lessons.length === 0 ? doc.project : { ...doc.project, series_notes: [doc.project.series_notes.trimEnd(), ...lessons].filter(Boolean).join("\n") },
+    pages: without(doc.pages, (id) => chapter.pages.includes(id)),
+    scenes: scenes.length === doc.scenes.scenes.length ? doc.scenes : { ...doc.scenes, scenes },
+    chapters: {
+      ...doc.chapters,
+      chapters: renumbered(rest, ordered.map((c) => c.number)),
+      chapter_seq: Math.max(doc.chapters.chapter_seq ?? 0, ...ordered.map((c) => chapterIndex(c.id))),
+    },
+    revisions: without(doc.revisions, (id) => id === chapterId),
+    scripts: without(doc.scripts, (id) => id === chapterId),
   };
 }
 

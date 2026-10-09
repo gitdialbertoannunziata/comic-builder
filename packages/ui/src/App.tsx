@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { chapterContext, issue, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
+import { chapterContext, issue, lessonsOnlyIn, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
 import { useFont } from "./useFont.js";
 import { runBreakdown } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
@@ -17,9 +17,14 @@ import { useProjectEditor } from "./editor/useProjectEditor.js";
 import { ProjectBar } from "./components/ProjectBar.js";
 import { Workspace, type Area } from "./components/Workspace.js";
 import { usePreference } from "./usePreference.js";
+import { focusCanvas, isTyping, LIST_LEGEND, useLegend, useShortcuts } from "./keyboard.js";
+import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
+
+/** Le aree nell'ordine della barra: i tasti 1…5. */
+const AREAS: readonly Area[] = ["copione", "pagine", "personaggi", "revisioni", "export"];
 
 /** Valori di partenza, eventualmente da .env.local in sviluppo. */
 const prefilled = prefilledConfig();
@@ -191,9 +196,40 @@ export function App() {
 
   const openRevisions = (doc.revisions[chapter.id]?.entries ?? []).filter((e) => e.status === "open").length;
 
+  const [help, setHelp] = useState(false);
+  function stepChapter(step: 1 | -1) {
+    const ordered = [...chapters].sort((a, b) => a.number - b.number);
+    const next = ordered[ordered.findIndex((c) => c.id === chapter.id) + step];
+    if (next) selectChapter(next.id);
+  }
+  useShortcuts("Ovunque", 0, [
+    { keys: ["?"], label: "Questa legenda", once: true, run: () => setHelp((open) => !open) },
+    { keys: ["1", "2", "3", "4", "5"], shown: "1 … 5", label: "Aree: Copione, Pagine, Personaggi, Revisioni, Export", once: true, run: (e) => setArea(AREAS[Number(e.key) - 1]!) },
+    { keys: ["Shift+PageUp", "Shift+PageDown"], shown: "Shift + Pag↑ / Pag↓", label: "Capitolo precedente / successivo", once: true, run: (e) => stepChapter(e.key === "PageDown" ? 1 : -1) },
+    {
+      keys: ["Escape"],
+      label: "Esce dal campo in cui scrivi: da lì i tasti sono comandi",
+      when: "always",
+      run: (e) => {
+        if (!isTyping(e.target)) return false;
+        (e.target as HTMLElement).blur();
+        focusCanvas();
+      },
+    },
+    // Annulla, ripeti e salva li gestisce l'editor (useProjectEditor), anche dentro i campi: qui solo la voce.
+    { keys: ["Mod+z"], label: "Annulla" },
+    { keys: ["Mod+Shift+z"], label: "Ripeti" },
+    { keys: ["Mod+s"], label: "Salva" },
+    // Alt+← nel browser è «indietro»: qui Alt+frecce sposta code, pagine e capitoli, e un colpo
+    // a vuoto non deve portare fuori dallo strumento. Dentro un campo resta del sistema.
+    { keys: ["Alt+ArrowLeft", "Alt+ArrowRight"], run: () => {} },
+  ]);
+  useLegend("In un elenco", 30, LIST_LEGEND);
+
   return (
     <div className="shell">
-      <ProjectBar editor={editor} chapters={chapters} chapterId={chapter.id} onSelectChapter={selectChapter} area={area} onArea={setArea} openRevisions={openRevisions} />
+      <ProjectBar editor={editor} chapters={chapters} chapterId={chapter.id} onSelectChapter={selectChapter} area={area} onArea={setArea} openRevisions={openRevisions} onHelp={() => setHelp(true)} />
+      <ShortcutsHelp open={help} onClose={() => setHelp(false)} />
 
       <div className="area area--scroll" hidden={area !== "copione"}>
         <div className="area__inner area__inner--script">
@@ -240,7 +276,15 @@ export function App() {
           <div className="stack">
             <div className="card">
               <p className="card__title">capitoli dell'opera</p>
-              <ChapterBar chapters={chapters} currentId={chapter.id} onSelect={selectChapter} run={run} endGesture={endGesture} nextId={nextChapterId(doc).id} />
+              <ChapterBar
+                chapters={chapters}
+                currentId={chapter.id}
+                onSelect={selectChapter}
+                run={run}
+                endGesture={endGesture}
+                nextId={nextChapterId(doc).id}
+                content={{ script: script.trim().length > 0, revisions: doc.revisions[chapter.id]?.entries.length ?? 0, lessons: lessonsOnlyIn(doc, chapter.id).length }}
+              />
             </div>
             <div className="card">
               <p className="card__title">cosa sa lo spoglio</p>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   canForceRevision,
   chapterSceneIds,
@@ -22,6 +22,7 @@ import {
   type RevisionEntry,
   type RevisionState,
 } from "@comic-builder/core";
+import { isTyping, listArrows, useLegend } from "../keyboard.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -299,6 +300,52 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
     }
   }
 
+  useLegend("Revisioni, su una voce aperta", 40, [
+    { keys: ["ArrowUp", "ArrowDown"], shown: "↑ ↓", label: "Voce precedente / successiva" },
+    { keys: ["a"], label: "Accetta (per una nota: fatta…)" },
+    { keys: ["r"], label: "Rifiuta" },
+    { keys: ["Enter"], label: "Va alla vignetta" },
+  ]);
+
+  /**
+   * Sulla voce che ha il focus: A accetta, R rifiuta, Invio porta alla vignetta, le frecce passano
+   * alla vicina. Chiusa una voce il focus va a quella che ne prende il posto: dodici correzioni
+   * sono dodici tasti, senza riprendere il mouse.
+   */
+  function onOpenKeys(event: KeyboardEvent<HTMLUListElement>) {
+    if (isTyping(event.target) || event.altKey || event.ctrlKey || event.metaKey || !(event.target instanceof HTMLElement)) return;
+    const item = event.target.closest<HTMLElement>("[data-item]");
+    const entry = open.find((e) => e.id === item?.dataset.id);
+    if (!item || !entry) return;
+    const list = event.currentTarget;
+    const at = open.indexOf(entry);
+    const focusNext = () =>
+      requestAnimationFrame(() => {
+        const items = list.querySelectorAll<HTMLElement>("[data-item]");
+        items[Math.min(at, items.length - 1)]?.focus();
+      });
+    const key = event.key.toLowerCase();
+    if (key === "a" || key === "r") {
+      event.preventDefault();
+      if (event.repeat) return;
+      if (key === "r") {
+        if (run({ type: "revision.reject", chapterId, ids: [entry.id], by: me, at: now() })) focusNext();
+      } else if (entry.kind === "note") {
+        setAsking({ id: entry.id, what: "done", text: "" });
+      } else if ((conflicts.get(entry.id) ?? null) === null) {
+        accept([entry.id]);
+        focusNext();
+      }
+    } else if (event.key === "Enter" && event.target === item) {
+      const panel = targetOf(entry).panel;
+      if (!panel) return;
+      event.preventDefault();
+      onSelectPanel(panel);
+    } else {
+      listArrows(event);
+    }
+  }
+
   const cleanRename = renameTo.trim();
 
   return (
@@ -443,13 +490,13 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
           )}
         </p>
         {open.length === 0 && <p className="field__hint">Nessuna revisione in attesa.</p>}
-        <ul className="revision-list">
-          {open.map((entry) => {
+        <ul className="revision-list" onKeyDown={onOpenKeys}>
+          {open.map((entry, position) => {
             const conflict = conflicts.get(entry.id) ?? null;
             const target = targetOf(entry);
             const note = entry.kind === "note";
             return (
-              <li key={entry.id} className={`revision${conflict ? " revision--conflict" : ""}`}>
+              <li key={entry.id} className={`revision${conflict ? " revision--conflict" : ""}`} data-item data-id={entry.id} tabIndex={position === 0 ? 0 : -1}>
                 <div className="revision__head">
                   <span className="revision__kind">{kindLabel(entry)}</span>
                   {target.panel ? (

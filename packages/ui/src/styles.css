@@ -2400,6 +2400,103 @@ textarea:focus {
   margin-bottom: 14px;
 }
 
+/* Tastiera. La tela ha il focus quando i tasti sono suoi: il contorno sta
+   dentro, dove lo scorrimento non lo taglia. */
+.canvas__stage:focus-visible {
+  outline-offset: -2px;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+/* Legenda delle scorciatoie. */
+.shortcuts {
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 2px solid var(--ink-line);
+  border-radius: var(--r-lg);
+  box-shadow: 6px 6px 0 var(--ink-shadow);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.shortcuts::backdrop {
+  background: rgba(28, 28, 26, 0.35);
+}
+
+.shortcuts__body {
+  padding: 16px 18px 18px;
+}
+
+.shortcuts__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shortcuts__title .link-btn {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.shortcuts__groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px 24px;
+  margin-top: 14px;
+}
+
+.shortcuts__group h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.shortcuts__group dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.shortcuts__row {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.shortcuts__row dt,
+.shortcuts__combo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.shortcuts__row dd {
+  margin: 0;
+}
+
+.shortcuts__or {
+  color: var(--text-faint);
+  margin: 0 1px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

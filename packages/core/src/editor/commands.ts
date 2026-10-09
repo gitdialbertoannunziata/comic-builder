@@ -14,7 +14,7 @@ import { characterRefs, renameCharacterRefs } from "./renameCharacter.js";
 import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.js";
 import type { Chapter } from "../schema/chapters.js";
 import type { Scene } from "../schema/scenes.js";
-import { addChapter, setChapterContent, updateChapter } from "./chapters.js";
+import { addChapter, moveChapter, removeChapter, setChapterContent, updateChapter } from "./chapters.js";
 import {
   addRevisions,
   applyRevisions,
@@ -77,6 +77,8 @@ export type Command =
   | { type: "project.notes"; notes: string }
   | { type: "chapter.add"; title: string }
   | { type: "chapter.update"; chapterId: string; title?: string; status?: Chapter["status"] }
+  | { type: "chapter.move"; chapterId: string; toIndex: number }
+  | { type: "chapter.remove"; chapterId: string }
   | { type: "chapter.set-content"; chapterId: string; pages: Page[]; scenes: Scene[]; script?: string };
 
 export type CharacterPatch = Partial<Omit<CharacterSheet, "schema" | "id" | "appearance">> & { appearance?: Partial<CharacterSheet["appearance"]> };
@@ -700,6 +702,15 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       const patch = { ...(command.title !== undefined ? { title: command.title } : {}), ...(command.status ? { status: command.status } : {}) };
       return updateChapter(doc, command.chapterId, patch);
     }
+    case "chapter.move": {
+      if (!doc.chapters.chapters.some((c) => c.id === command.chapterId)) throw new CommandError(`Capitolo ${command.chapterId} inesistente`);
+      return moveChapter(doc, command.chapterId, command.toIndex);
+    }
+    case "chapter.remove": {
+      if (!doc.chapters.chapters.some((c) => c.id === command.chapterId)) throw new CommandError(`Capitolo ${command.chapterId} inesistente`);
+      if (doc.chapters.chapters.length === 1) throw new CommandError("Un'opera non può restare senza capitoli");
+      return removeChapter(doc, command.chapterId);
+    }
     case "chapter.set-content": {
       if (!doc.chapters.chapters.some((c) => c.id === command.chapterId)) throw new CommandError(`Capitolo ${command.chapterId} inesistente`);
       if (command.pages.some((p) => p.chapter_id !== command.chapterId)) throw new CommandError("Le pagine appartengono a un altro capitolo");
@@ -804,6 +815,10 @@ export function describeCommand(command: Command): string {
       return "Nuovo capitolo";
     case "chapter.update":
       return "Modifica capitolo";
+    case "chapter.move":
+      return "Sposta capitolo";
+    case "chapter.remove":
+      return "Elimina capitolo";
     case "chapter.set-content":
       return "Spoglio del capitolo";
   }

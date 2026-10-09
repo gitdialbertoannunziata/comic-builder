@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { PAGE_TEMPLATES, type Command, type Page, type PageTemplate } from "@comic-builder/core";
+import { listArrows, refocus } from "../keyboard.js";
 
 interface Props {
   chapterId: string;
@@ -63,14 +64,45 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
     }
   }
 
+  function move(step: 1 | -1): boolean {
+    const to = index + step;
+    return to >= 0 && to < pages.length && run({ type: "page.move", pageId: currentPageId, toIndex: to });
+  }
+
+  function remove(): boolean {
+    const fallback = pages[index + 1] ?? pages[index - 1];
+    if (!fallback || !run({ type: "page.remove", pageId: currentPageId })) return false;
+    onSelectPage(fallback.id);
+    return true;
+  }
+
+  /** Sulla miniatura della pagina: frecce per passare alla vicina, Alt+frecce per spostarla, Canc per eliminarla. */
+  function onKeys(event: KeyboardEvent<HTMLDivElement>) {
+    if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-item]")) return;
+    const list = event.currentTarget;
+    const steps: Record<string, 1 | -1 | undefined> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
+    const step = event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey ? steps[event.key] : undefined;
+    if (step) {
+      event.preventDefault();
+      if (move(step)) refocus(list, '[aria-pressed="true"]');
+    } else if (event.key === "Delete") {
+      event.preventDefault();
+      if (!event.repeat && remove()) refocus(list, '[aria-pressed="true"]');
+    } else {
+      listArrows(event);
+    }
+  }
+
   return (
     <>
-      <div className="pages">
+      <div className="pages" onKeyDown={onKeys}>
         {pages.map((p) => (
           <button
             key={p.id}
             type="button"
             className="page-chip"
+            data-item
+            tabIndex={p.id === currentPageId ? 0 : -1}
             aria-pressed={p.id === currentPageId}
             onClick={() => onSelectPage(p.id)}
             title={`Pagina ${p.order}${openRevisions?.has(p.id) ? ` · ${openRevisions.get(p.id)} revisioni aperte` : ""}`}
@@ -102,21 +134,13 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
       )}
 
       <div className="tool-row">
-        <button type="button" className="btn btn--small" disabled={index <= 0} onClick={() => run({ type: "page.move", pageId: currentPageId, toIndex: index - 1 })}>
+        <button type="button" className="btn btn--small" disabled={index <= 0} onClick={() => move(-1)} title="Sposta la pagina prima (Alt+← sulla miniatura)">
           ← prima
         </button>
-        <button type="button" className="btn btn--small" disabled={index >= pages.length - 1} onClick={() => run({ type: "page.move", pageId: currentPageId, toIndex: index + 1 })}>
+        <button type="button" className="btn btn--small" disabled={index >= pages.length - 1} onClick={() => move(1)} title="Sposta la pagina dopo (Alt+→ sulla miniatura)">
           dopo →
         </button>
-        <button
-          type="button"
-          className="btn btn--small"
-          disabled={pages.length <= 1}
-          onClick={() => {
-            const fallback = pages[index + 1] ?? pages[index - 1];
-            if (run({ type: "page.remove", pageId: currentPageId }) && fallback) onSelectPage(fallback.id);
-          }}
-        >
+        <button type="button" className="btn btn--small" disabled={pages.length <= 1} onClick={remove} title="Elimina la pagina (Canc sulla miniatura)">
           elimina
         </button>
       </div>

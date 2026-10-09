@@ -187,3 +187,42 @@ export function artPlacement(panelBox: Box, size: { width: number; height: numbe
     height,
   };
 }
+
+export type Direction = "left" | "right" | "up" | "down";
+
+/**
+ * Il pannello accanto, per muoversi sulla pagina con le frecce: fra quelli
+ * che stanno oltre il bordo in quella direzione, il più vicino di quelli che
+ * ha di fronte (si sovrappongono sull'altro asse); se di fronte non c'è
+ * nessuno, il più vicino e basta. Null al bordo della pagina. È geometria, non
+ * ordine di lettura: «a destra» è a destra anche in un manga.
+ */
+export function neighbourPanel(boxes: ReadonlyMap<string, Box>, from: string, direction: Direction): string | null {
+  const current = boxes.get(from);
+  if (!current) return null;
+  const horizontal = direction === "left" || direction === "right";
+  const forward = direction === "right" || direction === "down";
+  // Lungo l'asse del movimento e lungo l'altro: inizio e misura di un box.
+  const along = (b: Box) => (horizontal ? [b.x, b.width] : [b.y, b.height]) as [number, number];
+  const across = (b: Box) => (horizontal ? [b.y, b.height] : [b.x, b.width]) as [number, number];
+  const [start, size] = along(current);
+  const [side, breadth] = across(current);
+
+  let best: { id: string; facing: boolean; gap: number; drift: number } | null = null;
+  for (const [id, box] of boxes) {
+    if (id === from) continue;
+    const [s, z] = along(box);
+    const gap = forward ? s - (start + size) : start - (s + z);
+    // Mezzo pixel di tolleranza: due box che si toccano sono comunque uno dopo l'altro.
+    if (gap < -0.5) continue;
+    const [o, w] = across(box);
+    const facing = Math.min(side + breadth, o + w) - Math.max(side, o) > 0.5;
+    const drift = Math.abs(o + w / 2 - (side + breadth / 2));
+    const candidate = { id, facing, gap, drift };
+    const better =
+      best === null ||
+      (facing !== best.facing ? facing : facing ? gap < best.gap - 0.5 || (Math.abs(gap - best.gap) <= 0.5 && drift < best.drift) : gap + drift < best.gap + best.drift);
+    if (better) best = candidate;
+  }
+  return best?.id ?? null;
+}

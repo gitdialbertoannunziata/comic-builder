@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RenderSpec } from "@comic-builder/core";
-import { AzureFluxImageService, estimateFluxUsd, FluxImageService } from "../src/fluxService.js";
+import { AzureFluxImageService, azureFluxModel, estimateFluxUsd, FluxImageService } from "../src/fluxService.js";
 import { ImageCancelledError, ImageError } from "../src/service.js";
 
 const spec: RenderSpec = {
@@ -22,6 +22,7 @@ const spec: RenderSpec = {
   compiler: 1,
 };
 const references = spec.references.map((r, i) => ({ path: r.path, data: new Uint8Array([i + 1, 2, 3]), mediaType: "image/png" }));
+const flexSpec: RenderSpec = { ...spec, model: "flux-2-flex" };
 
 interface Call {
   url: string;
@@ -95,6 +96,15 @@ describe("FluxImageService — forma della richiesta", () => {
     expect(calls[0]!.url).toBe("/bfl-proxy/api.eu.bfl.ai/v1/flux-2-pro");
     expect(calls[2]!.url).toBe(`/bfl-proxy/${SAMPLE.replace("https://", "")}`);
   });
+
+  it("[flex]: la sua rotta, e il divieto di riscrivere il prompt col nome che ha lì", async () => {
+    const { calls, fetchImpl } = scripted([json({ polling_url: POLL }), json({ status: "Ready", result: { sample: SAMPLE } }), new Response(new Uint8Array([1]))]);
+    await service(fetchImpl).generate({ spec: flexSpec, references });
+    expect(calls[0]!.url).toBe("https://api.bfl.ai/v1/flux-2-flex");
+    expect(calls[0]!.body).toMatchObject({ prompt: "Comic panel", seed: 42, prompt_upsampling: false });
+    expect(calls[0]!.body).not.toHaveProperty("disable_pup");
+    expect(calls[0]!.body?.input_image_2).toBe(btoa("\x02\x02\x03"));
+  });
 });
 
 describe("FluxImageService — errori tradotti in cosa fare", () => {
@@ -150,9 +160,15 @@ describe("Stima della spesa", () => {
     expect(estimateFluxUsd(spec)).toBeCloseTo(0.06);
     expect(estimateFluxUsd({ width: 2048, height: 1024, references: [] })).toBeCloseTo(0.045);
   });
+
+  it("[flex]: 0,05 a megapixel, generato o di riferimento", () => {
+    expect(estimateFluxUsd({ model: "flux-2-flex", width: 1024, height: 1024, references: [] })).toBeCloseTo(0.05);
+    expect(estimateFluxUsd(flexSpec)).toBeCloseTo(0.15);
+    expect(estimateFluxUsd({ model: "flux-2-flex", width: 2048, height: 1024, references: [] })).toBeCloseTo(0.1);
+  });
 });
 
-describe("AzureFluxImageService — FLUX.2 [pro] su Azure AI Foundry", () => {
+describe("AzureFluxImageService — FLUX.2 su Azure AI Foundry", () => {
   const ENDPOINT = "https://risorsa.services.ai.azure.com/api/projects/proj-default";
   const azure = (fetchImpl: typeof fetch, extra: Partial<ConstructorParameters<typeof AzureFluxImageService>[0]> = {}) =>
     new AzureFluxImageService({ apiKey: "az-test", endpoint: ENDPOINT, fetchImpl, ...extra });
@@ -168,6 +184,25 @@ describe("AzureFluxImageService — FLUX.2 [pro] su Azure AI Foundry", () => {
     expect(calls[0]!.body?.input_image_2).toBe(btoa("\x02\x02\x03"));
     expect([...result.data]).toEqual([9, 8]);
     expect(result.meta.costUsd).toBeCloseTo(0.03);
+  });
+
+  it("[flex]: il modello dello spec sceglie la rotta, il deployment va nel corpo", async () => {
+    const { calls, fetchImpl } = scripted([json({ data: [{ b64_json: btoa("\x09") }], request_meta: { cost: 5 } })]);
+    const result = await azure(fetchImpl, { deployment: "FLUX.2-flex" }).generate({ spec: flexSpec, references: [] });
+
+    expect(calls[0]!.url).toBe("https://risorsa.services.ai.azure.com/providers/blackforestlabs/v1/flux-2-flex?api-version=preview");
+    expect(calls[0]!.body).toMatchObject({ model: "FLUX.2-flex", prompt_upsampling: false });
+    expect(calls[0]!.body).not.toHaveProperty("disable_pup");
+    expect(result.meta.model).toBe("FLUX.2-flex");
+    expect(result.meta.costUsd).toBeCloseTo(0.05);
+  });
+
+  it("dal nome del deployment si riconosce il modello", () => {
+    expect(azureFluxModel("FLUX.2-flex")).toBe("flux-2-flex");
+    expect(azureFluxModel("prove-Flex-eu")).toBe("flux-2-flex");
+    expect(azureFluxModel("FLUX.2-pro")).toBe("flux-2-pro");
+    expect(azureFluxModel("flux-mio")).toBe("flux-2-pro");
+    expect(azureFluxModel("")).toBe("flux-2-pro");
   });
 
   it("429: si riprova, dopo il tempo che dice il deployment", async () => {

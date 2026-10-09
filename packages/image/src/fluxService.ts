@@ -1,4 +1,4 @@
-import { FLUX2_MAX_REFERENCES, FLUX2_PRO, type RenderSpec } from "@comic-builder/core";
+import { FLUX2_FLEX, FLUX2_MAX_REFERENCES, FLUX2_PRO, type RenderSpec } from "@comic-builder/core";
 import { ImageCancelledError, ImageError, type ImageEstimate, type ImageRequest, type ImageResult, type ImageService } from "./service.js";
 
 /**
@@ -48,13 +48,16 @@ const USD_PER_CREDIT = 0.01;
 const MEGAPIXEL = 1024 * 1024;
 
 /**
- * Stima della spesa di FLUX.2 [pro]: 0,03 USD il primo megapixel generato,
- * 0,015 per ogni megapixel in più, in uscita o in ingresso. Le dimensioni dei
- * riferimenti qui non si conoscono: se ne conta uno a testa. È una stima —
- * il listino cambia, e il consuntivo vero è il `cost` che l'API restituisce.
+ * Stima della spesa. FLUX.2 [pro]: 0,03 USD il primo megapixel generato,
+ * 0,015 per ogni megapixel in più, in uscita o in ingresso. FLUX.2 [flex]:
+ * 0,05 USD a megapixel, in uscita o in ingresso, sul listino di Azure (0,06
+ * da Black Forest Labs). Le dimensioni dei riferimenti qui non si conoscono:
+ * se ne conta uno a testa. È una stima — il listino cambia, e il consuntivo
+ * vero è il `cost` che l'API restituisce.
  */
-export function estimateFluxUsd(spec: Pick<RenderSpec, "width" | "height" | "references">): number {
+export function estimateFluxUsd(spec: Pick<RenderSpec, "width" | "height" | "references"> & Partial<Pick<RenderSpec, "model">>): number {
   const outputMp = Math.max(1, Math.ceil((spec.width * spec.height) / MEGAPIXEL));
+  if (spec.model === FLUX2_FLEX) return 0.05 * (outputMp + spec.references.length);
   return 0.03 + 0.015 * (outputMp - 1 + spec.references.length);
 }
 
@@ -69,8 +72,9 @@ function fluxBody(request: ImageRequest, safetyTolerance: number | undefined): R
     output_format: spec.output_format,
     safety_tolerance: safetyTolerance ?? 2,
     // Il fornitore riscrive il prompt, se non glielo si vieta: lo spec
-    // registrato non sarebbe più quello che ha prodotto l'immagine.
-    disable_pup: !spec.prompt_upsampling,
+    // registrato non sarebbe più quello che ha prodotto l'immagine. Il
+    // divieto ha un nome diverso su [flex].
+    ...(spec.model === FLUX2_FLEX ? { prompt_upsampling: spec.prompt_upsampling } : { disable_pup: !spec.prompt_upsampling }),
   };
   references.forEach((reference, i) => {
     body[i === 0 ? "input_image" : `input_image_${i + 1}`] = toBase64(reference.data);
@@ -192,10 +196,11 @@ function describeStatus(status: number, body: string, service: string): ImageErr
 }
 
 /**
- * FLUX.2 [pro] distribuito su Azure AI Foundry: stesso modello e stesso
- * corpo della richiesta, ma un'altra API attorno. La risposta è sincrona e
- * porta l'immagine in base64 — niente polling, niente URL da scaricare — e
- * il modello si nomina col nome del *deployment*, che l'utente sceglie.
+ * FLUX.2 distribuito su Azure AI Foundry: stesso modello e stesso corpo
+ * della richiesta, ma un'altra API attorno. La risposta è sincrona e porta
+ * l'immagine in base64 — niente polling, niente URL da scaricare. Il modello
+ * dello spec sceglie la rotta, e il *deployment*, col nome che l'utente gli
+ * ha dato, va nel corpo.
  *
  * Il limite che conta qui è quello di richieste al minuto del deployment
  * (poche unità, al livello base): un 429 dice quanto aspettare, e la coda
@@ -219,6 +224,16 @@ interface AzureGenerated {
 }
 
 export const AZURE_FLUX_DEPLOYMENT = "FLUX.2-pro";
+export const AZURE_FLUX_FLEX_DEPLOYMENT = "FLUX.2-flex";
+
+/**
+ * Il modello dietro un deployment, dal suo nome: Azure non lo dichiara, e la
+ * rotta da chiamare dipende da quello. Chi dà al deployment di [flex] un
+ * nome suo deve lasciarci «flex».
+ */
+export function azureFluxModel(deployment: string): string {
+  return /flex/i.test(deployment) ? FLUX2_FLEX : FLUX2_PRO;
+}
 
 export class AzureFluxImageService implements ImageService {
   readonly name = "azure-flux";
@@ -246,7 +261,7 @@ export class AzureFluxImageService implements ImageService {
       throw new ImageError(`FLUX.2 accetta al massimo ${this.maxReferences} immagini di riferimento: ne sono arrivate ${references.length}.`, this.name);
     }
     const started = Date.now();
-    const url = `${this.origin}/providers/blackforestlabs/v1/flux-2-pro?api-version=preview`;
+    const url = `${this.origin}/providers/blackforestlabs/v1/${spec.model}?api-version=preview`;
     const fetchImpl = this.options.fetchImpl ?? fetch;
     let response: Response;
     try {

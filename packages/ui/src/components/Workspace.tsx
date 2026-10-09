@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   balloonBox,
   characterRefs,
@@ -8,10 +8,14 @@ import {
   lintCharacters,
   lintRevisions,
   lintPage,
+  neighbourPanel,
   PageSchema,
   pageForTarget,
+  tailPoint,
   validateDocument,
   type Chapter,
+  type Command,
+  type Direction,
   type Page,
   type ValidationIssue,
 } from "@comic-builder/core";
@@ -19,7 +23,8 @@ import { measureWith } from "@comic-builder/lettering";
 import type { useFont } from "../useFont.js";
 import { pageTargets, renderPreview } from "../renderPreview.js";
 import { initialScene } from "../samplePage.js";
-import { SHOT_LABELS } from "../cameraOptions.js";
+import { SHOT_LABELS, SHOT_OPTIONS } from "../cameraOptions.js";
+import { listArrows, useShortcuts } from "../keyboard.js";
 import { targetLabel } from "../labels.js";
 import { usePreference } from "../usePreference.js";
 import { primaryTarget, styles as projectStyles } from "../project.js";
@@ -401,6 +406,210 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       again: true,
     });
 
+  // --- Tastiera: le scorciatoie dell'area Pagine (regole e legenda in keyboard.ts) ---
+  const readingOrder = (p: Page) => (p.layout.mode === "page" ? p.layout.reading_order : p.panels.map((x) => x.id));
+  const pageIndex = pages.findIndex((p) => p.id === page.id);
+  // Il balloon scelto, com'è nel formato mostrato. Se l'undo l'ha tolto, non c'è più niente di scelto.
+  const activeBalloon = shownPage.panels.find((p) => p.id === selectedPanel.id)?.balloons.find((b) => b.id === selectedBalloonId) ?? null;
+
+  /** Ciò che si sceglie da tastiera entra in vista: nell'elenco, sulla pagina, nella striscia. */
+  const reveal = () =>
+    requestAnimationFrame(() => {
+      for (const selector of ['.panel-row[aria-current="true"]', ".preview__selected", ".strip-hit--selected", ".balloon-hit--selected"]) {
+        document.querySelector(selector)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    });
+
+  // Più colpi di freccia di fila sono un solo passo di undo: il gesto si chiude quando ci si ferma.
+  const settle = useRef(0);
+  useEffect(() => () => window.clearTimeout(settle.current), []);
+  const nudge = (command: Command, gesture: string) => {
+    run(command, { gesture });
+    window.clearTimeout(settle.current);
+    settle.current = window.setTimeout(endGesture, 700);
+  };
+
+  // Il campo in cui si vuole scrivere: ci si arriva quando la sua scheda è in vista.
+  const [typeIn, setTypeIn] = useState<{ field: string; selectAll: boolean } | null>(null);
+  useEffect(() => {
+    if (!typeIn) return;
+    const el = typeIn.field === "action" ? document.getElementById("panel-action") : document.getElementById(`balloon-${typeIn.field}`)?.querySelector("textarea");
+    if (!(el instanceof HTMLTextAreaElement)) return setTypeIn(null);
+    if (el.closest("[hidden]")) return;
+    el.focus();
+    if (typeIn.selectAll) el.select();
+    else el.setSelectionRange(el.value.length, el.value.length);
+    setTypeIn(null);
+  }, [typeIn, inspectorTab, selectedPanel]);
+
+  // L'id di un balloon nuovo lo dà il Core: lo si riconosce al render dopo, per sceglierlo e scriverci.
+  const balloonsBefore = useRef<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    const before = balloonsBefore.current;
+    if (!before) return;
+    balloonsBefore.current = null;
+    const created = selectedPanel.balloons.find((b) => !before.has(b.id));
+    if (!created) return;
+    selectBalloon(created.id);
+    setTypeIn({ field: created.id, selectAll: true });
+  }, [selectedPanel.balloons, selectBalloon]);
+
+  function stepPage(to: number) {
+    const target = pages[Math.max(0, Math.min(pages.length - 1, to))];
+    if (target && target.id !== page.id) goToPage(target.id);
+    reveal();
+  }
+
+  function movePanel(direction: Direction) {
+    if (view === "scroll") {
+      // Nella striscia le vignette sono in fila: le frecce seguono la lettura, da una pagina all'altra.
+      const sequence = pages.flatMap((p) => readingOrder(p).map((panelId) => ({ pageId: p.id, panelId })));
+      const at = sequence.findIndex((x) => x.panelId === selectedPanel.id);
+      const next = at < 0 ? undefined : sequence[at + (direction === "down" || direction === "right" ? 1 : -1)];
+      if (next) {
+        setPageId(next.pageId);
+        setSelectedPanelId(next.panelId);
+        setSelectedBalloonId(null);
+      }
+    } else if (preview) {
+      const next = neighbourPanel(preview.boxes, selectedPanel.id, direction);
+      if (next) selectPanel(next);
+    }
+    reveal();
+  }
+
+  /** Tab fra i balloon: quelli della pagina in ordine di lettura; nella striscia, di tutto il capitolo. */
+  function cycleBalloon(step: 1 | -1): void | false {
+    if (!activeBalloon) return false;
+    const sequence = (view === "scroll" ? pages : [page]).flatMap((p) =>
+      readingOrder(p).flatMap((panelId) => (p.panels.find((x) => x.id === panelId)?.balloons ?? []).map((b) => ({ pageId: p.id, panelId, balloonId: b.id }))),
+    );
+    const next = sequence[(sequence.findIndex((x) => x.balloonId === activeBalloon.id) + step + sequence.length) % sequence.length];
+    if (!next) return;
+    setPageId(next.pageId);
+    setSelectedPanelId(next.panelId);
+    selectBalloon(next.balloonId);
+    reveal();
+  }
+
+  function moveBalloon(dx: number, dy: number): void | false {
+    if (!activeBalloon) return false;
+    nudge({ type: "balloon.move", pageId: page.id, balloonId: activeBalloon.id, anchor: { x: activeBalloon.anchor.x + dx, y: activeBalloon.anchor.y + dy }, ...forTarget }, `${activeBalloon.id}:nudge`);
+    reveal();
+  }
+
+  function moveTail(dx: number, dy: number): void | false {
+    if (!activeBalloon || activeBalloon.tail.mode === "none" || activeBalloon.type === "caption" || activeBalloon.type === "sfx") return false;
+    // Senza una punta esplicita si parte da dove il renderer la disegna. La geometria è quella della
+    // pagina anche nella striscia: lì è un'approssimazione, e come punto di partenza basta.
+    let tip = activeBalloon.tail.target;
+    if (!tip) {
+      const panelBox = preview?.boxes.get(selectedPanel.id);
+      const fit = preview?.fits.get(activeBalloon.id);
+      if (!panelBox || !fit) return false;
+      const point = tailPoint(activeBalloon, panelBox, balloonBox(activeBalloon, panelBox, fit));
+      tip = { x: (point.x - panelBox.x) / panelBox.width, y: (point.y - panelBox.y) / panelBox.height };
+    }
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    nudge({ type: "balloon.tail", pageId: page.id, balloonId: activeBalloon.id, tail: { mode: "manual", target: { x: clamp(tip.x + dx), y: clamp(tip.y + dy) } }, ...forTarget }, `${activeBalloon.id}:tail`);
+  }
+
+  function resizeBalloon(step: 1 | -1): void | false {
+    if (!activeBalloon) return false;
+    const fontScale = Math.min(2, Math.max(0.5, Math.round((activeBalloon.font_scale + step * 0.05) * 100) / 100));
+    if (fontScale !== activeBalloon.font_scale) nudge({ type: "balloon.scale", pageId: page.id, balloonId: activeBalloon.id, fontScale, ...forTarget }, `${activeBalloon.id}:scale`);
+  }
+
+  /** Più stretto o più largo di un passo, lungo la scala dei tagli (il dettaglio ne sta fuori). */
+  function reframe(step: 1 | -1) {
+    const scale: ReadonlyArray<(typeof SHOT_OPTIONS)[number]> = SHOT_OPTIONS.filter((shot) => shot !== "INSERT");
+    const at = scale.indexOf(selectedPanel.camera.shot);
+    const shot = at < 0 ? undefined : scale[at + step];
+    if (shot) run({ type: "panel.camera", pageId: page.id, panelId: selectedPanel.id, camera: { shot } });
+  }
+
+  function addBalloon() {
+    const before = new Set(selectedPanel.balloons.map((b) => b.id));
+    if (run({ type: "balloon.add", pageId: page.id, panelId: selectedPanel.id, text: [{ t: "Nuovo balloon" }] })) balloonsBefore.current = before;
+  }
+
+  function removeBalloon(): void | false {
+    if (!activeBalloon) return false;
+    const siblings = selectedPanel.balloons;
+    const at = siblings.findIndex((b) => b.id === activeBalloon.id);
+    // Resta scelto il balloon accanto: eliminarne tre di fila sono tre tasti.
+    if (run({ type: "balloon.remove", pageId: page.id, balloonId: activeBalloon.id })) setSelectedBalloonId((siblings[at + 1] ?? siblings[at - 1])?.id ?? null);
+  }
+
+  const ARROWS = { ArrowLeft: ["left", -1, 0], ArrowRight: ["right", 1, 0], ArrowUp: ["up", 0, -1], ArrowDown: ["down", 0, 1] } as const;
+  const arrow = (event: KeyboardEvent) => ARROWS[event.key as keyof typeof ARROWS];
+  const arrowKeys = (prefix = "") => Object.keys(ARROWS).map((key) => prefix + key);
+  // Un centesimo del pannello per colpo, cinque con Shift: lo stesso passo dei campi numerici.
+  const STEP = 0.01;
+
+  useShortcuts(
+    "Area Pagine",
+    10,
+    [
+      { keys: ["PageUp", "PageDown"], label: "Pagina precedente / successiva", run: (e) => stepPage(pageIndex + (e.key === "PageDown" ? 1 : -1)) },
+      { keys: ["Home", "End"], label: "Prima / ultima pagina", run: (e) => stepPage(e.key === "End" ? pages.length - 1 : 0) },
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Vignetta vicina", run: (e) => (activeBalloon ? false : movePanel(arrow(e)[0])) },
+      {
+        keys: ["Enter"],
+        label: "Entra nei balloon della vignetta",
+        when: "free",
+        once: true,
+        run: () => {
+          const first = selectedPanel.balloons[0];
+          if (activeBalloon || !first) return false;
+          selectBalloon(first.id);
+          reveal();
+        },
+      },
+      { keys: ["n"], label: "Nuovo balloon nella vignetta, e lo scrivi subito", once: true, run: addBalloon },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: "Inquadratura più stretta / più larga", run: (e) => (activeBalloon ? false : reframe(e.key === "-" ? -1 : 1)) },
+      {
+        keys: ["v"],
+        label: "Scheda Vignetta: scrivi l'azione",
+        once: true,
+        run: () => {
+          setInspectorTab("vignetta");
+          setTypeIn({ field: "action", selectAll: false });
+        },
+      },
+      { keys: ["b"], label: "Scheda Balloon", once: true, run: () => setInspectorTab("balloon") },
+      { keys: ["a"], label: "Scheda Arte", once: true, run: () => setInspectorTab("arte") },
+      {
+        keys: ["s"],
+        label: "Pagina ↔ striscia",
+        once: true,
+        run: () => {
+          if (!stripTargetId) return false;
+          setView(view === "scroll" ? "page" : "scroll");
+          reveal();
+        },
+      },
+    ],
+    area === "pagine",
+  );
+
+  useShortcuts(
+    "Con un balloon scelto",
+    20,
+    [
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Sposta il balloon", run: (e) => moveBalloon(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
+      { keys: arrowKeys("Shift+"), shown: "Shift + frecce", label: "Lo sposta a passi grandi", run: (e) => moveBalloon(arrow(e)[1] * STEP * 5, arrow(e)[2] * STEP * 5) },
+      { keys: arrowKeys("Alt+"), shown: "Alt + frecce", label: "Sposta la punta della coda", run: (e) => moveTail(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
+      { keys: arrowKeys("Alt+Shift+"), run: (e) => moveTail(arrow(e)[1] * STEP * 5, arrow(e)[2] * STEP * 5) },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: "Corpo del testo più grande / più piccolo", run: (e) => resizeBalloon(e.key === "-" ? -1 : 1) },
+      { keys: ["Enter"], label: "Scrive nel testo del balloon", when: "free", once: true, run: () => (activeBalloon ? setTypeIn({ field: activeBalloon.id, selectAll: false }) : false) },
+      { keys: ["Tab", "Shift+Tab"], label: "Balloon successivo / precedente", when: "free", run: (e) => cycleBalloon(e.shiftKey ? -1 : 1) },
+      { keys: ["Delete", "Backspace"], shown: "Canc", label: "Elimina il balloon", when: "free", once: true, run: removeBalloon },
+      { keys: ["Escape"], label: "Torna alla vignetta", run: () => (activeBalloon ? setSelectedBalloonId(null) : false) },
+    ],
+    area === "pagine",
+  );
+
   return (
     <>
       <div className="area editor" hidden={area !== "pagine"}>
@@ -413,12 +622,12 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
           </p>
 
           <p className="eyebrow">Vignette</p>
-          <ul className="panel-list">
+          <ul className="panel-list" onKeyDown={(e) => void listArrows(e)}>
             {page.panels.map((panel) => {
               const level = badges.get(panel.id);
               return (
                 <li key={panel.id}>
-                  <button type="button" className="panel-row" aria-current={panel.id === selectedPanel.id} onClick={() => selectPanel(panel.id)} title={panel.id}>
+                  <button type="button" className="panel-row" data-item tabIndex={panel.id === selectedPanel.id ? 0 : -1} aria-current={panel.id === selectedPanel.id} onClick={() => selectPanel(panel.id)} title={panel.id}>
                     <span className="panel-row__num">{panelNumber(panel.id)}</span>
                     <span className="panel-row__main">
                       <span className="panel-row__shot">
@@ -486,6 +695,10 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
           <div
             className={`canvas__stage canvas__stage--${view === "scroll" ? "strip" : fit}`}
             style={preview ? ({ "--page-ratio": preview.width / preview.height } as React.CSSProperties) : undefined}
+            tabIndex={0}
+            data-keys="canvas"
+            role="group"
+            aria-label="Pagina: frecce per le vignette, Invio per i balloon, ? per tutte le scorciatoie"
           >
             {view === "scroll" && stripContext && stripTargetId && (
               <StripView
@@ -542,7 +755,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
                 {framing
                   ? "Inquadratura dell'arte: trascina per spostarla, rotella per ingrandirla."
                   : pageTargetId === primaryTarget.id
-                    ? "Trascina balloon, punta della coda e gutter · trascina un'immagine su una vignetta per dargliela · Ctrl+Z annulla."
+                    ? "Trascina balloon, punta della coda e gutter · trascina un'immagine su una vignetta per dargliela · Ctrl+Z annulla · ? per le scorciatoie."
                     : `In ${targetLabel(pageTargetId)} si spostano solo i balloon, e solo per questo formato. Griglia e vignette si ritoccano sul formato principale.`}
               </p>
             )}
@@ -584,7 +797,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
               <div className="stack">
                 <label className="field">
                   <span className="field__label">azione</span>
-                  <textarea value={selectedPanel.action} rows={3} onChange={(e) => patchPanel("action", e.target.value)} onBlur={endGesture} />
+                  <textarea id="panel-action" value={selectedPanel.action} rows={3} onChange={(e) => patchPanel("action", e.target.value)} onBlur={endGesture} />
                   <span className="field__hint">Per chi disegna è la specifica della vignetta, non una nota.</span>
                 </label>
 
