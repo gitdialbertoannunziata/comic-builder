@@ -8,3 +8,4 @@ export * from "./deepseekService.js";
 export * from "./openaiService.js";
 export * from "./breakdown.js";
 export * from "./locations.js";
+export * from "./llamaServerService.js";

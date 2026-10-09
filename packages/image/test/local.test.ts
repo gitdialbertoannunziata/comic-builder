@@ -92,6 +92,24 @@ describe("Motore locale (stable-diffusion.cpp, sd-server)", () => {
     expect(await service.check()).toEqual({ model: "flux-2-klein-4b-Q8_0", modes: ["img_gen"] });
   });
 
+  it("l'indirizzo si chiede alla prima richiesta, una volta sola: nell'app desktop il motore parte lì", async () => {
+    const server = fakeServer([{ status: "completed", result: { images: [{ b64_json: PNG }] } }]);
+    let started = 0;
+    const service = new LocalSdImageService({
+      fetchImpl: server.fetchImpl,
+      sleep: async () => {},
+      resolveBaseUrl: async () => {
+        started++;
+        return "http://127.0.0.1:4321/";
+      },
+    });
+    expect(started).toBe(0);
+    await service.check();
+    await service.generate({ spec, references });
+    expect(started).toBe(1);
+    expect(server.calls.every((c) => c.url.startsWith("http://127.0.0.1:4321/sdcpp/v1/"))).toBe(true);
+  });
+
   it("passa dalla stessa coda dei fornitori cloud", async () => {
     const server = fakeServer([{ status: "completed", result: { images: [{ b64_json: PNG }] } }]);
     const outcomes = await runRenderQueue([{ id: "a", request: () => ({ spec, references }) }], { service: new LocalSdImageService(options(server.fetchImpl)) });

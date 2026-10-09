@@ -21,6 +21,8 @@ import { usePreference } from "./usePreference.js";
 import { useSecret } from "./platform/desktop.js";
 import { focusCanvas, isTyping, LIST_LEGEND, useLegend, useShortcuts } from "./keyboard.js";
 import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
+import { LocalModelsDialog } from "./components/LocalModelsDialog.js";
+import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
@@ -96,6 +98,10 @@ export function App() {
   const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
   const [megapixels, setMegapixels] = usePreference("imageMegapixels", 1);
   const [localImageUrl, setLocalImageUrl] = usePreference("localImageUrl", "http://127.0.0.1:1234");
+  // I modelli locali dell'app desktop: installati dalla procedura guidata, avviati dall'app.
+  const localModels = useLocalModels();
+  const [localDialog, setLocalDialog] = useState(false);
+  useEffect(() => onOpenLocalModels(() => setLocalDialog(true)), []);
   const image: ImageConfig = {
     service: imageService,
     onService: setImageService,
@@ -116,6 +122,8 @@ export function App() {
     onMegapixels: setMegapixels,
     localUrl: localImageUrl,
     onLocalUrl: setLocalImageUrl,
+    localManaged: local !== null,
+    localModel: installedModel(localModels, "image")?.label ?? null,
   };
   const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
   const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });
@@ -243,8 +251,26 @@ export function App() {
 
   return (
     <div className="shell">
-      <ProjectBar editor={editor} chapters={chapters} chapterId={chapter.id} onSelectChapter={selectChapter} area={area} onArea={setArea} openRevisions={openRevisions} onHelp={() => setHelp(true)} />
+      <ProjectBar
+        editor={editor}
+        chapters={chapters}
+        chapterId={chapter.id}
+        onSelectChapter={selectChapter}
+        area={area}
+        onArea={setArea}
+        openRevisions={openRevisions}
+        onHelp={() => setHelp(true)}
+        {...(local ? { onLocalModels: () => setLocalDialog(true) } : {})}
+      />
       <ShortcutsHelp open={help} onClose={() => setHelp(false)} />
+      <LocalModelsDialog
+        open={localDialog}
+        onClose={() => setLocalDialog(false)}
+        onUse={(use) => {
+          if (use.text) setService("local");
+          if (use.image) setImageService("local");
+        }}
+      />
 
       <div className="area area--scroll" hidden={area !== "copione"}>
         <div className="area__inner area__inner--script">

@@ -19,6 +19,11 @@ import { ImageCancelledError, ImageError, type ImageEstimate, type ImageRequest,
 export interface LocalSdOptions {
   /** Dove ascolta `sd-server`: di norma `http://127.0.0.1:1234`. */
   baseUrl?: string;
+  /**
+   * Nell'app desktop il motore lo avvia l'app, su una porta che si conosce
+   * solo allora: l'indirizzo si chiede qui, alla prima richiesta. Vince su `baseUrl`.
+   */
+  resolveBaseUrl?: () => Promise<string>;
   /** Il modello che lo spec registra; deve essere quello caricato dal server. */
   model?: string;
   /** Passi e guida: per [klein] distillato bastano 4 passi a guida 1 (la ricetta della documentazione di sd.cpp). */
@@ -83,22 +88,31 @@ export class LocalSdImageService implements ImageService {
     return { usd: 0, seconds: Math.round(4 * megapixels + 2 * spec.references.length) };
   }
 
+  private resolved: string | null = null;
+
+  /** L'indirizzo del motore: quello dato, o quello che restituisce chi lo avvia. */
+  private async base(): Promise<string> {
+    if (!this.options.resolveBaseUrl) return this.baseUrl;
+    this.resolved ??= (await this.options.resolveBaseUrl()).replace(/\/$/, "");
+    return this.resolved;
+  }
+
   private async call(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    const url = `${this.baseUrl}${path}`;
+    const url = `${await this.base()}${path}`;
     try {
       return await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, { ...init, ...(signal ? { signal } : {}) });
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
       // Non si riprova: se il motore non è avviato, cinque tentativi sono solo cinque attese.
-      throw new ImageError(`Il motore locale non risponde su ${this.baseUrl}: è avviato?`, this.name, false, cause);
+      throw new ImageError(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.name, false, cause);
     }
   }
 
   private async json<T>(response: Response, what: string): Promise<T> {
     if (response.status === 429) throw new ImageError("Il motore locale ha la coda piena: riprovo fra poco.", this.name, true, undefined, 2000);
     // Un proxy davanti al motore (il server di sviluppo) risponde 502 quando dietro non c'è nessuno.
-    if (response.status === 502 || response.status === 504) throw new ImageError(`Il motore locale non risponde su ${this.baseUrl}: è avviato?`, this.name, false);
+    if (response.status === 502 || response.status === 504) throw new ImageError(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.name, false);
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new ImageError(`Il motore locale ha rifiutato ${what} (HTTP ${response.status})${text ? `: ${text.slice(0, 200)}` : ""}`, this.name, response.status >= 500);

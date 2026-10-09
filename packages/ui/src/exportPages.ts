@@ -25,10 +25,15 @@ import { embedFont, svgToImageBlob } from "./platform/rasterize.js";
 
 /**
  * Cosa si può esportare: ogni target dichiarato nel progetto, più due uscite
- * che non sono formati di pubblicazione — il documento rieditabile e l'SVG
- * vettoriale della pagina canonica.
+ * che non sono formati di pubblicazione — il documento rieditabile, l'SVG
+ * vettoriale, il PDF e le istruzioni per modelli esterni.
  */
-export type ExportChoice = { kind: "target"; id: string } | { kind: "document" } | { kind: "svg" } | { kind: "prompts" };
+export type ExportChoice =
+  | { kind: "target"; id: string }
+  | { kind: "document" }
+  | { kind: "svg" }
+  | { kind: "pdf" }
+  | { kind: "prompts" };
 
 export function choiceKey(choice: ExportChoice): string {
   return choice.kind === "target" ? `target:${choice.id}` : choice.kind;
@@ -87,7 +92,16 @@ export function describeTarget(target: OutputTarget): string {
   }
 }
 
-async function rasterize(job: { svg: string; width: number; height: number; format: "png" | "jpeg"; quality: number }, fontBytes: Uint8Array) {
+async function rasterize(
+  job: {
+    svg: string;
+    width: number;
+    height: number;
+    format: "png" | "jpeg";
+    quality: number;
+  },
+  fontBytes: Uint8Array,
+) {
   const svg = embedFont(job.svg, styles.lettering.font_family, fontBytes);
   const blob = await svgToImageBlob(svg, job.width, job.height, {
     widthPx: job.width,
@@ -97,7 +111,9 @@ async function rasterize(job: { svg: string; width: number; height: number; form
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-export async function exportChapter(input: ExportInput): Promise<ExportOutcome> {
+export async function exportChapter(
+  input: ExportInput,
+): Promise<ExportOutcome> {
   const context = {
     project,
     pages: input.pages,
@@ -117,9 +133,17 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
       // Il documento *è* il prodotto (§1): l'unica forma rieditabile della pagina.
       const names = pageFileNames(input.pages, "json");
       input.pages.forEach((page, i) =>
-        files.push({ name: `documento/${names[i]!}`, data: JSON.stringify(page, null, 2), mediaType: "application/json" }),
+        files.push({
+          name: `documento/${names[i]!}`,
+          data: JSON.stringify(page, null, 2),
+          mediaType: "application/json",
+        }),
       );
-      summaries.push({ targetId: "documento", label: "Documento JSON", files: input.pages.length });
+      summaries.push({
+        targetId: "documento",
+        label: "Documento JSON",
+        files: input.pages.length,
+      });
       continue;
     }
 
@@ -134,9 +158,17 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
         if (original.layout.mode !== "page") return;
         const page = pageForTarget(original, primaryTarget.id);
         const boxes = resolvePageBoxesForTarget(page, primaryGeometry);
-        const fits = measure({ page, boxes, lettering: scaled.lettering, draftStyle: scaled.draftStyle, target: primaryTarget.id, draft: false });
+        const fits = measure({
+          page,
+          boxes,
+          lettering: scaled.lettering,
+          draftStyle: scaled.draftStyle,
+          target: primaryTarget.id,
+          draft: false,
+        });
         const byId = new Map(page.panels.map((p) => [p.id, p]));
-        const order = page.layout.mode === "page" ? page.layout.reading_order : [];
+        const order =
+          page.layout.mode === "page" ? page.layout.reading_order : [];
         const briefs = order.flatMap((id) => {
           const panel = byId.get(id);
           const panelBox = boxes.get(id);
@@ -148,7 +180,10 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
           const scene = input.scenes?.find((s) => s.id === panel.scene_id);
           return [
             compilePanel({
-              project: { style: input.projectStyle ?? project.style, series_seed: input.seriesSeed ?? project.series_seed },
+              project: {
+                style: input.projectStyle ?? project.style,
+                series_seed: input.seriesSeed ?? project.series_seed,
+              },
               page,
               panel,
               panelBox,
@@ -163,12 +198,31 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
         all.push(...briefs);
         files.push({
           name: `istruzioni/${names[i]!}`,
-          data: compilePageBrief({ page, pageBox: { x: 0, y: 0, width: primaryGeometry.width, height: primaryGeometry.height }, panels: briefs, boxes, readingDirection: project.reading_direction }),
+          data: compilePageBrief({
+            page,
+            pageBox: {
+              x: 0,
+              y: 0,
+              width: primaryGeometry.width,
+              height: primaryGeometry.height,
+            },
+            panels: briefs,
+            boxes,
+            readingDirection: project.reading_direction,
+          }),
           mediaType: "text/markdown",
         });
       });
-      files.push({ name: `istruzioni/${input.chapter.id}-prompts.json`, data: JSON.stringify(all, null, 2), mediaType: "application/json" });
-      summaries.push({ targetId: "istruzioni", label: "Istruzioni per modelli esterni", files: input.pages.length + 1 });
+      files.push({
+        name: `istruzioni/${input.chapter.id}-prompts.json`,
+        data: JSON.stringify(all, null, 2),
+        mediaType: "application/json",
+      });
+      summaries.push({
+        targetId: "istruzioni",
+        label: "Istruzioni per modelli esterni",
+        files: input.pages.length + 1,
+      });
       continue;
     }
 
@@ -178,11 +232,43 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
       for (const job of plan.jobs) {
         files.push({
           name: job.name.replace(/\.(png|jpg)$/, ".svg"),
-          data: embedFont(job.svg, styles.lettering.font_family, input.fontBytes),
+          data: embedFont(
+            job.svg,
+            styles.lettering.font_family,
+            input.fontBytes,
+          ),
           mediaType: "image/svg+xml",
         });
       }
-      summaries.push({ targetId: "svg", label: "SVG", files: plan.jobs.length });
+      summaries.push({
+        targetId: "svg",
+        label: "SVG",
+        files: plan.jobs.length,
+      });
+      continue;
+    }
+
+    if (choice.kind === "pdf") {
+      const { PDFDocument } = await import("pdf-lib");
+      const plan = planTargetExport(context, primaryTarget.id, "pdf/");
+      const pdf = await PDFDocument.create();
+      const pointsPerInch = 72;
+      const dpi = primaryTarget.dpi ?? 96;
+      for (const [i, job] of plan.jobs.entries()) {
+        input.onProgress?.(`PDF: pagina ${i + 1} di ${plan.jobs.length}`);
+        const png = await rasterize({ ...job, format: "png" }, input.fontBytes);
+        const image = await pdf.embedPng(png);
+        const width = (job.width * pointsPerInch) / dpi;
+        const height = (job.height * pointsPerInch) / dpi;
+        const page = pdf.addPage([width, height]);
+        page.drawImage(image, { x: 0, y: 0, width, height });
+      }
+      files.push({
+        name: `pdf/${input.chapter.id}.pdf`,
+        data: await pdf.save(),
+        mediaType: "application/pdf",
+      });
+      summaries.push({ targetId: "pdf", label: "PDF", files: 1 });
       continue;
     }
 
@@ -193,7 +279,9 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
 
     const rendered = new Map<string, Uint8Array>();
     for (const [i, job] of plan.jobs.entries()) {
-      input.onProgress?.(`${target.id}: immagine ${i + 1} di ${plan.jobs.length}`);
+      input.onProgress?.(
+        `${target.id}: immagine ${i + 1} di ${plan.jobs.length}`,
+      );
       rendered.set(job.name, await rasterize(job, input.fontBytes));
     }
 

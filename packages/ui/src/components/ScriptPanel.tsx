@@ -1,7 +1,8 @@
 import type { ValidationIssue } from "@comic-builder/core";
 import { useKeyNote } from "../platform/desktop.js";
+import { installedModel, local, openLocalModels, useLocalModels } from "../platform/localModels.js";
 
-export type ServiceChoice = "mock" | "ollama" | "anthropic" | "deepseek" | "openai";
+export type ServiceChoice = "mock" | "local" | "ollama" | "anthropic" | "deepseek" | "openai";
 
 export interface BreakdownSummary {
   scenes: number;
@@ -85,6 +86,7 @@ export function ScriptPanel({
   summary,
 }: Props) {
   const keyNote = useKeyNote();
+  const localText = installedModel(useLocalModels(), "text");
   return (
     <section className="script">
       <div className="script__body">
@@ -116,12 +118,23 @@ export function ScriptPanel({
               >
                 euristico
               </button>
+              {local && (
+                <button
+                  type="button"
+                  className="seg"
+                  aria-pressed={service === "local"}
+                  onClick={() => onServiceChange("local")}
+                  title="Il modello installato dalla procedura guidata dei modelli locali: il copione non esce dal computer"
+                >
+                  locale
+                </button>
+              )}
               <button
                 type="button"
                 className="seg"
                 aria-pressed={service === "ollama"}
                 onClick={() => onServiceChange("ollama")}
-                title="Modello locale via Ollama: il copione non esce dalla macchina"
+                title="Un Ollama che hai già installato: il copione non esce dalla macchina"
               >
                 ollama
               </button>
@@ -154,6 +167,26 @@ export function ScriptPanel({
               </button>
             </div>
           </div>
+
+          {service === "local" && (
+            <div className="field">
+              {localText ? (
+                <span className="field__hint">
+                  <strong>{localText.label}</strong>, sul tuo computer con llama.cpp: parte da solo al primo spoglio (la prima volta qualche secondo per caricarlo), e il copione non esce dalla macchina.{" "}
+                  <button type="button" className="link-btn" onClick={() => openLocalModels("text")}>
+                    modelli locali…
+                  </button>
+                </span>
+              ) : (
+                <span className="field__hint">
+                  Il modello per lo spoglio non è ancora installato.{" "}
+                  <button type="button" className="link-btn" onClick={() => openLocalModels("text")}>
+                    Configura i modelli locali
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
 
           {service === "ollama" && (
             <>

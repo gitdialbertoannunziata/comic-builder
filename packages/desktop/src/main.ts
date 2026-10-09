@@ -3,6 +3,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
+import { applyCatalogOverride, type EngineKind } from "./local/catalog.js";
+import { install, overview, recentLog, removeAll, start, stop, stopAll, type InstallPlan } from "./local/manager.js";
 
 /**
  * comic-builder come applicazione desktop (§14.4: Electron).
@@ -240,6 +242,42 @@ function closeWhenReady(window: BrowserWindow) {
   });
 }
 
+// --- Modelli locali ---
+
+/**
+ * La procedura guidata dei modelli locali e i due motori (spoglio e
+ * immagini): qui solo i canali, il resto in `local/`. Un'installazione alla
+ * volta; l'avanzamento arriva alla finestra che l'ha chiesta.
+ */
+let installing: AbortController | null = null;
+
+function registerLocal() {
+  handle("local:overview", () => overview());
+  ipcMain.handle("local:install", async (event, plan: InstallPlan) => {
+    if (!trusted(event)) throw new Error("Richiesta da un'origine non attendibile");
+    if (installing) throw new Error("C'è già un'installazione in corso.");
+    installing = new AbortController();
+    try {
+      await install(plan, { signal: installing.signal, onProgress: (progress) => event.sender.send("local:progress", progress) });
+      return overview();
+    } catch (error) {
+      if (installing.signal.aborted) throw new Error("Download interrotto: riprendendo, si riparte da dove era arrivato.");
+      throw error;
+    } finally {
+      installing = null;
+    }
+  });
+  handle("local:cancel", () => installing?.abort());
+  handle("local:start", (kind: EngineKind) => start(kind));
+  handle("local:stop", (kind: EngineKind) => stop(kind));
+  handle("local:log", (kind: EngineKind) => recentLog(kind));
+  handle("local:remove", async () => {
+    installing?.abort();
+    await removeAll();
+    return overview();
+  });
+}
+
 function registerLifecycle() {
   ipcMain.on("app:close-ready", (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -272,6 +310,8 @@ function createWindow() {
 
 void app.whenReady().then(async () => {
   await loadRoots();
+  // Solo in sviluppo: un catalogo di prova (motori e modelli finti, serviti in locale) al posto di quello vero.
+  if (!app.isPackaged && process.env.COMIC_BUILDER_LOCAL_CATALOG) applyCatalogOverride(JSON.parse(await fs.readFile(process.env.COMIC_BUILDER_LOCAL_CATALOG, "utf8")));
   protocol.handle(SCHEME, (request) => {
     const url = new URL(request.url);
     const relative = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
@@ -285,11 +325,15 @@ void app.whenReady().then(async () => {
   registerNetwork();
   registerSecrets();
   registerLifecycle();
+  registerLocal();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+// I motori locali sono processi figli: non devono sopravvivere all'app.
+app.on("before-quit", () => stopAll());
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

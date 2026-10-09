@@ -10,13 +10,15 @@
     "dev": "tsc -p tsconfig.json && node launch.mjs --dev-url=http://localhost:5173",
     "start": "pnpm --filter @comic-builder/ui build && tsc -p tsconfig.json && node launch.mjs",
     "package": "pnpm --filter @comic-builder/ui build && tsc -p tsconfig.json && electron-builder --config electron-builder.yml",
-    "package:linux-dir": "pnpm --filter @comic-builder/ui build && tsc -p tsconfig.json && electron-builder --config electron-builder.yml --linux dir"
+    "package:linux-dir": "pnpm --filter @comic-builder/ui build && tsc -p tsconfig.json && electron-builder --config electron-builder.yml --linux dir",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   },
   "author": "comic-builder"
 }

@@ -52,13 +52,15 @@ interface Props {
   openRevisions: number;
   /** Apre la legenda delle scorciatoie. */
   onHelp: () => void;
+  /** Solo nell'app desktop: la procedura guidata dei modelli locali. */
+  onLocalModels?: () => void;
 }
 
 /**
  * La barra: dove si è (opera, capitolo, area di lavoro) e se il lavoro è al
  * sicuro. Una riga; avvisi ed errori ne aggiungono una solo quando ci sono.
  */
-export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp }: Props) {
+export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp, onLocalModels }: Props) {
   const { status, folder } = editor;
   const tone = status.kind === "error" || status.kind === "locked-out" ? "error" : status.kind === "memory" ? "warn" : status.kind === "saved" ? "ok" : "busy";
   const menu = useRef<HTMLDetailsElement>(null);
@@ -159,6 +161,11 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
                 </>
               ) : (
                 <p className="menu__note">Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.</p>
+              )}
+              {onLocalModels && (
+                <button type="button" className="menu__item" onClick={onLocalModels}>
+                  Modelli locali…
+                </button>
               )}
             </div>
           </details>

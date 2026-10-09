@@ -33,6 +33,21 @@ contextBridge.exposeInMainWorld("comicDesktop", {
     },
     closeReady: () => ipcRenderer.send("app:close-ready"),
   },
+  local: {
+    overview: () => ipcRenderer.invoke("local:overview"),
+    install: (plan: unknown) => ipcRenderer.invoke("local:install", plan),
+    cancel: () => ipcRenderer.invoke("local:cancel"),
+    start: (kind: string) => ipcRenderer.invoke("local:start", kind),
+    stop: (kind: string) => ipcRenderer.invoke("local:stop", kind),
+    log: (kind: string) => ipcRenderer.invoke("local:log", kind),
+    remove: () => ipcRenderer.invoke("local:remove"),
+    /** L'avanzamento dell'installazione. Restituisce chi toglie l'ascolto. */
+    onProgress: (callback: (progress: unknown) => void) => {
+      const listener = (_event: unknown, progress: unknown) => callback(progress);
+      ipcRenderer.on("local:progress", listener);
+      return () => ipcRenderer.removeListener("local:progress", listener);
+    },
+  },
   secrets: {
     status: () => ipcRenderer.invoke("secrets:status"),
     get: (name: string) => ipcRenderer.invoke("secrets:get", name),

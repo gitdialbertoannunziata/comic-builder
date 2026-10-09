@@ -5,6 +5,7 @@ import {
   AnthropicLlmService,
   DeepSeekLlmService,
   OpenAiLlmService,
+  LlamaServerLlmService,
   breakdownScript,
   type BreakdownCastMember,
   type BreakdownPlace,
@@ -14,6 +15,7 @@ import { TARGET } from "./renderPreview.js";
 import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.js";
 import type { ChapterContext } from "@comic-builder/core";
 import { networkFetch } from "./platform/desktop.js";
+import { local } from "./platform/localModels.js";
 
 /** Il modello linguistico scelto nel Copione, con ciò che serve a chiamarlo. */
 export interface LlmChoice {
@@ -50,6 +52,11 @@ export interface RunBreakdownResult {
 
 export function llmServiceFor(input: LlmChoice): LlmService {
   const choice = input.service;
+  // Il modello installato dalla procedura guidata: l'app lo avvia alla prima richiesta, e ferma quello delle immagini.
+  if (choice === "local") {
+    if (!local) throw new Error("I modelli locali si installano dall'app desktop: nel browser scegli Ollama.");
+    return new LlamaServerLlmService({ resolveBaseUrl: () => local!.start("text"), ...networkFetch });
+  }
   // Nell'app desktop le chiamate passano dal processo principale (`networkFetch`): niente CORS.
   if (choice === "ollama") return new OllamaLlmService({ model: input.ollamaModel, host: input.ollamaHost, ...networkFetch });
   if (choice === "anthropic") {

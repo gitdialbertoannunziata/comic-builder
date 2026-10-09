@@ -32,6 +32,7 @@ import { generatePanels, promoteRender, type GenerationItem, type GenerationRepo
 import { usePreference } from "../usePreference.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
 import { desktop, networkFetch, useKeyNote } from "../platform/desktop.js";
+import { local, openLocalModels } from "../platform/localModels.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
@@ -53,9 +54,13 @@ export interface ImageConfig {
   onAzureDeployment: (deployment: string) => void;
   megapixels: number;
   onMegapixels: (megapixels: number) => void;
-  /** Il motore locale: dove ascolta sd-server di stable-diffusion.cpp. */
+  /** Il motore locale: dove ascolta sd-server di stable-diffusion.cpp (nel browser, avviato a mano). */
   localUrl: string;
   onLocalUrl: (url: string) => void;
+  /** Nell'app desktop il motore locale lo installa e lo avvia l'app: niente indirizzo da scrivere. */
+  localManaged: boolean;
+  /** Il modello delle immagini installato dalla procedura guidata; null se manca. */
+  localModel: string | null;
 }
 
 /**
@@ -78,6 +83,8 @@ const viaProxy = desktop ? {} : { rewriteUrl: (url: string) => `/image-proxy/${u
 const viaLocalProxy = desktop ? {} : { rewriteUrl: (url: string) => `/local-image/${url.replace(/^http:\/\//, "")}` };
 
 export function localService(config: ImageConfig): LocalSdImageService {
+  // Nell'app desktop l'indirizzo lo dà il motore quando parte (e ferma quello dello spoglio): lo si chiede alla prima richiesta.
+  if (config.localManaged && local) return new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), model: specModel(config), ...networkFetch });
   return new LocalSdImageService({ baseUrl: config.localUrl, model: specModel(config), ...viaLocalProxy, ...networkFetch });
 }
 
@@ -99,7 +106,7 @@ export function makeService(config: ImageConfig): ImageService {
 /** Se c'è quanto serve per chiamare il servizio scelto. */
 export function serviceReady(config: ImageConfig): boolean {
   if (config.service === "mock") return true;
-  if (config.service === "local") return /^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(config.localUrl.trim());
+  if (config.service === "local") return config.localManaged ? config.localModel !== null : /^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(config.localUrl.trim());
   return config.service === "azure" ? config.azureKey.trim().length > 0 && config.azureEndpoint.trim().length > 0 : config.apiKey.trim().length > 0;
 }
 
@@ -325,7 +332,9 @@ export function GenerateCard({ config, store, project, characters, locations, sc
                 {config.service === "azure"
                   ? "Servono endpoint e chiave della risorsa Azure AI Foundry"
                   : config.service === "local"
-                    ? "Serve l'indirizzo del motore locale, su questa macchina (http://127.0.0.1:porta)"
+                    ? config.localManaged
+                      ? "Il modello locale delle immagini non è ancora installato (Progetto → Modelli locali…)"
+                      : "Serve l'indirizzo del motore locale, su questa macchina (http://127.0.0.1:porta)"
                     : "Serve la chiave API di Black Forest Labs"}
                 : qui sotto, in «servizio e spesa».
               </p>
@@ -484,16 +493,32 @@ function LocalEngineFields({ config }: { config: ImageConfig }) {
 
   return (
     <>
-      <label className="field">
-        <span className="field__label">indirizzo del motore</span>
-        <input type="text" value={config.localUrl} onChange={(e) => config.onLocalUrl(e.target.value)} placeholder="http://127.0.0.1:1234" />
-        <span className="field__hint">
-          sd-server di stable-diffusion.cpp, avviato su questa macchina con FLUX.2 [klein] 4B, il suo text encoder (Qwen3 4B) e il VAE di FLUX.2. Niente si paga e niente
-          esce dal computer; serve una GPU con 8–13 GB di memoria, o un Mac con Apple Silicon.
-        </span>
-      </label>
+      {config.localManaged ? (
+        // Nell'app desktop il motore lo installa la procedura guidata e lo avvia l'app: niente indirizzo da scrivere.
+        <p className="field__hint">
+          {config.localModel ? (
+            <>
+              <strong>{config.localModel}</strong>, sul tuo computer con stable-diffusion.cpp: parte da solo alla prima vignetta, e niente esce dal computer.{" "}
+            </>
+          ) : (
+            <>Il modello delle immagini non è ancora installato. </>
+          )}
+          <button type="button" className="link-btn" onClick={() => openLocalModels("image")}>
+            {config.localModel ? "modelli locali…" : "Configura i modelli locali"}
+          </button>
+        </p>
+      ) : (
+        <label className="field">
+          <span className="field__label">indirizzo del motore</span>
+          <input type="text" value={config.localUrl} onChange={(e) => config.onLocalUrl(e.target.value)} placeholder="http://127.0.0.1:1234" />
+          <span className="field__hint">
+            sd-server di stable-diffusion.cpp, avviato su questa macchina con FLUX.2 [klein] 4B, il suo text encoder (Qwen3 4B) e il VAE di FLUX.2. Niente si paga e niente
+            esce dal computer; serve una GPU con 8–13 GB di memoria, o un Mac con Apple Silicon. Nell'app desktop lo installa e lo avvia la procedura guidata.
+          </span>
+        </label>
+      )}
       <div className="tool-row">
-        <button type="button" className="btn btn--small" disabled={checking} onClick={() => void check()}>
+        <button type="button" className="btn btn--small" disabled={checking || (config.localManaged && !config.localModel)} onClick={() => void check()}>
           {checking ? "Verifico…" : "Verifica il motore"}
         </button>
       </div>
