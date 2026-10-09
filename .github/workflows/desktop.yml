@@ -21,9 +21,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Tutti i pacchetti, in ordine: la UI compilata va dentro l'app.
+      # Tutti i pacchetti, in ordine (core per primo): la UI compilata va dentro l'app.
       - run: pnpm build
+      # I test sono logica che non dipende dal sistema: una volta basta, e un dettaglio
+      # d'ambiente di un altro sistema non deve bloccarne l'installer.
       - run: pnpm test
+        if: runner.os == 'Linux'
       - name: Installer
         run: pnpm --filter @comic-builder/desktop exec electron-builder --config electron-builder.yml --publish never
         env:

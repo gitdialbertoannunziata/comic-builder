@@ -13,6 +13,9 @@ extraResources:
   - from: ../ui/dist
     to: ui
 asar: true
+# Niente aggiornamenti automatici nel packaging lite: senza un posto dove pubblicare,
+# electron-builder non deve generare i file di aggiornamento (e fallirebbe cercando il canale).
+publish: null
 mac:
   target: dmg
   category: public.app-category.graphics-design
