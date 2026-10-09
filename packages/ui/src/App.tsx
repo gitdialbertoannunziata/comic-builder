@@ -18,6 +18,7 @@ import { useProjectEditor } from "./editor/useProjectEditor.js";
 import { ProjectBar } from "./components/ProjectBar.js";
 import { Workspace, type Area } from "./components/Workspace.js";
 import { usePreference } from "./usePreference.js";
+import { useSecret } from "./platform/desktop.js";
 import { focusCanvas, isTyping, LIST_LEGEND, useLegend, useShortcuts } from "./keyboard.js";
 import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
 
@@ -79,20 +80,22 @@ export function App() {
   );
   const [ollamaModel, setOllamaModel] = usePreference("ollamaModel", prefilled.ollamaModel);
   const [ollamaHost, setOllamaHost] = usePreference("ollamaHost", prefilled.ollamaHost);
-  const [anthropicKey, setAnthropicKey] = useState(prefilled.anthropicKey);
+  // Nell'app desktop le chiavi si ritrovano al prossimo avvio, cifrate; nel browser restano nella scheda.
+  const [anthropicKey, setAnthropicKey] = useSecret("anthropic", prefilled.anthropicKey);
   const [anthropicModel, setAnthropicModel] = usePreference("anthropicModel", prefilled.anthropicModel);
-  const [deepseekKey, setDeepseekKey] = useState(prefilled.deepseekKey);
+  const [deepseekKey, setDeepseekKey] = useSecret("deepseek", prefilled.deepseekKey);
   const [deepseekModel, setDeepseekModel] = usePreference("deepseekModel", prefilled.deepseekModel);
-  const [openaiKey, setOpenaiKey] = useState(prefilled.openaiKey);
+  const [openaiKey, setOpenaiKey] = useSecret("openai", prefilled.openaiKey);
   const [openaiModel, setOpenaiModel] = usePreference("openaiModel", prefilled.openaiModel);
   const [openaiBaseUrl, setOpenaiBaseUrl] = usePreference("openaiBaseUrl", prefilled.openaiBaseUrl);
   const [imageService, setImageService] = usePreference<ImageConfig["service"]>("imageService", prefilled.azureFluxKeyFromEnv || !prefilled.bflKeyFromEnv ? "azure" : "flux");
-  const [bflKey, setBflKey] = useState(prefilled.bflKey);
+  const [bflKey, setBflKey] = useSecret("bfl", prefilled.bflKey);
   const [bflModel, setBflModel] = usePreference("bflModel", prefilled.bflModel);
-  const [azureFluxKey, setAzureFluxKey] = useState(prefilled.azureFluxKey);
+  const [azureFluxKey, setAzureFluxKey] = useSecret("azure-flux", prefilled.azureFluxKey);
   const [azureFluxEndpoint, setAzureFluxEndpoint] = usePreference("azureFluxEndpoint", prefilled.azureFluxEndpoint);
   const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
   const [megapixels, setMegapixels] = usePreference("imageMegapixels", 1);
+  const [localImageUrl, setLocalImageUrl] = usePreference("localImageUrl", "http://127.0.0.1:1234");
   const image: ImageConfig = {
     service: imageService,
     onService: setImageService,
@@ -111,6 +114,8 @@ export function App() {
     onAzureDeployment: setAzureFluxDeployment,
     megapixels,
     onMegapixels: setMegapixels,
+    localUrl: localImageUrl,
+    onLocalUrl: setLocalImageUrl,
   };
   const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
   const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });

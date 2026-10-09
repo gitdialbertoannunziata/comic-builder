@@ -28,6 +28,7 @@ import {
   type ValidationIssue,
 } from "@comic-builder/core";
 import { BrowserProjectStore, canOpenFolders, pickFolder, type DirectoryHandle } from "../platform/browserProjectStore.js";
+import { desktop } from "../platform/desktop.js";
 import {
   clearRecovery,
   folderRestoreCrashed,
@@ -205,15 +206,48 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   }, [store]);
 
   // Chiudere la scheda con modifiche non salvate: il browser chiede conferma.
+  // Nell'app desktop no: lì `beforeunload` blocca la chiusura senza chiedere niente, e ci pensa la chiusura concordata qui sotto.
   const dirty = store ? history.present !== saved : history.past.length > 0;
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || desktop) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  // --- App desktop: prima di chiudere si salva ciò che aspettava l'autosave e si rilascia il lucchetto ---
+  const closeState = useRef({ store, saved, locked: false });
+  closeState.current = { store, saved, locked: status.kind === "locked-out" };
+  useEffect(() => {
+    if (!desktop) return;
+    return desktop.app.onCloseRequested(() => {
+      void (async () => {
+        const { store: open, saved: onDisk, locked } = closeState.current;
+        try {
+          if (open) {
+            // Un salvataggio già in corso si lascia finire, poi si scrive ciò che resta.
+            for (let i = 0; i < 50 && saving.current; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+            const present = historyRef.current.present;
+            if (!locked && present !== onDisk) await saveProject(open, present, onDisk);
+            await releaseLock(open, session);
+          } else if (historyRef.current.past.length > 0 || memory.paths().length > 0) {
+            // Un progetto non ancora in una cartella resta recuperabile alla riapertura, come dopo un F5.
+            const assets = [];
+            for (const path of memory.paths()) {
+              const data = await memory.readBytes(path);
+              if (data) assets.push({ path, data });
+            }
+            await saveRecovery({ doc: historyRef.current.present, assets, at: new Date().toISOString() });
+          }
+        } catch {
+          // La finestra si chiude comunque: un lucchetto scade da solo, un'app che non si chiude no.
+        }
+        desktop!.app.closeReady();
+      })();
+    });
+  }, [memory, session]);
 
   // --- Scorciatoie: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y, Ctrl/Cmd+S ---
   const saveRef = useRef<() => Promise<void>>(async () => {});

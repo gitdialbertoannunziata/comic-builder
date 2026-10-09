@@ -13,6 +13,7 @@ import {
 import { TARGET } from "./renderPreview.js";
 import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.js";
 import type { ChapterContext } from "@comic-builder/core";
+import { networkFetch } from "./platform/desktop.js";
 
 /** Il modello linguistico scelto nel Copione, con ciò che serve a chiamarlo. */
 export interface LlmChoice {
@@ -49,7 +50,8 @@ export interface RunBreakdownResult {
 
 export function llmServiceFor(input: LlmChoice): LlmService {
   const choice = input.service;
-  if (choice === "ollama") return new OllamaLlmService({ model: input.ollamaModel, host: input.ollamaHost });
+  // Nell'app desktop le chiamate passano dal processo principale (`networkFetch`): niente CORS.
+  if (choice === "ollama") return new OllamaLlmService({ model: input.ollamaModel, host: input.ollamaHost, ...networkFetch });
   if (choice === "anthropic") {
     return new AnthropicLlmService({
       apiKey: input.anthropicKey,
@@ -58,13 +60,14 @@ export function llmServiceFor(input: LlmChoice): LlmService {
       // locale a utente singolo, e l'interfaccia lo dice. Con il packaging
       // desktop (§14.4) passerà all'archivio sicuro dell'host.
       allowBrowser: true,
+      ...networkFetch,
     });
   }
   if (choice === "deepseek") {
-    return new DeepSeekLlmService({ apiKey: input.deepseekKey, model: input.deepseekModel });
+    return new DeepSeekLlmService({ apiKey: input.deepseekKey, model: input.deepseekModel, ...networkFetch });
   }
   if (choice === "openai") {
-    return new OpenAiLlmService({ apiKey: input.openaiKey, model: input.openaiModel, baseUrl: input.openaiBaseUrl });
+    return new OpenAiLlmService({ apiKey: input.openaiKey, model: input.openaiModel, baseUrl: input.openaiBaseUrl, ...networkFetch });
   }
   return new MockLlmService();
 }

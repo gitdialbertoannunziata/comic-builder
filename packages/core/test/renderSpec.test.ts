@@ -9,6 +9,8 @@ import {
   canonicalJson,
   compileRenderSpec,
   locationSheetPath,
+  FLUX2_KLEIN_4B,
+  maxReferencesFor,
   renderPaths,
   renderState,
   selectReferences,
@@ -140,6 +142,24 @@ describe("Stile e luogo: uguali in ogni vignetta", () => {
     const { references } = placed(cast, { characters: many });
     expect(references).toHaveLength(8);
     expect(references.filter((r) => r.kind === "character").map((r) => r.ref)).toEqual(["sara", "sara", "marco", "marco"]);
+  });
+
+  it("con quattro posti (FLUX.2 [klein] in locale) stile e luogo ne prendono uno a testa, e i personaggi non restano senza", () => {
+    expect(maxReferencesFor(FLUX2_KLEIN_4B)).toBe(4);
+    expect(maxReferencesFor("flux-2-pro")).toBe(8);
+    const local = compileRenderSpec({
+      brief: compilePanel({ project: { ...sampleProject, ...styled }, page: samplePage, panel: cast, panelBox: boxes.get(cast.id)!, targetId: "digital-page", scene }),
+      panel: cast,
+      project: styled,
+      scene,
+      characters: sheets,
+      locations: { la_stanza: stanza },
+      model: FLUX2_KLEIN_4B,
+    });
+    expect(local.references.map((r) => `${r.kind}:${r.ref}`)).toEqual(["style:style", "location:la_stanza", "character:sara", "character:marco"]);
+    expect(placed({ ...cast, characters: [] }).references.length).toBeLessThanOrEqual(8);
+    const sheet = compileCharacterSheetSpec({ project: styled, sheet: sheets.sara, view: "front", model: FLUX2_KLEIN_4B });
+    expect(sheet.references.map((r) => r.kind)).toEqual(["style", "character", "character"]);
   });
 
   it("stile e luogo in testa al prompt, con le immagini nominate per ciò che danno", () => {

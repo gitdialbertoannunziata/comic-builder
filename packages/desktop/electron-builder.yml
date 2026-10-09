@@ -1,0 +1,26 @@
+# Packaging lite (§12, F6): installer per macOS, Windows e Linux, senza firma
+# né aggiornamenti automatici. La UI compilata (packages/ui/dist) va accanto
+# all'app come risorsa: il processo principale la serve come app://ui.
+appId: it.comicbuilder.app
+productName: comic-builder
+executableName: comic-builder
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: ../ui/dist
+    to: ui
+asar: true
+mac:
+  target: dmg
+  category: public.app-category.graphics-design
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target: AppImage
+  category: Graphics

@@ -1,0 +1,39 @@
+# Installer dell'app desktop (packaging lite: senza firma, senza aggiornamenti automatici).
+# Si lancia a mano, da Actions → desktop → Run workflow: ogni sistema costruisce il suo,
+# e gli installer si scaricano dagli artifact della corsa.
+name: desktop
+
+on:
+  workflow_dispatch:
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Tutti i pacchetti, in ordine: la UI compilata va dentro l'app.
+      - run: pnpm build
+      - run: pnpm test
+      - name: Installer
+        run: pnpm --filter @comic-builder/desktop exec electron-builder --config electron-builder.yml --publish never
+        env:
+          # Niente firma nel packaging lite: senza un certificato, electron-builder non deve cercarne uno.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comic-builder-${{ matrix.os }}
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.exe
+            packages/desktop/release/*.AppImage
+          if-no-files-found: error

@@ -1,3 +1,5 @@
+// Per primo: nell'app desktop sostituisce il selettore di cartelle prima che il resto lo cerchi.
+import "./platform/desktop.js";
 import "./styles.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

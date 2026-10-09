@@ -22,6 +22,8 @@ export interface AnthropicOptions {
   allowBrowser?: boolean;
   /** Iniettabile per i test: si verifica l'adapter senza chiamare l'API. */
   client?: Anthropic;
+  /** Chi fa le chiamate di rete: nell'app desktop il processo principale, senza CORS. */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -55,6 +57,7 @@ export class AnthropicLlmService implements LlmService {
       new Anthropic({
         apiKey: options.apiKey,
         ...(options.allowBrowser ? { dangerouslyAllowBrowser: true } : {}),
+        ...(options.fetchImpl ? { fetch: options.fetchImpl } : {}),
       });
   }
 

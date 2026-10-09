@@ -60,8 +60,22 @@ export const RENDERS_DIR = "renders";
 export const FLUX2_PRO = "flux-2-pro";
 /** FLUX.2 [flex]: stesso spec e stessi riferimenti di [pro]. Passi e guidance non si mandano: valgono quelli del fornitore. */
 export const FLUX2_FLEX = "flux-2-flex";
+/**
+ * FLUX.2 [klein] 4B, in locale (stable-diffusion.cpp): pesi aperti sotto
+ * Apache 2.0, quindi distribuibili con l'applicazione. Stessa famiglia di
+ * [pro], stesso modo di scrivere il prompt, ma un modello molto più piccolo:
+ * un render locale non è un render di [pro], e lo spec lo dice.
+ */
+export const FLUX2_KLEIN_4B = "flux-2-klein-4b";
 /** `input_image` … `input_image_8` nell'API di FLUX.2. */
 export const FLUX2_MAX_REFERENCES = 8;
+/** [klein] in locale: ogni riferimento costa memoria e tempo sulla GPU di chi disegna, e l'API di BFL stessa ne accetta quattro. */
+export const FLUX2_KLEIN_MAX_REFERENCES = 4;
+
+/** Quanti riferimenti accetta un modello: i posti si dividono su questo numero. */
+export function maxReferencesFor(model: string): number {
+  return model === FLUX2_KLEIN_4B ? FLUX2_KLEIN_MAX_REFERENCES : FLUX2_MAX_REFERENCES;
+}
 /** Tavole di stile per immagine: due bastano a definire un segno, e i posti servono ai personaggi. */
 export const MAX_STYLE_REFERENCES = 2;
 /** Immagini del luogo per vignetta; quattro se in vignetta non c'è nessuno, e il luogo è tutto. */
@@ -103,7 +117,7 @@ export interface SelectReferencesInput {
 }
 
 /**
- * Quali riferimenti allegare, e in che ordine. I posti sono otto:
+ * Quali riferimenti allegare, e in che ordine. Con otto posti (FLUX.2 [pro]):
  *
  * 1. le tavole di stile (al massimo due), in ogni vignetta: è ciò che tiene
  *    lo stesso segno da una all'altra;
@@ -112,13 +126,17 @@ export interface SelectReferencesInput {
  * 3. i personaggi, coi posti che restano, a giro e protagonista per primo:
  *    con tre personaggi nessuno resta senza mentre un altro ne ha quattro.
  *
+ * Con meno posti (un modello locale) stile e luogo ne prendono un quarto
+ * ciascuno, almeno uno: i personaggi non restano mai senza.
+ *
  * Solo le immagini spuntate «per generare»: la curatela è dell'autore.
  */
 export function selectReferences(input: SelectReferencesInput): RenderReference[] {
   const max = input.max ?? FLUX2_MAX_REFERENCES;
+  const quarter = Math.max(1, Math.floor(max / 4));
   const picked: RenderReference[] = [];
-  for (const path of used(input.style?.references).slice(0, Math.min(MAX_STYLE_REFERENCES, max))) picked.push({ kind: "style", ref: "style", path });
-  const locationSlots = input.panel.characters.length === 0 ? MAX_LOCATION_REFERENCES * 2 : MAX_LOCATION_REFERENCES;
+  for (const path of used(input.style?.references).slice(0, Math.min(MAX_STYLE_REFERENCES, quarter, max))) picked.push({ kind: "style", ref: "style", path });
+  const locationSlots = input.panel.characters.length === 0 ? Math.min(MAX_LOCATION_REFERENCES * 2, quarter * 2) : Math.min(MAX_LOCATION_REFERENCES, quarter);
   if (input.location) {
     for (const path of used(input.location.references).slice(0, Math.min(locationSlots, max - picked.length))) picked.push({ kind: "location", ref: input.location.id, path });
   }
@@ -265,7 +283,7 @@ export function compileRenderSpec(input: CompileRenderSpecInput): RenderSpec {
     characters: input.characters ?? {},
     ...(input.project ? { style: input.project.style } : {}),
     location: place?.sheet ?? null,
-    max: input.maxReferences ?? FLUX2_MAX_REFERENCES,
+    max: input.maxReferences ?? maxReferencesFor(input.model ?? FLUX2_PRO),
   });
   const size = snapRenderSize(brief.width, brief.height, input.megapixels ?? 1);
   return {
@@ -348,8 +366,9 @@ export function compileCharacterSheetSpec(input: {
 }): RenderSpec {
   const { project, sheet, view } = input;
   const shape = SHEET_VIEWS[view];
-  const style: RenderReference[] = used(project.style.references).slice(0, MAX_STYLE_REFERENCES).map((path) => ({ kind: "style", ref: "style", path }));
-  const own: RenderReference[] = used(sheet.references).slice(0, FLUX2_MAX_REFERENCES - style.length).map((path) => ({ kind: "character", ref: sheet.id, path }));
+  const max = maxReferencesFor(input.model ?? FLUX2_PRO);
+  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
+  const own: RenderReference[] = used(sheet.references).slice(0, max - style.length).map((path) => ({ kind: "character", ref: sheet.id, path }));
   const references = [...style, ...own];
   const wearing = wardrobeText(sheet, "default");
   const shown = indexesOf(references, "character", sheet.id);
@@ -405,8 +424,9 @@ export function compileLocationSpec(input: {
   model?: string;
 }): RenderSpec {
   const { project, location } = input;
-  const style: RenderReference[] = used(project.style.references).slice(0, MAX_STYLE_REFERENCES).map((path) => ({ kind: "style", ref: "style", path }));
-  const own: RenderReference[] = used(location.references).slice(0, FLUX2_MAX_REFERENCES - style.length).map((path) => ({ kind: "location", ref: location.id, path }));
+  const max = maxReferencesFor(input.model ?? FLUX2_PRO);
+  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
+  const own: RenderReference[] = used(location.references).slice(0, max - style.length).map((path) => ({ kind: "location", ref: location.id, path }));
   const references = [...style, ...own];
   const shown = indexesOf(references, "location", location.id);
   const name = location.name.trim() || location.id;

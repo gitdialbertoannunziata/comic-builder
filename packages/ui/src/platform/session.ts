@@ -1,5 +1,6 @@
 import type { ProjectDoc } from "@comic-builder/core";
 import type { DirectoryHandle } from "./browserProjectStore.js";
+import { desktop, rememberedDesktopFolder } from "./desktop.js";
 
 /**
  * Ciò che deve sopravvivere a un F5, in IndexedDB: la cartella del progetto
@@ -65,7 +66,11 @@ export function folderRestoreCrashed(): boolean {
     return false;
   }
 }
-export const rememberedFolder = () => get<DirectoryHandle>("folder");
+/** Nell'app desktop dall'IndexedDB torna nome e percorso, e la cartella si ricostruisce; nel browser torna l'handle com'era. */
+export const rememberedFolder = async (): Promise<DirectoryHandle | null> => {
+  const stored = await get<DirectoryHandle>("folder");
+  return desktop ? rememberedDesktopFolder(stored) : stored;
+};
 export const forgetFolder = () => remove("folder");
 
 export interface Recovery {

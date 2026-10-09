@@ -1,4 +1,5 @@
 import type { ValidationIssue } from "@comic-builder/core";
+import { useKeyNote } from "../platform/desktop.js";
 
 export type ServiceChoice = "mock" | "ollama" | "anthropic" | "deepseek" | "openai";
 
@@ -83,6 +84,7 @@ export function ScriptPanel({
   error,
   summary,
 }: Props) {
+  const keyNote = useKeyNote();
   return (
     <section className="script">
       <div className="script__body">
@@ -194,7 +196,7 @@ export function ScriptPanel({
                 <span className="field__hint">
                   {anthropicKeyFromEnv
                     ? "Letta da .env.local (solo in sviluppo). "
-                    : "Resta in questa scheda e non viene salvata. "}
+                    : keyNote}
                   <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
                   vuoi — lo spoglio locale non lo fa.
                 </span>
@@ -224,7 +226,7 @@ export function ScriptPanel({
                 <span className="field__hint">
                   {deepseekKeyFromEnv
                     ? "Letta da .env.local (solo in sviluppo). "
-                    : "Resta in questa scheda e non viene salvata. "}
+                    : keyNote}
                   <strong>Il copione esce verso terzi.</strong> DeepSeek garantisce JSON valido ma non la forma
                   richiesta: gli scostamenti li intercetta la validazione, e compaiono qui sotto.
                 </span>
@@ -254,7 +256,7 @@ export function ScriptPanel({
                 <span className="field__hint">
                   {openaiKeyFromEnv
                     ? "Letta da .env.local (solo in sviluppo). "
-                    : "Resta in questa scheda e non viene salvata. "}
+                    : keyNote}
                   <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
                   vuoi — lo spoglio locale non lo fa.
                 </span>

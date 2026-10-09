@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   FLUX2_FLEX,
+  FLUX2_KLEIN_4B,
   FLUX2_PRO,
   panelSeed,
   renderState,
@@ -23,16 +24,18 @@ import {
   azureFluxModel,
   estimateQueue,
   FluxImageService,
+  LocalSdImageService,
   MockImageService,
   type ImageService,
 } from "@comic-builder/image";
 import { generatePanels, promoteRender, type GenerationItem, type GenerationReport } from "../editor/generateArt.js";
 import { usePreference } from "../usePreference.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
+import { desktop, networkFetch, useKeyNote } from "../platform/desktop.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
-  service: "azure" | "flux" | "mock";
+  service: "azure" | "flux" | "local" | "mock";
   onService: (service: ImageConfig["service"]) => void;
   apiKey: string;
   onApiKey: (key: string) => void;
@@ -50,6 +53,9 @@ export interface ImageConfig {
   onAzureDeployment: (deployment: string) => void;
   megapixels: number;
   onMegapixels: (megapixels: number) => void;
+  /** Il motore locale: dove ascolta sd-server di stable-diffusion.cpp. */
+  localUrl: string;
+  onLocalUrl: (url: string) => void;
 }
 
 /**
@@ -59,30 +65,41 @@ export interface ImageConfig {
  */
 export function specModel(config: ImageConfig): string {
   if (config.service === "mock") return "mock-image";
+  if (config.service === "local") return FLUX2_KLEIN_4B;
   return config.service === "azure" ? azureFluxModel(config.azureDeployment) : config.model.trim() || FLUX2_PRO;
 }
 
-const MODEL_LABEL: Readonly<Record<string, string>> = { [FLUX2_PRO]: "FLUX.2 [pro]", [FLUX2_FLEX]: "FLUX.2 [flex]" };
+const MODEL_LABEL: Readonly<Record<string, string>> = { [FLUX2_PRO]: "FLUX.2 [pro]", [FLUX2_FLEX]: "FLUX.2 [flex]", [FLUX2_KLEIN_4B]: "FLUX.2 [klein] 4B" };
 
-// Nessuno dei due fornitori abilita CORS: si passa dal server di sviluppo (vite.config.ts).
-const viaProxy = (url: string) => `/image-proxy/${url.replace(/^https:\/\//, "")}`;
+// Nessuno dei due fornitori abilita CORS: nel browser si passa dal server di sviluppo (vite.config.ts);
+// nell'app desktop le chiamate le fa il processo principale, e il proxy non serve.
+const viaProxy = desktop ? {} : { rewriteUrl: (url: string) => `/image-proxy/${url.replace(/^https:\/\//, "")}` };
+// Il motore locale nemmeno, per quanto se ne sa: stesso server di sviluppo, solo verso questa macchina.
+const viaLocalProxy = desktop ? {} : { rewriteUrl: (url: string) => `/local-image/${url.replace(/^http:\/\//, "")}` };
+
+export function localService(config: ImageConfig): LocalSdImageService {
+  return new LocalSdImageService({ baseUrl: config.localUrl, model: specModel(config), ...viaLocalProxy, ...networkFetch });
+}
 
 export function makeService(config: ImageConfig): ImageService {
   if (config.service === "mock") return new MockImageService();
+  if (config.service === "local") return localService(config);
   if (config.service === "azure") {
-    return new AzureFluxImageService({ apiKey: config.azureKey, endpoint: config.azureEndpoint, deployment: config.azureDeployment, rewriteUrl: viaProxy });
+    return new AzureFluxImageService({ apiKey: config.azureKey, endpoint: config.azureEndpoint, deployment: config.azureDeployment, ...viaProxy, ...networkFetch });
   }
   return new FluxImageService({
     apiKey: config.apiKey,
     model: specModel(config),
     baseUrl: config.baseUrl,
-    rewriteUrl: viaProxy,
+    ...viaProxy,
+    ...networkFetch,
   });
 }
 
 /** Se c'è quanto serve per chiamare il servizio scelto. */
 export function serviceReady(config: ImageConfig): boolean {
   if (config.service === "mock") return true;
+  if (config.service === "local") return /^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(config.localUrl.trim());
   return config.service === "azure" ? config.azureKey.trim().length > 0 && config.azureEndpoint.trim().length > 0 : config.apiKey.trim().length > 0;
 }
 
@@ -122,6 +139,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [cap, setCap] = usePreference("imageCapUsd", 2);
+  const keyNote = useKeyNote();
   const abort = useRef<AbortController | null>(null);
 
   const item = items?.find((i) => i.panel.id === panel.id) ?? null;
@@ -131,7 +149,8 @@ export function GenerateCard({ config, store, project, characters, locations, sc
   const ready = serviceReady(config);
 
   // La stima non ha bisogno della chiave: si vede quanto costa prima di metterla.
-  const estimator: ImageService = config.service === "mock" ? new MockImageService() : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
+  const estimator: ImageService =
+    config.service === "mock" ? new MockImageService() : config.service === "local" ? localService(config) : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
   const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec));
 
   async function generate(list: readonly GenerationItem[]) {
@@ -219,7 +238,15 @@ export function GenerateCard({ config, store, project, characters, locations, sc
     <div className="card">
       <p className="card__title card__title--row">
         <span>genera l'arte</span>
-        <span className="muted">{config.service === "mock" ? "servizio di prova" : config.service === "azure" ? `${MODEL_LABEL[specModel(config)]} · Azure` : specModel(config)}</span>
+        <span className="muted">
+          {config.service === "mock"
+            ? "servizio di prova"
+            : config.service === "azure"
+              ? `${MODEL_LABEL[specModel(config)]} · Azure`
+              : config.service === "local"
+                ? `${MODEL_LABEL[FLUX2_KLEIN_4B]} · locale`
+                : specModel(config)}
+        </span>
       </p>
 
       <div className="stack">
@@ -293,7 +320,16 @@ export function GenerateCard({ config, store, project, characters, locations, sc
                 </button>
               )}
             </div>
-            {!ready && <p className="field__hint">{config.service === "azure" ? "Servono endpoint e chiave della risorsa Azure AI Foundry" : "Serve la chiave API di Black Forest Labs"}: qui sotto, in «servizio e spesa».</p>}
+            {!ready && (
+              <p className="field__hint">
+                {config.service === "azure"
+                  ? "Servono endpoint e chiave della risorsa Azure AI Foundry"
+                  : config.service === "local"
+                    ? "Serve l'indirizzo del motore locale, su questa macchina (http://127.0.0.1:porta)"
+                    : "Serve la chiave API di Black Forest Labs"}
+                : qui sotto, in «servizio e spesa».
+              </p>
+            )}
           </>
         )}
 
@@ -349,6 +385,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
             <select value={config.service} onChange={(e) => config.onService(e.target.value as ImageConfig["service"])}>
               <option value="azure">FLUX.2 — Azure AI Foundry</option>
               <option value="flux">FLUX.2 — Black Forest Labs</option>
+              <option value="local">FLUX.2 [klein] 4B — in locale, sulla tua GPU</option>
               <option value="mock">prova, senza rete né spesa (immagine grigia)</option>
             </select>
           </label>
@@ -363,7 +400,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
                 <span className="field__label">chiave API</span>
                 <input type="password" value={config.azureKey} onChange={(e) => config.onAzureKey(e.target.value)} placeholder="chiave della risorsa" />
                 <span className="field__hint">
-                  {config.azureKeyFromEnv ? "Letta da .env.local (solo in sviluppo). " : "Resta in questa scheda e non viene salvata. "}
+                  {config.azureKeyFromEnv ? "Letta da .env.local (solo in sviluppo). " : keyNote}
                   <strong>Prompt e riferimenti escono verso terzi</strong>, e ogni immagine si paga.
                 </span>
               </label>
@@ -384,13 +421,14 @@ export function GenerateCard({ config, store, project, characters, locations, sc
               </label>
             </>
           )}
+          {config.service === "local" && <LocalEngineFields config={config} />}
           {config.service === "flux" && (
             <>
               <label className="field">
                 <span className="field__label">chiave API</span>
                 <input type="password" value={config.apiKey} onChange={(e) => config.onApiKey(e.target.value)} placeholder="chiave di api.bfl.ai" />
                 <span className="field__hint">
-                  {config.keyFromEnv ? "Letta da .env.local (solo in sviluppo). " : "Resta in questa scheda e non viene salvata. "}
+                  {config.keyFromEnv ? "Letta da .env.local (solo in sviluppo). " : keyNote}
                   <strong>Prompt e riferimenti escono verso terzi</strong>, e ogni immagine si paga.
                 </span>
               </label>
@@ -415,5 +453,55 @@ export function GenerateCard({ config, store, project, characters, locations, sc
         </details>
       </div>
     </div>
+  );
+}
+
+/**
+ * Il motore locale: dove ascolta, e una verifica di cosa ha caricato. Finché
+ * non c'è l'app desktop (§14.4) sd-server si avvia a mano; poi lo avvierà lei.
+ */
+function LocalEngineFields({ config }: { config: ImageConfig }) {
+  const [status, setStatus] = useState<{ level: "info" | "error"; text: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function check() {
+    setChecking(true);
+    setStatus(null);
+    try {
+      const info = await localService(config).check();
+      const klein = /klein/i.test(info.model) && /4b/i.test(info.model);
+      setStatus(
+        klein
+          ? { level: "info", text: `Risponde, con ${info.model} caricato.` }
+          : { level: "error", text: `Risponde, ma ha caricato «${info.model}»: lo spec registra FLUX.2 [klein] 4B, e i render direbbero il falso. Avvialo con klein 4B.` },
+      );
+    } catch (cause) {
+      setStatus({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <>
+      <label className="field">
+        <span className="field__label">indirizzo del motore</span>
+        <input type="text" value={config.localUrl} onChange={(e) => config.onLocalUrl(e.target.value)} placeholder="http://127.0.0.1:1234" />
+        <span className="field__hint">
+          sd-server di stable-diffusion.cpp, avviato su questa macchina con FLUX.2 [klein] 4B, il suo text encoder (Qwen3 4B) e il VAE di FLUX.2. Niente si paga e niente
+          esce dal computer; serve una GPU con 8–13 GB di memoria, o un Mac con Apple Silicon.
+        </span>
+      </label>
+      <div className="tool-row">
+        <button type="button" className="btn btn--small" disabled={checking} onClick={() => void check()}>
+          {checking ? "Verifico…" : "Verifica il motore"}
+        </button>
+      </div>
+      {status && <p className={`issue issue--${status.level}`}>{status.text}</p>}
+      <p className="field__hint">
+        Quattro immagini di riferimento al massimo per vignetta (una di stile, una del luogo, il resto ai personaggi). Il modello è molto più piccolo di [pro]: buono per
+        provare inquadrature e pagine, da confrontare con [pro] prima di fidarsene.
+      </p>
+    </>
   );
 }

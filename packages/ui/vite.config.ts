@@ -4,6 +4,14 @@ import react from "@vitejs/plugin-react";
 const IMAGE_PROXY = "/image-proxy/";
 /** Solo gli host dei fornitori: un proxy aperto su localhost sarebbe un regalo a qualunque pagina aperta nel browser. */
 const IMAGE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(bfl\.ai|services\.ai\.azure\.com|cognitiveservices\.azure\.com|api\.cognitive\.microsoft\.com)$/;
+/**
+ * Il motore locale (sd-server di stable-diffusion.cpp), solo su questa
+ * macchina: `/local-image/127.0.0.1:1234/sdcpp/v1/...`. La sua documentazione
+ * non dice niente di CORS, e dal browser si passa di qui; nell'app desktop
+ * non servirà.
+ */
+const LOCAL_PROXY = "/local-image/";
+const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/;
 
 /**
  * Passaggio verso i servizi di immagini (FLUX.2 su Azure AI Foundry o da
@@ -13,11 +21,12 @@ const IMAGE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(bfl\.ai|services\.ai\.azure\.co
  */
 function imageProxy(): Plugin {
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
-    if (!req.url?.startsWith(IMAGE_PROXY)) return next();
-    const rest = req.url.slice(IMAGE_PROXY.length);
+    const local = req.url?.startsWith(LOCAL_PROXY) ?? false;
+    if (!local && !req.url?.startsWith(IMAGE_PROXY)) return next();
+    const rest = req.url!.slice((local ? LOCAL_PROXY : IMAGE_PROXY).length);
     const slash = rest.indexOf("/");
     const host = slash < 0 ? rest : rest.slice(0, slash);
-    if (!IMAGE_HOST.test(host)) {
+    if (!(local ? LOCAL_HOST : IMAGE_HOST).test(host)) {
       res.statusCode = 403;
       res.end("host non consentito");
       return;
@@ -31,7 +40,7 @@ function imageProxy(): Plugin {
         if (typeof value === "string") headers[name] = value;
       }
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
-      fetch(`https://${rest}`, { method: req.method ?? "GET", headers, ...(hasBody ? { body: Buffer.concat(chunks) } : {}) })
+      fetch(`${local ? "http" : "https"}://${rest}`, { method: req.method ?? "GET", headers, ...(hasBody ? { body: Buffer.concat(chunks) } : {}) })
         .then(async (upstream) => {
           res.statusCode = upstream.status;
           const type = upstream.headers.get("content-type");
