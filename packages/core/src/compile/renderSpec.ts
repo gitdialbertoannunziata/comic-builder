@@ -1,8 +1,12 @@
 import type { CharacterSheet } from "../schema/characters.js";
+import type { LocationSheet } from "../schema/locations.js";
 import type { Panel } from "../schema/panel.js";
+import type { Scene } from "../schema/scenes.js";
 import { sha1Hex } from "../util/sha1.js";
 import type { Project } from "../schema/project.js";
-import { appearanceText, hash32, wardrobeText, type PanelBrief } from "./promptCompiler.js";
+import { ANGLE_FRAGMENT, DOF_FRAGMENT, FRAMING_FRAGMENT, LENS_FRAGMENT, LIGHTING_FRAGMENT, MOOD_GUIDANCE, MOTION_FRAGMENT, PLACEMENT_FRAGMENT, SHOT_FRAGMENT } from "./fragments.js";
+import { appearanceText, fragment, hash32, panelPlace, placeLine, wardrobeText, type PanelBrief } from "./promptCompiler.js";
+import { styleText } from "./stylePresets.js";
 
 /**
  * RenderSpec (§9.1): tutto ciò che decide un'immagine generata, e nient'altro.
@@ -11,10 +15,11 @@ import { appearanceText, hash32, wardrobeText, type PanelBrief } from "./promptC
  * file in `renders/`, e un pannello è da rigenerare quando lo spec che il
  * documento compila oggi non è più quello che ha prodotto l'immagine.
  *
- * La forma segue il modello scelto per il ramo AI, FLUX.2 [pro]: un prompt
- * in chiaro e fino a otto immagini di riferimento. Non ha prompt negativo,
- * sampler, passi né cfg, e non carica LoRA: la coerenza dei personaggi passa
- * dai riferimenti curati nelle schede (F5), che il prompt nomina per numero.
+ * La forma segue il modello scelto per il ramo AI, FLUX.2: un prompt in
+ * chiaro e fino a otto immagini di riferimento. Non ha prompt negativo,
+ * sampler, passi né cfg, e non carica LoRA: la coerenza passa dai
+ * riferimenti curati — dello stile, del luogo, dei personaggi — che il
+ * prompt nomina per numero.
  */
 export interface RenderSpec {
   panel: string;
@@ -30,19 +35,37 @@ export interface RenderSpec {
   prompt_upsampling: false;
   output_format: "png";
   /** Nell'ordine in cui si allegano: il prompt li chiama «image 1», «image 2»… */
-  references: Array<{ character: string; path: string }>;
+  references: RenderReference[];
   control_image: string | null;
   /** Versione del compilatore: alzarla invalida i render quando cambia *come* si compila, non cosa. */
   compiler: number;
 }
 
-export const RENDER_COMPILER_VERSION = 1;
+/** Di cosa è riferimento un'immagine: il prompt dice al modello cosa prenderne. */
+export type ReferenceKind = "style" | "location" | "character";
+
+export interface RenderReference {
+  kind: ReferenceKind;
+  /** Il ref del personaggio o del luogo; per lo stile, `style`. */
+  ref: string;
+  path: string;
+}
+
+/**
+ * 2: stile e luogo in testa al prompt, riferimenti di stile e di luogo,
+ * niente negazioni (FLUX.2 disegna ciò che si nomina, anche per escluderlo).
+ */
+export const RENDER_COMPILER_VERSION = 2;
 export const RENDERS_DIR = "renders";
 export const FLUX2_PRO = "flux-2-pro";
 /** FLUX.2 [flex]: stesso spec e stessi riferimenti di [pro]. Passi e guidance non si mandano: valgono quelli del fornitore. */
 export const FLUX2_FLEX = "flux-2-flex";
 /** `input_image` … `input_image_8` nell'API di FLUX.2. */
 export const FLUX2_MAX_REFERENCES = 8;
+/** Tavole di stile per immagine: due bastano a definire un segno, e i posti servono ai personaggi. */
+export const MAX_STYLE_REFERENCES = 2;
+/** Immagini del luogo per vignetta; quattro se in vignetta non c'è nessuno, e il luogo è tutto. */
+export const MAX_LOCATION_REFERENCES = 2;
 
 const MEGAPIXEL = 1024 * 1024;
 
@@ -69,73 +92,188 @@ export function snapRenderSize(width: number, height: number, megapixels = 1): {
 
 const ROLE_ORDER = { lead: 0, support: 1, background: 2 } as const;
 
+const used = (list: ReadonlyArray<{ path: string; use: boolean }> | undefined) => (list ?? []).filter((r) => r.use).map((r) => r.path);
+
+export interface SelectReferencesInput {
+  panel: Pick<Panel, "characters">;
+  characters?: Readonly<Record<string, CharacterSheet>>;
+  style?: Pick<Project["style"], "references">;
+  location?: LocationSheet | null;
+  max?: number;
+}
+
 /**
- * Quali riferimenti allegare (F5). Solo quelli che l'autore ha tenuto «per
- * generare», e i posti sono pochi: si distribuiscono a giro fra i personaggi
- * del pannello, protagonista per primo, così con tre personaggi nessuno
- * resta senza mentre un altro ne ha quattro.
+ * Quali riferimenti allegare, e in che ordine. I posti sono otto:
+ *
+ * 1. le tavole di stile (al massimo due), in ogni vignetta: è ciò che tiene
+ *    lo stesso segno da una all'altra;
+ * 2. le immagini del luogo (due, quattro se in vignetta non c'è nessuno):
+ *    è ciò che tiene la stanza la stessa stanza;
+ * 3. i personaggi, coi posti che restano, a giro e protagonista per primo:
+ *    con tre personaggi nessuno resta senza mentre un altro ne ha quattro.
+ *
+ * Solo le immagini spuntate «per generare»: la curatela è dell'autore.
  */
-export function selectReferences(
-  panel: Panel,
-  sheets: Readonly<Record<string, CharacterSheet>>,
-  max = FLUX2_MAX_REFERENCES,
-): RenderSpec["references"] {
-  const cast = [...panel.characters]
+export function selectReferences(input: SelectReferencesInput): RenderReference[] {
+  const max = input.max ?? FLUX2_MAX_REFERENCES;
+  const picked: RenderReference[] = [];
+  for (const path of used(input.style?.references).slice(0, Math.min(MAX_STYLE_REFERENCES, max))) picked.push({ kind: "style", ref: "style", path });
+  const locationSlots = input.panel.characters.length === 0 ? MAX_LOCATION_REFERENCES * 2 : MAX_LOCATION_REFERENCES;
+  if (input.location) {
+    for (const path of used(input.location.references).slice(0, Math.min(locationSlots, max - picked.length))) picked.push({ kind: "location", ref: input.location.id, path });
+  }
+
+  const sheets = input.characters ?? {};
+  const cast = [...input.panel.characters]
     .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || b.weight - a.weight)
-    .map((c) => ({ character: c.ref, paths: (sheets[c.ref]?.references ?? []).filter((r) => r.use).map((r) => r.path) }));
-  const picked: RenderSpec["references"] = [];
-  for (let round = 0; picked.length < max; round++) {
+    .map((c) => ({ ref: c.ref, paths: used(sheets[c.ref]?.references) }));
+  const people: RenderReference[] = [];
+  for (let round = 0; picked.length + people.length < max; round++) {
     let any = false;
-    for (const { character, paths } of cast) {
+    for (const { ref, paths } of cast) {
       const path = paths[round];
-      if (path === undefined || picked.length >= max) continue;
-      picked.push({ character, path });
+      if (path === undefined || picked.length + people.length >= max) continue;
+      people.push({ kind: "character", ref, path });
       any = true;
     }
     if (!any) break;
   }
-  // Raggruppati per personaggio: «image 1 and image 2 show sara» si legge meglio di numeri sparsi.
-  const order = new Map(cast.map((c, i) => [c.character, i]));
-  return picked.map((r, i) => ({ r, i })).sort((a, b) => order.get(a.r.character)! - order.get(b.r.character)! || a.i - b.i).map(({ r }) => r);
+  // Raggruppati per personaggio: «image 3 and image 4 show sara» si legge meglio di numeri sparsi.
+  const order = new Map(cast.map((c, i) => [c.ref, i]));
+  people.sort((a, b) => order.get(a.ref)! - order.get(b.ref)!);
+  return [...picked, ...people];
 }
 
-function referenceLines(references: RenderSpec["references"]): string[] {
-  if (references.length === 0) return [];
-  const byCharacter = new Map<string, number[]>();
-  references.forEach((r, i) => byCharacter.set(r.character, [...(byCharacter.get(r.character) ?? []), i + 1]));
-  const lines = ["Reference images (identity only — take face, hair, build and costume from them; pose, framing and lighting come from this description):"];
-  for (const [character, indexes] of byCharacter) {
-    const images = indexes.map((n) => `image ${n}`).join(" and ");
-    lines.push(`- ${images} ${indexes.length > 1 ? "show" : "shows"} ${character}: draw ${character} as the same person.`);
+/** «image 1», «image 1 and image 2», «images 1, 2 and 3». */
+function imageNames(indexes: readonly number[]): string {
+  if (indexes.length <= 2) return indexes.map((n) => `image ${n}`).join(" and ");
+  return `images ${indexes.slice(0, -1).join(", ")} and ${indexes[indexes.length - 1]}`;
+}
+
+function indexesOf(references: readonly RenderReference[], kind: ReferenceKind, ref?: string): number[] {
+  return references.flatMap((r, i) => (r.kind === kind && (ref === undefined || r.ref === ref) ? [i + 1] : []));
+}
+
+/** Le righe dello stile: lo stesso testo in ogni immagine dell'opera, e le tavole che lo mostrano. */
+function styleLines(project: Pick<Project, "style">, references: readonly RenderReference[]): string[] {
+  const lines = [`Art style (identical in every panel of this comic): ${styleText(project.style)}.`];
+  const style = indexesOf(references, "style");
+  if (style.length > 0) {
+    lines.push(
+      `${imageNames(style)} ${style.length > 1 ? "are style references" : "is a style reference"}: draw in exactly that art style — the same line work, inking, colouring, shading and texture. Take only the style from ${style.length > 1 ? "them" : "it"}, not ${style.length > 1 ? "their" : "its"} subjects or composition.`,
+    );
   }
   return lines;
 }
 
+/** Dove sta una zona da lasciare libera, a parole: «top left». */
+function where(x: number, y: number, w: number, h: number): string {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const vertical = cy < 0.34 ? "top" : cy > 0.66 ? "bottom" : "middle";
+  const horizontal = cx < 0.34 ? "left" : cx > 0.66 ? "right" : "center";
+  return vertical === "middle" && horizontal === "center" ? "center" : `${vertical} ${horizontal}`;
+}
+
+const pct = (v: number) => Math.round(v * 100);
+
 export interface CompileRenderSpecInput {
   brief: PanelBrief;
   panel: Panel;
+  /** Lo stile dell'opera. Senza, vale il preset di partenza: mai una vignetta senza stile. */
+  project?: Pick<Project, "style">;
+  /** La scena del pannello: dice il luogo e l'ora. */
+  scene?: Scene;
   characters?: Readonly<Record<string, CharacterSheet>>;
+  locations?: Readonly<Record<string, LocationSheet>>;
   model?: string;
   megapixels?: number;
   maxReferences?: number;
 }
 
-/** Puro e deterministico come `compilePanel`, da cui prende prompt, seed e proporzioni. */
+/**
+ * Il prompt di una vignetta per FLUX.2. Tre regole, tutte imparate guardando
+ * capitoli generati:
+ *
+ * - **stile e luogo prima di tutto, uguali parola per parola** in ogni
+ *   vignetta: è la parte che deve uscire uguale, e il modello pesa di più
+ *   ciò che legge per primo;
+ * - **i riferimenti si nominano per ciò che danno**: dalla tavola di stile il
+ *   segno, dal luogo la pianta e gli arredi, dal personaggio la faccia —
+ *   mai la composizione;
+ * - **niente negazioni**: FLUX.2 non ha un prompt negativo, e «no speech
+ *   balloons, no panel border» gli fa disegnare balloon e cornici. Si chiede
+ *   un'immagine «senza parole, al vivo», e le zone dei balloon si descrivono
+ *   come sfondo vuoto, senza dire perché.
+ */
+function panelPrompt(input: CompileRenderSpecInput, references: readonly RenderReference[], place: ReturnType<typeof panelPlace>): string {
+  const { brief, panel } = input;
+  const cam = panel.camera;
+  const sheets = input.characters ?? {};
+  const lines = [
+    `Wordless comic panel: a single illustration that fills the whole frame edge to edge, aspect ${brief.aspect}.`,
+    ...styleLines(input.project ?? { style: { preset: "", positive: [], negative: [], references: [] } }, references),
+  ];
+
+  if (place) {
+    lines.push(placeLine(place));
+    const shown = place.ref ? indexesOf(references, "location", place.ref) : [];
+    if (shown.length > 0) lines.push(`${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} this same place: keep its layout, architecture, furniture, materials and colours, seen from this panel's camera.`);
+  }
+
+  lines.push(`Framing: ${[SHOT_FRAGMENT[cam.shot], ANGLE_FRAGMENT[cam.angle], LENS_FRAGMENT[cam.lens_mm], DOF_FRAGMENT[cam.dof]].filter(Boolean).join("; ")}.`);
+
+  if (panel.characters.length === 0) lines.push("Nobody in the frame.");
+  else {
+    lines.push("Characters (each one looks the same in every panel):");
+    for (const c of [...panel.characters].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || b.weight - a.weight)) {
+      const sheet = sheets[c.ref];
+      const wearing = wardrobeText(sheet, c.wardrobe);
+      const head = `- ${c.ref}${sheet?.name ? ` «${sheet.name}»` : ""} (${[c.role, FRAMING_FRAGMENT[c.framing], c.expression ? `expression: ${fragment(c.expression)}` : null].filter(Boolean).join("; ")})`;
+      const look = [sheet ? appearanceText(sheet) || null : null, wearing ? `wearing ${fragment(wearing)}` : null, sheet?.palette ? `colours: ${fragment(sheet.palette)}` : null].filter(Boolean);
+      const shown = indexesOf(references, "character", c.ref);
+      const same = shown.length > 0 ? ` ${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} ${c.ref}: the same face, hair, build and clothes.` : "";
+      lines.push(`${head}${look.length > 0 ? `: ${look.join("; ")}.` : "."}${same}`);
+    }
+  }
+
+  if (PLACEMENT_FRAGMENT[cam.subject_placement]) lines.push(`Composition: ${PLACEMENT_FRAGMENT[cam.subject_placement]}.`);
+  if (panel.action) lines.push(`Action: ${fragment(panel.action)}.`);
+  if (panel.props.length > 0) lines.push(`${cam.shot === "INSERT" ? "Focus on" : "Props"}: ${panel.props.map(fragment).join(", ")}.`);
+  lines.push(`Lighting: ${LIGHTING_FRAGMENT[cam.lighting]}.`);
+  if (MOTION_FRAGMENT[cam.motion]) lines.push(`Motion: ${MOTION_FRAGMENT[cam.motion]}.`);
+  lines.push(`Mood (composition and staging; the colours stay those of the art style): ${MOOD_GUIDANCE[cam.mood]}.`);
+  if (panel.continuity_notes) lines.push(`Continuity: ${fragment(panel.continuity_notes)}.`);
+  for (const zone of brief.reservedZones) {
+    lines.push(
+      `Keep the ${where(zone.x, zone.y, zone.width, zone.height)} of the picture (x ${pct(zone.x)}–${pct(zone.x + zone.width)}%, y ${pct(zone.y)}–${pct(zone.y + zone.height)}%) calm and empty, just plain background such as wall, sky, floor or shadow.`,
+    );
+  }
+  // Solo ciò che l'autore ha chiesto di evitare: la lista di base (testo, balloon, cornici) nominerebbe proprio ciò che si vuole fuori.
+  const avoid = (input.project?.style.negative ?? []).map(fragment).filter(Boolean);
+  if (avoid.length > 0) lines.push(`Avoid: ${avoid.join(", ")}.`);
+  if (brief.overridden) lines.push(`Author's prompt for this panel (takes precedence): ${brief.positive}`);
+  return lines.join("\n");
+}
+
+/** Puro e deterministico come `compilePanel`, da cui prende seed, proporzioni e zone dei balloon. */
 export function compileRenderSpec(input: CompileRenderSpecInput): RenderSpec {
   const { brief, panel } = input;
-  const references = selectReferences(panel, input.characters ?? {}, input.maxReferences ?? FLUX2_MAX_REFERENCES);
+  const place = panelPlace(panel, input.scene, input.locations);
+  const references = selectReferences({
+    panel,
+    characters: input.characters ?? {},
+    ...(input.project ? { style: input.project.style } : {}),
+    location: place?.sheet ?? null,
+    max: input.maxReferences ?? FLUX2_MAX_REFERENCES,
+  });
   const size = snapRenderSize(brief.width, brief.height, input.megapixels ?? 1);
-  // Il brief è scritto per chi allega i riferimenti a mano, e ne elenca i
-  // file: qui si allegano da soli, e contano i numeri in fondo al prompt.
-  const lines = brief.brief.split("\n").map((line) => line.replace(/(?:; )?reference images: .*\.$/, ".").replace(/\): \.$/, ")."));
-  // Dichiara anche i pixel del pannello nella pagina: al modello si dicono solo le proporzioni.
-  lines[0] = `Comic panel, aspect ${brief.aspect}. Draw the image only: no text, no speech balloons, no captions, no panel border.`;
   return {
     panel: brief.panelId,
     target: brief.targetId,
     ...size,
     aspect: brief.aspect,
-    prompt: [...lines, ...referenceLines(references)].join("\n"),
+    prompt: panelPrompt(input, references, place),
     seed: brief.seed,
     model: input.model ?? FLUX2_PRO,
     prompt_upsampling: false,
@@ -193,12 +331,14 @@ export const CHARACTER_SHEET_TARGET = "character-sheet";
 
 /**
  * Lo spec di un'immagine di scheda: il personaggio da solo, su fondo neutro,
- * nello stile del progetto. Serve da riferimento, non da vignetta — per
+ * nello stile dell'opera. Serve da riferimento, non da vignetta — per
  * questo niente scena, niente ombre drammatiche, niente altri soggetti.
  *
- * I riferimenti già tenuti «per generare» si allegano: la seconda vista
- * nasce guardando la prima, e la scheda resta la stessa persona. Il seed
- * cambia a ogni immagine aggiunta, così rigenerare una vista dà una variante.
+ * Le tavole di stile si allegano per prime: un riferimento in un altro stile
+ * trascinerebbe ogni vignetta in cui il personaggio compare. Poi i
+ * riferimenti già tenuti: la seconda vista nasce guardando la prima, e la
+ * scheda resta la stessa persona. Il seed cambia a ogni immagine aggiunta,
+ * così rigenerare una vista dà una variante.
  */
 export function compileCharacterSheetSpec(input: {
   project: Pick<Project, "style" | "series_seed">;
@@ -208,19 +348,19 @@ export function compileCharacterSheetSpec(input: {
 }): RenderSpec {
   const { project, sheet, view } = input;
   const shape = SHEET_VIEWS[view];
-  const references = sheet.references.filter((r) => r.use).slice(0, FLUX2_MAX_REFERENCES).map((r) => ({ character: sheet.id, path: r.path }));
+  const style: RenderReference[] = used(project.style.references).slice(0, MAX_STYLE_REFERENCES).map((path) => ({ kind: "style", ref: "style", path }));
+  const own: RenderReference[] = used(sheet.references).slice(0, FLUX2_MAX_REFERENCES - style.length).map((path) => ({ kind: "character", ref: sheet.id, path }));
+  const references = [...style, ...own];
   const wearing = wardrobeText(sheet, "default");
+  const shown = indexesOf(references, "character", sheet.id);
   const lines = [
-    "Character reference image for a comic. One character only, alone, on a plain light grey background. Even flat lighting, no cast shadows, no props, no text, no border.",
+    "Character reference image for a comic: one character alone, on a plain light grey background, even flat lighting, full figure readable.",
+    ...styleLines(project, references),
     `View: ${shape.prompt}.`,
     `Character: ${appearanceText(sheet)}.`,
-    wearing ? `Wearing: ${wearing}.` : null,
-    sheet.palette ? `Palette: ${sheet.palette}.` : null,
-    project.style.positive.length > 0 ? `Style: ${project.style.positive.join(", ")}.` : null,
-    project.style.negative.length > 0 ? `Avoid: ${project.style.negative.join(", ")}.` : null,
-    references.length > 0
-      ? `${references.map((_, i) => `image ${i + 1}`).join(" and ")} ${references.length > 1 ? "show" : "shows"} this same character: keep face, hair, build and costume identical, and change only the view.`
-      : null,
+    wearing ? `Wearing: ${fragment(wearing)}.` : null,
+    sheet.palette ? `Colours: ${fragment(sheet.palette)}.` : null,
+    shown.length > 0 ? `${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} this same character: keep face, hair, build and costume identical, and change only the view.` : null,
   ].filter((line): line is string => line !== null);
   return {
     panel: `${sheet.id}-${view}`,
@@ -243,4 +383,60 @@ export function compileCharacterSheetSpec(input: {
 export function characterSheetPath(spec: RenderSpec, view: SheetView): string {
   const character = spec.panel.slice(0, -(view.length + 1));
   return `characters/${character}/${view}-${specHash(spec).slice(0, 8)}.${spec.output_format}`;
+}
+
+export const LOCATION_SHEET_TARGET = "location-sheet";
+
+/**
+ * La tavola di un luogo: il posto vuoto, visto largo, nello stile dell'opera.
+ * Diventa il riferimento che ogni vignetta ambientata lì si porta dietro —
+ * è ciò che tiene la finestra dallo stesso lato e la scrivania della stessa
+ * forma. Vuoto di persone di proposito: un personaggio nella tavola finirebbe
+ * in ogni vignetta.
+ *
+ * Le immagini già tenute del luogo si allegano: una seconda tavola è lo
+ * stesso posto da un altro punto di vista, non un posto nuovo.
+ */
+export function compileLocationSpec(input: {
+  project: Pick<Project, "style" | "series_seed">;
+  location: LocationSheet;
+  /** L'ora e la luce della scena in cui serve, se si vuole: di norma una luce neutra che mostri il posto. */
+  time?: string;
+  model?: string;
+}): RenderSpec {
+  const { project, location } = input;
+  const style: RenderReference[] = used(project.style.references).slice(0, MAX_STYLE_REFERENCES).map((path) => ({ kind: "style", ref: "style", path }));
+  const own: RenderReference[] = used(location.references).slice(0, FLUX2_MAX_REFERENCES - style.length).map((path) => ({ kind: "location", ref: location.id, path }));
+  const references = [...style, ...own];
+  const shown = indexesOf(references, "location", location.id);
+  const name = location.name.trim() || location.id;
+  const lines = [
+    "Establishing view of a place for a comic: the location alone, with nobody in it. Wide shot at eye level, the whole space and its layout readable, clear even light.",
+    ...styleLines(project, references),
+    `Location: ${name}${location.description.trim() ? ` — ${fragment(location.description)}` : ""}.`,
+    location.palette.trim() ? `Location colours: ${fragment(location.palette)}.` : null,
+    input.time?.trim() ? `Time: ${fragment(input.time)}.` : null,
+    shown.length > 0 ? `${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} this same place: keep its layout, architecture, furniture, materials and colours identical, and show it from a different angle.` : null,
+  ].filter((line): line is string => line !== null);
+  return {
+    panel: `${location.id}-plate`,
+    target: LOCATION_SHEET_TARGET,
+    width: 1216,
+    height: 832,
+    aspect: "3:2",
+    prompt: lines.join("\n"),
+    seed: hash32(`${project.series_seed}:location:${location.id}:${location.references.length}`),
+    model: input.model ?? FLUX2_PRO,
+    prompt_upsampling: false,
+    output_format: "png",
+    references,
+    control_image: null,
+    compiler: RENDER_COMPILER_VERSION,
+  };
+}
+
+/** Dove va la tavola di un luogo: fra i riferimenti del luogo, come le viste di un personaggio. */
+export function locationSheetPath(spec: RenderSpec): string {
+  const location = spec.panel.replace(/-plate$/, "");
+  return `locations/${location}/plate-${specHash(spec).slice(0, 8)}.${spec.output_format}`;
 }

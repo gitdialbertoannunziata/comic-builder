@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IdSchema, ReadingDirectionSchema, TextDirectionSchema } from "./common.js";
+import { IdSchema, ReadingDirectionSchema, ReferenceImageSchema, TextDirectionSchema } from "./common.js";
 import { BalloonTypeSchema } from "./balloon.js";
 
 /**
@@ -135,11 +135,20 @@ export const LetteringConfigSchema = z.object({
 });
 export type LetteringConfig = z.infer<typeof LetteringConfigSchema>;
 
+/**
+ * Lo stile dell'opera: uno per tutta la serie, uguale in ogni vignetta.
+ * `positive` è la descrizione (il segno, il colore, l'ombreggiatura), che va
+ * in testa a ogni prompt; `references` sono le tavole di stile, immagini da
+ * cui il modello copia il segno e non il contenuto. Senza le une e le altre
+ * ogni generazione sceglie uno stile suo, e il capitolo diventa un collage.
+ */
 export const StyleConfigSchema = z.object({
   preset: z.string(),
   positive: z.array(z.string()).default([]),
   negative: z.array(z.string()).default([]),
+  references: z.array(ReferenceImageSchema).default([]),
 });
+export type StyleConfig = z.infer<typeof StyleConfigSchema>;
 
 /** Aspetto grafico di un balloon: stroke, riempimento, raggio degli angoli, tratteggio. */
 export const BalloonVisualStyleSchema = z.object({

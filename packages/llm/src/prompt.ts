@@ -8,6 +8,8 @@
  * di beat, ognuna definita da cosa *fa* nella scena, non da come va ripresa.
  */
 
+import { PLACE_RULE } from "./locations.js";
+
 const BEAT_FUNCTIONS = [
   ["establish", "stabilisce dove siamo: luogo, ora, atmosfera. Di solito apre una scena."],
   ["entrance", "un personaggio entra in scena o si rivela presente."],
@@ -58,6 +60,8 @@ export function breakdownSystemPrompt(options: SystemPromptOptions = {}): string
     "- `cast` (fuori dalle scene) ha una voce per ogni personaggio che compare nel testo, anche se è già fra quelli elencati: `ref` come in `speaker`, `name` come lo scrive il testo, `summary` chi è nella storia in una riga (va sempre scritto: ruolo, mestiere, rapporto con gli altri), e l'aspetto nei suoi campi (`age`, `build`, `face`, `hair`, `eyes`, `skin`, `distinguishing` per i segni particolari).",
     "- L'aspetto nel `cast` si ricava da tutto il testo, non solo da dove il personaggio viene presentato: descrizioni dirette, dettagli sparsi nelle azioni («si sistema gli occhiali», «i capelli grigi al vento») e ciò che il testo fa capire (l'età da ruolo e rapporti: «circa 60 anni» per un vecchio guardiano). Scrivi frasi brevi, da scheda.",
     "- Dove il testo non dà alcun appiglio sull'aspetto, proponilo tu: un tratto plausibile e preciso, coerente con il personaggio, l'ambientazione e l'epoca, e diverso da quello degli altri perché si distinguano a colpo d'occhio. Ciò che il testo dice o fa capire ha sempre la precedenza. Nessun campo dell'aspetto resta vuoto, salvo `distinguishing` se il personaggio non ha segni particolari.",
+    "- `locations` (fuori dalle scene) ha una voce per ogni luogo delle scene: `name` esattamente uguale al `location` delle scene, così si ritrovano.",
+    `- ${PLACE_RULE}`,
     "",
     ...(options.seriesNotes?.trim()
       ? [

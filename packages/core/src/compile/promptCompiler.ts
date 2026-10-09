@@ -4,7 +4,10 @@ import type { Panel } from "../schema/panel.js";
 import type { Project } from "../schema/project.js";
 import type { Scene } from "../schema/scenes.js";
 import type { CharacterSheet } from "../schema/characters.js";
+import type { LocationSheet } from "../schema/locations.js";
 import type { PanelCharacter } from "../schema/panel.js";
+import { locationRef } from "../editor/locations.js";
+import { styleText } from "./stylePresets.js";
 import {
   ANGLE_FRAGMENT,
   BASE_NEGATIVE,
@@ -67,6 +70,50 @@ export interface CompilePanelInput {
   scene?: Scene;
   /** Schede personaggio (§5.1): senza, il modello conosce solo un nome e ogni pannello lo reinventa. */
   characters?: Readonly<Record<string, CharacterSheet>>;
+  /** Schede dei luoghi: senza, il modello riceve il nome del posto e lo reinventa a ogni vignetta. */
+  locations?: Readonly<Record<string, LocationSheet>>;
+}
+
+/**
+ * Il luogo del pannello, come lo si dice al modello: il nome della scena, la
+ * descrizione della scheda, l'ora. `detail` è ciò che il campo «luogo e ora»
+ * del pannello aggiunge, se aggiunge qualcosa: di solito lo spoglio ci
+ * scrive proprio luogo e ora della scena, e ripeterlo non serve.
+ */
+export interface PanelPlace {
+  ref: string | null;
+  name: string;
+  description: string;
+  palette: string;
+  time: string;
+  detail: string | null;
+  sheet: LocationSheet | null;
+}
+
+export function panelPlace(panel: Pick<Panel, "setting">, scene: Scene | undefined, locations: Readonly<Record<string, LocationSheet>> = {}): PanelPlace | null {
+  const setting = panel.setting.trim();
+  const ref = scene ? locationRef(scene.location) : "";
+  if (!scene || !ref) return setting ? { ref: null, name: setting, description: "", palette: "", time: "", detail: null, sheet: null } : null;
+  const sheet = locations[ref] ?? null;
+  const norm = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const same = norm(setting) === norm(`${scene.location} ${scene.time_of_day}`) || norm(setting) === norm(scene.location);
+  return {
+    ref,
+    name: sheet?.name.trim() || scene.location.trim(),
+    description: fragment(sheet?.description ?? ""),
+    palette: fragment(sheet?.palette ?? ""),
+    time: fragment(scene.time_of_day),
+    detail: setting && !same ? fragment(setting) : null,
+    sheet,
+  };
+}
+
+/** «Location: La stanza — descrizione. Time: mattina.» — la stessa riga in ogni pannello ambientato lì. */
+export function placeLine(place: PanelPlace): string {
+  const head = `Location${place.ref ? " (the same place in every panel set here)" : ""}: ${place.name}${place.description ? ` — ${place.description}` : ""}.`;
+  return [head, place.palette ? `Location colours: ${place.palette}.` : null, place.time ? `Time: ${place.time}.` : null, place.detail ? `In this panel: ${place.detail}.` : null]
+    .filter(Boolean)
+    .join(" ");
 }
 
 const ASPECTS: Array<[string, number]> = [
@@ -117,10 +164,13 @@ function orderedCharacters(panel: Panel): PanelCharacter[] {
   return [...panel.characters].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || b.weight - a.weight);
 }
 
+/** Un campo da scheda come frammento: senza il punto finale, che fra due virgole diventerebbe «anni.,». */
+export const fragment = (text: string) => text.trim().replace(/[.;,:!]+$/, "").trim();
+
 /** L'aspetto in forma breve: i campi compilati, nell'ordine in cui si guarda una persona. */
 export function appearanceText(sheet: CharacterSheet): string {
   const a = sheet.appearance;
-  return [a.age, a.build, a.face, a.hair, a.eyes, a.skin, a.distinguishing].map((v) => v.trim()).filter(Boolean).join(", ");
+  return [a.age, a.build, a.face, a.hair, a.eyes, a.skin, a.distinguishing].map(fragment).filter(Boolean).join(", ");
 }
 
 /** Il costume del pannello: la variante dichiarata nella scheda, o il nome così com'è se la scheda non la conosce. */
@@ -175,6 +225,8 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
   const characters = characterLine(panel, sheets);
   const withSheets = panel.characters.some((c) => sheets[c.ref]);
   const setting = panel.setting || (scene ? `${scene.location}, ${scene.time_of_day}` : "");
+  const place = panelPlace(panel, scene, input.locations);
+  const style = styleText(project.style);
   const compiled = [
     SHOT_FRAGMENT[cam.shot],
     ANGLE_FRAGMENT[cam.angle],
@@ -187,7 +239,7 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
     panel.props.length > 0 ? panel.props.join(", ") : null,
     LIGHTING_FRAGMENT[cam.lighting],
     MOTION_FRAGMENT[cam.motion],
-    ...project.style.positive,
+    style,
   ]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     // Nel prompt compatto le parti sono separate da virgole: la punteggiatura
@@ -206,8 +258,13 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
     return { balloonId: id, x: r2(x), y: r2(y), width: r2(right - x), height: r2(bottom - y) };
   });
 
+  // Stile e luogo vengono prima di tutto e sono gli stessi parola per parola in
+  // ogni pannello: è il pezzo di prompt che deve uscire uguale, e un modello
+  // pesa di più ciò che legge per primo.
   const lines: string[] = [
     `Comic panel, aspect ${aspect} (${width}×${height} px). Draw the image only: no text, no speech balloons, no captions, no panel border.`,
+    `Art style (identical in every panel of this comic): ${style}.`,
+    ...(place ? [placeLine(place)] : []),
     `Framing: ${[SHOT_FRAGMENT[cam.shot], ANGLE_FRAGMENT[cam.angle], LENS_FRAGMENT[cam.lens_mm], DOF_FRAGMENT[cam.dof]].filter(Boolean).join("; ")}.`,
   ];
   if (panel.characters.length === 0) lines.push("No characters in frame.");
@@ -215,18 +272,16 @@ export function compilePanel(input: CompilePanelInput): PanelBrief {
   else lines.push(`Characters: ${characters.join("; ")}.`);
   if (PLACEMENT_FRAGMENT[cam.subject_placement]) lines.push(`Composition: ${PLACEMENT_FRAGMENT[cam.subject_placement]}.`);
   if (panel.action) lines.push(`Action: ${panel.action}`);
-  if (setting) lines.push(`Setting: ${setting}`);
   if (panel.props.length > 0) lines.push(`${cam.shot === "INSERT" ? "Focus on" : "Props"}: ${panel.props.join(", ")}.`);
   lines.push(`Lighting: ${LIGHTING_FRAGMENT[cam.lighting]}.`);
   if (MOTION_FRAGMENT[cam.motion]) lines.push(`Motion: ${MOTION_FRAGMENT[cam.motion]}.`);
-  lines.push(`Tone (composition and palette, not a subject): ${MOOD_GUIDANCE[cam.mood]}.`);
+  lines.push(`Mood (composition and staging, not a subject; colours stay those of the art style): ${MOOD_GUIDANCE[cam.mood]}.`);
   if (panel.continuity_notes) lines.push(`Continuity: ${panel.continuity_notes}`);
   for (const zone of reservedZones) {
     lines.push(
       `Keep the ${where(zone.x, zone.y, zone.width, zone.height)} area free of important detail (x ${pct(zone.x)}–${pct(zone.x + zone.width)}%, y ${pct(zone.y)}–${pct(zone.y + zone.height)}%): a speech balloon goes there.`,
     );
   }
-  if (project.style.positive.length > 0) lines.push(`Style: ${project.style.positive.join(", ")}.`);
   lines.push(`Avoid: ${negative}.`);
   if (overridden) lines.push(`Author's prompt for this panel (takes precedence): ${positive}`);
 

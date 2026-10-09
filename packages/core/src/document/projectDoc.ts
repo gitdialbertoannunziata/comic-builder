@@ -4,6 +4,7 @@ import { ChaptersDocSchema, type ChaptersDoc } from "../schema/chapters.js";
 import { PageSchema, type Page } from "../schema/page.js";
 import { RevisionsDocSchema, type RevisionsDoc } from "../schema/revisions.js";
 import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.js";
+import { LocationSheetSchema, type LocationSheet } from "../schema/locations.js";
 import { issue, type ValidationIssue } from "../validate/issue.js";
 import { migrate, MigrationError, type DocumentKind } from "./migrate.js";
 import type { ProjectStore } from "./store.js";
@@ -32,6 +33,8 @@ export interface ProjectDoc {
   scripts: Readonly<Record<string, string>>;
   /** Schede personaggio per ref (§5.1: `characters/<ref>.json`). */
   characters: Readonly<Record<string, CharacterSheet>>;
+  /** Schede dei luoghi per ref (`locations/<ref>.json`): il ref deriva dal nome che le scene usano. */
+  locations: Readonly<Record<string, LocationSheet>>;
 }
 
 export const PROJECT_FILE = "project.json";
@@ -51,6 +54,10 @@ export function scriptPath(chapterId: string): string {
 
 export function characterPath(ref: string): string {
   return `characters/${ref}.json`;
+}
+
+export function locationPath(ref: string): string {
+  return `locations/${ref}.json`;
 }
 
 /** Serializzazione stabile: stesso documento, stessi byte — il presupposto di un diff leggibile (§5.1). */
@@ -163,7 +170,18 @@ export async function loadProject(store: ProjectStore): Promise<LoadResult> {
     characters[sheet.id] = sheet;
   }
 
-  return { doc: { project, scenes, chapters, pages, revisions, scripts, characters }, issues, recovered };
+  const locations: Record<string, LocationSheet> = {};
+  for (const entry of await store.list("locations")) {
+    if (entry.kind !== "file" || !entry.name.endsWith(".json")) continue;
+    const sheet = await readDocument(store, `locations/${entry.name}`, "location", LocationSheetSchema);
+    if (!sheet) continue;
+    if (`${sheet.id}.json` !== entry.name) {
+      issues.push(issue("warning", "project.location-id-mismatch", `locations/${entry.name} contiene la scheda di ${sheet.id}`, `locations/${entry.name}`));
+    }
+    locations[sheet.id] = sheet;
+  }
+
+  return { doc: { project, scenes, chapters, pages, revisions, scripts, characters, locations }, issues, recovered };
 }
 
 interface Journal {
@@ -209,10 +227,14 @@ export function changedFiles(next: ProjectDoc, previous: ProjectDoc | null): Jou
   for (const [ref, sheet] of Object.entries(next.characters)) {
     if (!previous || previous.characters[ref] !== sheet) writes.push({ path: characterPath(ref), text: canonical(CharacterSheetSchema, sheet, characterPath(ref)) });
   }
+  for (const [ref, sheet] of Object.entries(next.locations)) {
+    if (!previous || previous.locations[ref] !== sheet) writes.push({ path: locationPath(ref), text: canonical(LocationSheetSchema, sheet, locationPath(ref)) });
+  }
   if (previous) {
     for (const id of Object.keys(previous.pages)) if (!next.pages[id]) removes.push(pagePath(id));
     // Una scheda rinominata o tolta: il file vecchio se ne va, le immagini di riferimento restano.
     for (const ref of Object.keys(previous.characters)) if (!next.characters[ref]) removes.push(characterPath(ref));
+    for (const ref of Object.keys(previous.locations)) if (!next.locations[ref]) removes.push(locationPath(ref));
     // Un capitolo eliminato porta via changelog e copione. Arte e render restano nella cartella.
     for (const id of Object.keys(previous.revisions)) if (!next.revisions[id]) removes.push(revisionsPath(id));
     for (const id of Object.keys(previous.scripts)) if (next.scripts[id] === undefined) removes.push(scriptPath(id));
@@ -294,6 +316,7 @@ export function projectDocFrom(input: {
     revisions: {},
     scripts: input.script === undefined ? {} : { [input.chapter.id]: input.script },
     characters: {},
+    locations: {},
   };
 }
 
@@ -319,5 +342,6 @@ export function emptyProjectDoc(base: Project, title: string, now = new Date()):
     revisions: {},
     scripts: {},
     characters: {},
+    locations: {},
   };
 }

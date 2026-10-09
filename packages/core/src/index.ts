@@ -44,3 +44,6 @@ export * from "./compile/renderSpec.js";
 export * from "./util/sha1.js";
 export * from "./validate/lintCharacters.js";
 export * from "./editor/chapters.js";
+export * from "./editor/locations.js";
+export * from "./compile/stylePresets.js";
+export * from "./art/shownArt.js";

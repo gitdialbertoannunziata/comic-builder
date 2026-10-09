@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
-import type { Command, Panel, PanelBrief, Project } from "@comic-builder/core";
+import { useState } from "react";
+import type { Command, Panel, PanelBrief } from "@comic-builder/core";
 
 interface Props {
   brief: PanelBrief;
   pageBrief: string;
   panel: Panel;
   pageId: string;
-  project: Project;
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
+  /** Lo stile non si scrive più qui: è dell'opera, e sta in Riferimenti → Stile. */
+  onStyle: () => void;
 }
 
 type Tab = "brief" | "prompt" | "params";
@@ -29,17 +30,9 @@ async function copy(text: string): Promise<boolean> {
  * si copia, si incolla, si confronta. Cambiare camera, azione o balloon
  * cambia il testo subito — il prompt è derivato, non scritto.
  */
-export function PromptCard({ brief, pageBrief, panel, pageId, project, run, endGesture }: Props) {
+export function PromptCard({ brief, pageBrief, panel, pageId, run, endGesture, onStyle }: Props) {
   const [tab, setTab] = useState<Tab>("brief");
   const [copied, setCopied] = useState<string | null>(null);
-  const [style, setStyle] = useState(project.style.positive.join(", "));
-  const [styleNegative, setStyleNegative] = useState(project.style.negative.join(", "));
-
-  // Se lo stile cambia da fuori (undo, un altro progetto), i campi lo seguono.
-  useEffect(() => {
-    setStyle(project.style.positive.join(", "));
-    setStyleNegative(project.style.negative.join(", "));
-  }, [project.style]);
 
   async function copyText(label: string, text: string) {
     setCopied((await copy(text)) ? `${label} copiato` : "Il browser non consente di copiare qui: seleziona il testo e copia a mano.");
@@ -52,11 +45,6 @@ export function PromptCard({ brief, pageBrief, panel, pageId, project, run, endG
     `sdxl: ${brief.sdxl.width}×${brief.sdxl.height}`,
     `seed: ${brief.seed}`,
   ].join("\n");
-  const split = (text: string) => text.split(",").map((s) => s.trim()).filter(Boolean);
-  const saveStyle = () => {
-    run({ type: "project.style", positive: split(style), negative: split(styleNegative) }, { gesture: "project-style" });
-    endGesture();
-  };
 
   return (
     <div className="card">
@@ -119,15 +107,14 @@ export function PromptCard({ brief, pageBrief, panel, pageId, project, run, endG
       {copied && <p className="muted revisions__message">{copied}</p>}
 
       <details className="prompt-settings">
-        <summary>stile e prompt personale</summary>
-        <label className="field">
-          <span className="field__label">stile del progetto (vale per tutti i pannelli)</span>
-          <input type="text" value={style} placeholder="clean ink lineart, flat cel shading, muted palette" onChange={(e) => setStyle(e.target.value)} onBlur={saveStyle} />
-        </label>
-        <label className="field">
-          <span className="field__label">da evitare, per tutto il progetto</span>
-          <input type="text" value={styleNegative} placeholder="photo, 3d render" onChange={(e) => setStyleNegative(e.target.value)} onBlur={saveStyle} />
-        </label>
+        <summary>prompt personale</summary>
+        <p className="field__hint">
+          Lo stile è dell'opera, non della vignetta:{" "}
+          <button type="button" className="link-btn" onClick={onStyle}>
+            Riferimenti → Stile
+          </button>
+          .
+        </p>
         <label className="field">
           <span className="field__label">prompt tuo per questo pannello (sostituisce quello compilato)</span>
           <textarea

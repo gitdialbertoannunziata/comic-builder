@@ -15,8 +15,8 @@ const spec: RenderSpec = {
   prompt_upsampling: false,
   output_format: "png",
   references: [
-    { character: "sara", path: "characters/sara/a.png" },
-    { character: "marco", path: "characters/marco/a.png" },
+    { kind: "character" as const, ref: "sara", path: "characters/sara/a.png" },
+    { kind: "character" as const, ref: "marco", path: "characters/marco/a.png" },
   ],
   control_image: null,
   compiler: 1,

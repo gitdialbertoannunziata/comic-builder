@@ -107,7 +107,7 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
           items={[
             { id: "copione", label: "Copione", title: "Capitoli, testo e spoglio" },
             { id: "pagine", label: "Pagine", title: "Pagine, vignette, balloon, arte" },
-            { id: "personaggi", label: "Personaggi", title: "Le schede dei personaggi dell'opera" },
+            { id: "personaggi", label: "Riferimenti", title: "Stile, personaggi e luoghi dell'opera: ciò che tiene uguali le vignette" },
             { id: "revisioni", label: "Revisioni", badge: openRevisions, title: "Correzioni dello sceneggiatore, trova e sostituisci" },
             { id: "export", label: "Export", title: "Il capitolo nei formati del progetto" },
           ]}

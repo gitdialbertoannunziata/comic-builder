@@ -7,16 +7,15 @@ import {
   OpenAiLlmService,
   breakdownScript,
   type BreakdownCastMember,
+  type BreakdownPlace,
   type LlmService,
 } from "@comic-builder/llm";
 import { TARGET } from "./renderPreview.js";
 import type { ServiceChoice, BreakdownSummary } from "./components/ScriptPanel.js";
 import type { ChapterContext } from "@comic-builder/core";
 
-export interface RunBreakdownInput {
-  script: string;
-  /** Avanzamento dello spoglio a parti: un capitolo lungo richiede più richieste. */
-  onProgress?: (progress: { done: number; total: number }) => void;
+/** Il modello linguistico scelto nel Copione, con ciò che serve a chiamarlo. */
+export interface LlmChoice {
   service: ServiceChoice;
   ollamaModel: string;
   ollamaHost: string;
@@ -27,6 +26,12 @@ export interface RunBreakdownInput {
   openaiKey: string;
   openaiModel: string;
   openaiBaseUrl: string;
+}
+
+export interface RunBreakdownInput extends LlmChoice {
+  script: string;
+  /** Avanzamento dello spoglio a parti: un capitolo lungo richiede più richieste. */
+  onProgress?: (progress: { done: number; total: number }) => void;
   chapterId: string;
   /** Ciò che si sa dell'opera: personaggi con scheda, luoghi già visti, regole della serie, riassunto del precedente. */
   context?: ChapterContext;
@@ -37,10 +42,13 @@ export interface RunBreakdownResult {
   scenes: Scene[];
   /** Chi compare nel capitolo, con ciò che il testo ne dice: le schede di chi non ne ha una nascono da qui. */
   cast: BreakdownCastMember[];
+  /** I luoghi delle scene, con la descrizione proposta: le schede dei luoghi nascono da qui. */
+  locations: BreakdownPlace[];
   summary: BreakdownSummary;
 }
 
-function serviceFor(choice: ServiceChoice, input: RunBreakdownInput): LlmService {
+export function llmServiceFor(input: LlmChoice): LlmService {
+  const choice = input.service;
   if (choice === "ollama") return new OllamaLlmService({ model: input.ollamaModel, host: input.ollamaHost });
   if (choice === "anthropic") {
     return new AnthropicLlmService({
@@ -68,7 +76,7 @@ function serviceFor(choice: ServiceChoice, input: RunBreakdownInput): LlmService
  */
 export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdownResult> {
   const result = await breakdownScript({
-    llm: serviceFor(input.service, input),
+    llm: llmServiceFor(input),
     script: input.script,
     // Stesso percorso in cui il copione si salva (script/<capitolo>.md): la
     // provenienza dei pannelli punta al file giusto per le revisioni (§10.1).
@@ -100,6 +108,7 @@ export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdo
     pages,
     scenes: result.scenes,
     cast: result.cast,
+    locations: result.locations,
     summary: {
       scenes: result.scenes.length,
       beats: result.scenes.reduce((sum, s) => sum + s.beats.length, 0),

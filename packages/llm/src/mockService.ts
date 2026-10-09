@@ -1,5 +1,6 @@
 import type { LlmService, LlmRequest, LlmResponse } from "./service.js";
 import type { Breakdown, BreakdownBeat, BreakdownCast, BreakdownScene } from "./breakdownSchema.js";
+import { heuristicLocations, LOCATIONS_SCHEMA_NAME } from "./locations.js";
 
 /**
  * Spoglio euristico deterministico, senza alcun modello.
@@ -217,12 +218,14 @@ function unnumber(text: string): string {
 export function heuristicBreakdown(input: string): Breakdown {
   const script = unnumber(input);
   const scenes = splitScenes(script).map(sceneFrom);
-  if (scenes.length > 0) return { scenes, cast: castFrom(script) };
+  // Dei luoghi l'euristica conosce il nome, non com'è fatto: la descrizione la scrive l'autore.
+  if (scenes.length > 0) return { scenes, cast: castFrom(script), locations: [...new Set(scenes.map((s) => s.location))].map((name) => ({ name, description: "" })) };
 
   // Uno script senza struttura riconoscibile resta una scena sola: meglio un
   // documento povero ma valido che un errore che blocca la catena.
   return {
     cast: [],
+    locations: [],
     scenes: [
       {
         title: "Scena 1",
@@ -257,7 +260,7 @@ export class MockLlmService implements LlmService {
   complete(request: LlmRequest): Promise<LlmResponse> {
     const started = Date.now();
     return Promise.resolve({
-      data: heuristicBreakdown(request.user),
+      data: request.schemaName === LOCATIONS_SCHEMA_NAME ? heuristicLocations(request.user) : heuristicBreakdown(request.user),
       meta: { model: "euristico", durationMs: Date.now() - started },
     });
   }

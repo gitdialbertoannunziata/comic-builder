@@ -4,6 +4,8 @@ import { buildPagesFromScene } from "../src/script/buildPages.js";
 import { projectDocFrom, type ProjectDoc } from "../src/document/projectDoc.js";
 import { applyCommand } from "../src/editor/commands.js";
 import { artCommands, artPathFor, isArtFile, missingArt, artMediaType } from "../src/art/artLink.js";
+import { shownArt, shownArtPatch } from "../src/art/shownArt.js";
+import { artPlacement } from "../src/render/geometry.js";
 import { renderPageSvg } from "../src/render/renderSvg.js";
 import { resolvePageLayout } from "../src/layout/resolveLayout.js";
 import { BalloonStyleSchema, DraftStyleSchema } from "../src/schema/project.js";
@@ -169,5 +171,49 @@ describe("Dimensioni dell'arte registrate al collegamento", () => {
     const retouched = applyAll(framed, [{ path: `art/${panel.id}.png`, sha: "b", size: { width: 1200, height: 800 } }]);
     expect(art(retouched)).toMatchObject({ sha: "b", frame: { zoom: 1.5, focus_x: 0.3 } });
     expect(artCommands(retouched, [{ path: `art/${panel.id}.png`, sha: "b", size: { width: 1200, height: 800 } }])).toEqual([]);
+  });
+});
+
+describe("Inquadratura delle immagini generate", () => {
+  const pageOf = pages[0]!.id;
+  const record = { spec_hash: "abc", file: `renders/${panel.id}@digital-page.abc.png`, engine: "flux", rendered_at: "2026-10-09T00:00:00Z", size: { width: 1000, height: 500 } };
+  const rendered = applyCommand(doc, { type: "panel.update", pageId: pageOf, panelId: panel.id, patch: { render: { "digital-page": record } } });
+  const panelIn = (d: ProjectDoc) => d.pages[pageOf]!.panels.find((p) => p.id === panel.id)!;
+  const cfg = {
+    width: 1600, height: 2400, fontFamily: "Comic Neue", lineHeight: 1.35, padding: 12, tailWidthPx: 10,
+    balloonStyle: BalloonStyleSchema.parse({}), draftStyle: DraftStyleSchema.parse({}), baseFontSizePx: 26, target: "digital-page",
+    art: new Map([[panel.id, "r.png"]]),
+  };
+  const page = rendered.pages[pageOf]!;
+  if (page.layout.mode !== "page") throw new Error();
+  const boxes = resolvePageLayout(page.layout, page.panels, 1488, 2288, 56, 56);
+
+  it("l'immagine mostrata è il render, finché l'autore non mette arte sua", () => {
+    expect(shownArt(panelIn(rendered), "digital-page")).toEqual({ kind: "render", file: record.file, size: record.size, frame: undefined });
+    const own = applyAll(rendered, [{ path: `art/${panel.id}.png`, sha: "aaa" }]);
+    expect(shownArt(panelIn(own), "digital-page")?.kind).toBe("art");
+    expect(shownArt(panelIn(doc), "digital-page")).toBeNull();
+  });
+
+  it("zoom e punto di interesse del render: il renderer li applica come all'arte dell'autore", () => {
+    const frame = { fit: "cover" as const, zoom: 2, focus_x: 0.3, focus_y: 0.6 };
+    const patch = shownArtPatch(panelIn(rendered), "digital-page", frame)!;
+    const framed = applyCommand(rendered, { type: "panel.update", pageId: pageOf, panelId: panel.id, patch });
+    expect(panelIn(framed).render["digital-page"]).toEqual({ ...record, frame });
+    expect(panelIn(framed).art).toEqual(panelIn(rendered).art);
+    const at = artPlacement(boxes.get(panel.id)!, record.size, frame);
+    expect(renderPageSvg(framed.pages[pageOf]!, boxes, new Map(), cfg)).toContain(`<image href="r.png" x="${at.x}" y="${at.y}" width="${at.width}" height="${at.height}" preserveAspectRatio="none"`);
+  });
+
+  it("un render di prima, senza dimensioni, si riempie e si centra; inquadrandolo le dimensioni lette si registrano", () => {
+    const old = { spec_hash: record.spec_hash, file: record.file, engine: record.engine, rendered_at: record.rendered_at };
+    const before = applyCommand(doc, { type: "panel.update", pageId: pageOf, panelId: panel.id, patch: { render: { "digital-page": old } } });
+    expect(renderPageSvg(before.pages[pageOf]!, boxes, new Map(), cfg)).toContain('preserveAspectRatio="xMidYMid slice"');
+    const patch = shownArtPatch(panelIn(before), "digital-page", { fit: "cover", zoom: 1.5, focus_x: 0.5, focus_y: 0.5 }, { width: 800, height: 600 })!;
+    expect(patch).toEqual({ render: { "digital-page": { ...old, size: { width: 800, height: 600 }, frame: { fit: "cover", zoom: 1.5, focus_x: 0.5, focus_y: 0.5 } } } });
+  });
+
+  it("nessuna immagine, nessuna patch", () => {
+    expect(shownArtPatch(panelIn(doc), "digital-page", { fit: "cover", zoom: 1, focus_x: 0.5, focus_y: 0.5 })).toBeNull();
   });
 });

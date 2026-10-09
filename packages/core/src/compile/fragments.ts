@@ -85,18 +85,20 @@ export const FRAMING_FRAGMENT: Record<PanelCharacter["framing"], string> = {
 };
 
 /**
- * Il tono non entra nel prompt (§6.1: agisce su palette, postura e
- * composizione, non è un frammento). Entra invece nel brief, come
- * indicazione esplicita per un modello che segue istruzioni.
+ * Il tono non entra nel prompt compatto (§6.1: non è un soggetto). Entra nel
+ * brief come indicazione di composizione e messa in scena — **non** di
+ * palette: il tono cambia da un beat all'altro, e una palette che cambia con
+ * lui fa di ogni vignetta un quadro diverso. I colori sono dello stile
+ * dell'opera, la luce della scena.
  */
 export const MOOD_GUIDANCE: Record<Camera["mood"], string> = {
-  calm: "calm: balanced composition, open space, gentle palette",
-  tense: "tense: tight framing, strong diagonals, restrained palette",
-  dread: "dread: heavy negative space, deep shadows, desaturated palette",
-  warm: "warm: soft shapes, close distances, warm palette",
-  grief: "grief: isolated figure, downward lines, muted cold palette",
-  action: "action: dynamic diagonals, foreshortening, high contrast",
-  wonder: "wonder: small figure against scale, light from above, luminous palette",
+  calm: "calm: balanced composition, open space, relaxed poses",
+  tense: "tense: tight framing, strong diagonals, stiff poses",
+  dread: "dread: heavy negative space, deep shadows, figures small or cornered",
+  warm: "warm: soft shapes, close distances, open gestures",
+  grief: "grief: isolated figure, downward lines, empty space around it",
+  action: "action: dynamic diagonals, foreshortening, bodies in motion",
+  wonder: "wonder: small figure against scale, light from above",
   ironic: "ironic: deadpan framing, symmetrical composition",
 };
 

@@ -181,7 +181,7 @@ export function refocus(container: HTMLElement | null, selector: string): void {
 
 /** Le scorciatoie degli elenchi, per la legenda: le applicano `listArrows` e gli elenchi che si riordinano. */
 export const LIST_LEGEND: readonly Shortcut[] = [
-  { keys: ["ArrowUp", "ArrowDown"], shown: "← ↑ → ↓", label: "Voce vicina: capitolo, pagina, vignetta" },
+  { keys: ["ArrowUp", "ArrowDown"], shown: "← ↑ → ↓", label: "Voce vicina: capitolo, pagina, vignetta, stile, personaggio, luogo" },
   { keys: ["Alt+ArrowUp", "Alt+ArrowDown"], shown: "Alt + frecce", label: "Sposta il capitolo o la pagina" },
   { keys: ["Delete"], label: "Elimina il capitolo o la pagina" },
 ];

@@ -1,5 +1,6 @@
-import { artMediaType, renderPaths, specHash, type Command, type Panel, type ProjectStore, type RenderSpec } from "@comic-builder/core";
-import { runRenderQueue, type ImageRequest, type ImageService, type RenderJob } from "@comic-builder/image";
+import { artMediaType, renderPaths, specHash, type Command, type ImageSize, type Panel, type ProjectStore, type RenderSpec } from "@comic-builder/core";
+import { runRenderQueue, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
+import { imageSize } from "./useArtWatcher.js";
 
 /** Un pannello da generare, con lo spec che il documento compila adesso. */
 export interface GenerationItem {
@@ -47,13 +48,18 @@ export async function generatePanels(input: {
   let finished = 0;
   const tick = () => input.onProgress?.({ done: ++finished, total });
 
-  const link = (item: GenerationItem, file: string) =>
+  // Le dimensioni vere dell'immagine, per l'inquadratura; se non si riesce a leggerle, quelle chieste al modello.
+  const sizeOf = async (item: GenerationItem, bytes: Uint8Array): Promise<ImageSize> =>
+    (await imageSize(new Blob([bytes as BlobPart], { type: "image/png" }))) ?? { width: item.spec.width, height: item.spec.height };
+
+  // Un'immagine nuova riparte centrata, senza l'inquadratura di quella di prima: come un disegno nuovo importato.
+  const link = (item: GenerationItem, file: string, size: ImageSize) =>
     run(
       {
         type: "panel.update",
         pageId: item.pageId,
         panelId: item.panel.id,
-        patch: { render: { ...item.panel.render, [item.spec.target]: { spec_hash: specHash(item.spec), file, engine: service.name, rendered_at: new Date().toISOString() } } },
+        patch: { render: { ...item.panel.render, [item.spec.target]: { spec_hash: specHash(item.spec), file, engine: service.name, rendered_at: new Date().toISOString(), size } } },
       },
       { gesture },
     );
@@ -61,8 +67,9 @@ export async function generatePanels(input: {
   const jobs: Array<RenderJob & { item: GenerationItem }> = [];
   for (const item of items) {
     const { image } = renderPaths(item.spec);
-    if (await store.readBytes(image)) {
-      link(item, image);
+    const cached = await store.readBytes(image);
+    if (cached) {
+      link(item, image, await sizeOf(item, cached));
       report.cached++;
       tick();
       continue;
@@ -70,15 +77,7 @@ export async function generatePanels(input: {
     jobs.push({
       id: item.panel.id,
       item,
-      request: async (): Promise<ImageRequest> => {
-        const references = [];
-        for (const reference of item.spec.references) {
-          const data = await store.readBytes(reference.path);
-          if (!data) throw new Error(`Riferimento non trovato: ${reference.path}. Toglilo dalla scheda di ${reference.character}, o rimetti il file.`);
-          references.push({ path: reference.path, data, mediaType: artMediaType(reference.path) ?? "image/png" });
-        }
-        return { spec: item.spec, references };
-      },
+      request: async (): Promise<ImageRequest> => ({ spec: item.spec, references: await readReferences(store, item.spec) }),
     });
   }
 
@@ -99,7 +98,7 @@ export async function generatePanels(input: {
           paths.sidecar,
           `${JSON.stringify({ spec: item.spec, spec_hash: specHash(item.spec), engine: service.name, rendered_at: new Date().toISOString(), cost_usd: outcome.result.meta.costUsd, remote_id: outcome.result.meta.remoteId ?? null, references }, null, 2)}\n`,
         );
-        link(item, paths.image);
+        link(item, paths.image, await sizeOf(item, outcome.result.data));
         report.done++;
         report.costUsd += outcome.result.meta.costUsd ?? 0;
       } else if (outcome.status === "failed") {
@@ -115,12 +114,47 @@ export async function generatePanels(input: {
   return report;
 }
 
-/** Curatela (F5): un render riuscito diventa riferimento del personaggio. Copia il file: la cache dei render resta cancellabile. */
-export async function promoteRender(store: ProjectStore, file: string, character: string): Promise<string | null> {
+const WHERE: Record<RenderSpec["references"][number]["kind"], string> = {
+  style: "dallo stile dell'opera",
+  location: "dalla scheda del luogo",
+  character: "dalla scheda del personaggio",
+};
+
+/** I file dei riferimenti dello spec, letti dal progetto. Uno che manca ferma la generazione, e dice da dove toglierlo. */
+export async function readReferences(store: ProjectStore, spec: RenderSpec): Promise<ReferenceImage[]> {
+  const references: ReferenceImage[] = [];
+  for (const reference of spec.references) {
+    const data = await store.readBytes(reference.path);
+    if (!data) throw new Error(`Riferimento non trovato: ${reference.path}. Toglilo ${WHERE[reference.kind]}, o rimetti il file.`);
+    references.push({ path: reference.path, data, mediaType: artMediaType(reference.path) ?? "image/png" });
+  }
+  return references;
+}
+
+/**
+ * Una sola immagine di riferimento (la vista di un personaggio, la tavola
+ * di un luogo), scritta dove dice `path`. Passa dalla coda anche se è una:
+ * è la coda che aspetta il limite di richieste al minuto e riprova.
+ */
+export async function generateReference(input: { store: ProjectStore; service: ImageService; spec: RenderSpec; path: string }): Promise<{ costUsd: number }> {
+  const { store, service, spec, path } = input;
+  const references = await readReferences(store, spec);
+  const [outcome] = await runRenderQueue([{ id: spec.panel, request: () => ({ spec, references }) }], { service, retries: 5 });
+  if (!outcome || outcome.status !== "done") throw new Error(outcome?.status === "failed" ? outcome.error : "Generazione interrotta.");
+  await store.writeBytes(path, outcome.result.data);
+  return { costUsd: outcome.result.meta.costUsd ?? 0 };
+}
+
+/**
+ * Curatela: un render riuscito diventa riferimento — di un personaggio, di
+ * un luogo, dello stile dell'opera. Copia il file, perché la cache dei
+ * render resta cancellabile (§5.8).
+ */
+export async function promoteRender(store: ProjectStore, file: string, directory: string): Promise<string | null> {
   const bytes = await store.readBytes(file);
   if (!bytes) return null;
   const name = file.slice(file.lastIndexOf("/") + 1).replace(/@[^.]*/, "");
-  const path = `characters/${character}/${name}`;
+  const path = `${directory}/${name}`;
   await store.writeBytes(path, bytes);
   return path;
 }

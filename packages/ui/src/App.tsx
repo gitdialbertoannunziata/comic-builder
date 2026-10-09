@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { chapterContext, issue, lessonsOnlyIn, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
+import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
+import { describeLocations, type PlaceToDescribe } from "@comic-builder/llm";
 import { useFont } from "./useFont.js";
-import { runBreakdown } from "./runBreakdown.js";
+import { llmServiceFor, runBreakdown, type LlmChoice } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { useRenders } from "./editor/useRenders.js";
 import type { ImageConfig } from "./components/GenerateCard.js";
 import { ChapterBar } from "./components/ChapterBar.js";
 import { BreakdownContext } from "./components/BreakdownContext.js";
-import { CharactersPanel } from "./components/CharactersPanel.js";
+import { ReferencesArea, type ReferencesTab } from "./components/ReferencesArea.js";
 import { ScriptPanel, type ServiceChoice, type BreakdownSummary } from "./components/ScriptPanel.js";
 import { BrowserPlatformService } from "./platform/browserPlatform.js";
 import { prefilledConfig } from "./devConfig.js";
@@ -111,6 +112,18 @@ export function App() {
     megapixels,
     onMegapixels: setMegapixels,
   };
+  const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
+  const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });
+
+  // L'area Riferimenti: quale scheda, e cosa aprire quando ci si arriva da una vignetta.
+  const [referencesTab, setReferencesTab] = usePreference<ReferencesTab>("referencesTab", "stile");
+  const [referencesFocus, setReferencesFocus] = useState<{ ref: string; at: number } | null>(null);
+  const openReferences = (tab: ReferencesTab, ref?: string) => {
+    setReferencesTab(tab);
+    if (ref) setReferencesFocus({ ref, at: Date.now() });
+    setArea("personaggi");
+  };
+
   const [running, setRunning] = useState(false);
   const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
@@ -124,16 +137,7 @@ export function App() {
     try {
       const result = await runBreakdown({
         script,
-        service,
-        ollamaModel,
-        ollamaHost,
-        anthropicKey,
-        anthropicModel,
-        deepseekKey,
-        deepseekModel,
-        openaiKey,
-        openaiModel,
-        openaiBaseUrl,
+        ...llm,
         chapterId: chapter.id,
         // Gli altri capitoli: personaggi esistenti e riassunto del precedente.
         context: chapterContext(doc, chapter.id),
@@ -160,22 +164,28 @@ export function App() {
         run({ type: "character.upsert", ref: member.ref, patch }, { gesture });
         filled.push(sheet?.name.trim() || member.name);
       }
+      // I luoghi lo stesso: una scheda che non c'è nasce con la descrizione proposta, una che c'è prende solo quella che le manca.
+      const places: string[] = [];
+      for (const place of result.locations) {
+        const ref = locationRef(place.name);
+        const sheet = doc.locations[ref];
+        if (!ref || !place.description || sheet?.description.trim()) continue;
+        run({ type: "location.upsert", ref, patch: sheet ? { description: place.description } : { name: place.name, description: place.description } }, { gesture });
+        places.push(place.name);
+      }
       if (!chapter.title.trim() || /^Capitolo \d+$/.test(chapter.title)) {
         run({ type: "chapter.update", chapterId: chapter.id, title: result.scenes[0]?.title ?? chapter.title }, { gesture });
       }
       endGesture();
       setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([key]) => key !== draftKey)));
-      setSummary(
-        filled.length > 0
-          ? {
-              ...result.summary,
-              issues: [
-                ...result.summary.issues,
-                issue("info", "breakdown.cast-added", `Schede personaggio riempite dallo spoglio (dove il testo tace è una proposta), da rivedere: ${filled.join(", ")}`, "characters"),
-              ],
-            }
-          : result.summary,
-      );
+      setSummary({
+        ...result.summary,
+        issues: [
+          ...result.summary.issues,
+          ...(filled.length > 0 ? [issue("info", "breakdown.cast-added", `Schede personaggio riempite dallo spoglio (dove il testo tace è una proposta), da rivedere: ${filled.join(", ")}`, "characters")] : []),
+          ...(places.length > 0 ? [issue("info", "breakdown.locations-added", `Luoghi descritti dallo spoglio, da rivedere in Riferimenti → Luoghi: ${places.join(", ")}`, "locations")] : []),
+        ],
+      });
       // Le pagine sono nate: si va a vederle. L'esito resta nell'area Copione.
       setArea("pagine");
     } catch (error) {
@@ -204,7 +214,7 @@ export function App() {
   }
   useShortcuts("Ovunque", 0, [
     { keys: ["?"], label: "Questa legenda", once: true, run: () => setHelp((open) => !open) },
-    { keys: ["1", "2", "3", "4", "5"], shown: "1 … 5", label: "Aree: Copione, Pagine, Personaggi, Revisioni, Export", once: true, run: (e) => setArea(AREAS[Number(e.key) - 1]!) },
+    { keys: ["1", "2", "3", "4", "5"], shown: "1 … 5", label: "Aree: Copione, Pagine, Riferimenti, Revisioni, Export", once: true, run: (e) => setArea(AREAS[Number(e.key) - 1]!) },
     { keys: ["Shift+PageUp", "Shift+PageDown"], shown: "Shift + Pag↑ / Pag↓", label: "Capitolo precedente / successivo", once: true, run: (e) => stepChapter(e.key === "PageDown" ? 1 : -1) },
     {
       keys: ["Escape"],
@@ -296,16 +306,37 @@ export function App() {
 
       <div className="area area--scroll" hidden={area !== "personaggi"}>
         <div className="area__inner">
-          <header className="area__head">
-            <h2 className="area__title">Personaggi</h2>
-            <p className="area__lead">Sono dell'opera, non del capitolo: com'è fatto ognuno si dice qui una volta, e vale in ogni vignetta.</p>
-          </header>
-          <CharactersPanel doc={doc} store={editor.assets} image={image} run={run} endGesture={endGesture} />
+          <ReferencesArea
+            doc={doc}
+            store={editor.assets}
+            image={image}
+            run={run}
+            endGesture={endGesture}
+            tab={referencesTab}
+            onTab={setReferencesTab}
+            focus={referencesFocus}
+            describe={describe}
+            describer={service === "mock" ? "euristico" : service}
+          />
         </div>
       </div>
 
       {pages.length > 0 ? (
-        <Workspace key={chapter.id} editor={editor} art={art} platform={platform} image={image} chapter={chapter} pages={pages} font={font} fontBytes={fontBytes} fontError={fontError} area={area} onArea={setArea} />
+        <Workspace
+          key={chapter.id}
+          editor={editor}
+          art={art}
+          platform={platform}
+          image={image}
+          chapter={chapter}
+          pages={pages}
+          font={font}
+          fontBytes={fontBytes}
+          fontError={fontError}
+          area={area}
+          onArea={setArea}
+          onReferences={openReferences}
+        />
       ) : (
         <div className="area area--empty" hidden={area === "copione" || area === "personaggi"}>
           <div className="empty-chapter">

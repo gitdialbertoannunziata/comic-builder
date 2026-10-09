@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IdSchema } from "./common.js";
+import { IdSchema, ReferenceImageSchema } from "./common.js";
 
 /**
  * Scheda personaggio (§5.1: `characters/<ref>.json`).
@@ -26,17 +26,8 @@ export const AppearanceSchema = z.object({
 });
 export type Appearance = z.infer<typeof AppearanceSchema>;
 
-export const CharacterReferenceSchema = z.object({
-  /** Percorso nel progetto, es. `characters/sara/fronte.png`. */
-  path: z.string(),
-  note: z.string().default(""),
-  /**
-   * Se va allegata al modello quando si genera (F5): la curatela è questa.
-   * Una scheda raccoglie anche schizzi e prove; il modello copia ciò che
-   * vede, quindi gli si danno solo le immagini in cui il personaggio è lui.
-   */
-  use: z.boolean().default(true),
-});
+/** Un riferimento del personaggio (F5): si allegano solo quelli in cui il personaggio è proprio lui. */
+export const CharacterReferenceSchema = ReferenceImageSchema;
 export type CharacterReference = z.infer<typeof CharacterReferenceSchema>;
 
 export const CharacterSheetSchema = z.object({

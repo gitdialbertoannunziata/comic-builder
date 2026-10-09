@@ -8,3 +8,4 @@ export * from "./chapters.js";
 export * from "./project.js";
 export * from "./revisions.js";
 export * from "./characters.js";
+export * from "./locations.js";

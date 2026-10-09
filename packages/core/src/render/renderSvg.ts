@@ -7,6 +7,7 @@ import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
 import { panelNeedsDraft, renderPanelDraft } from "./renderDraft.js";
 import { artPlacement, balloonBox, tailPoint } from "./geometry.js";
+import { shownArt } from "../art/shownArt.js";
 
 function escapeXml(text: string): string {
   return text
@@ -154,17 +155,18 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
  */
 function renderPanelArt(panel: Panel, box: Box, config: RenderConfig): string {
   // L'arte dell'autore vince; senza, vale il render di questo target (§5.7).
-  const source = panel.art.source ?? panel.render[config.target]?.file ?? null;
-  if (!source) return "";
+  const shown = shownArt(panel, config.target);
+  if (!shown) return "";
+  const source = shown.file;
   const href = config.art?.get(panel.id);
   const clipId = `cb-clip-${panel.id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
   const radius = panel.border.radius * (config.strokeScale ?? 1);
   if (href) {
     const clip = `<clipPath id="${clipId}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}"/></clipPath>`;
-    // Con le dimensioni dell'immagine si applica l'inquadratura dell'autore;
-    // senza, il ripiego è il riempimento centrato di sempre.
-    if (panel.art.source && panel.art.size) {
-      const at = artPlacement(box, panel.art.size, panel.art.frame);
+    // Con le dimensioni dell'immagine si applica l'inquadratura, che sia arte
+    // dell'autore o un render; senza, il ripiego è il riempimento centrato di sempre.
+    if (shown.size) {
+      const at = artPlacement(box, shown.size, shown.frame);
       return (
         clip +
         `<image href="${escapeXml(href)}" x="${at.x}" y="${at.y}" width="${at.width}" height="${at.height}" preserveAspectRatio="none" clip-path="url(#${clipId})"/>`

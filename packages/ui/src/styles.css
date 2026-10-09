@@ -2497,6 +2497,66 @@ kbd {
   margin: 0 1px;
 }
 
+/* Riferimenti dell'opera: stile, personaggi, luoghi. */
+.tabs--references {
+  margin-bottom: 14px;
+}
+
+.style-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.style-preset {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.style-preset span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.style-preset:hover {
+  border-color: var(--border-strong);
+}
+
+.style-preset[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 2px 2px 0 var(--accent);
+}
+
+.reference--unused img {
+  opacity: 0.45;
+}
+
+/* Cosa manca perché le vignette escano coerenti: stile, luogo, personaggi. */
+.readiness {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.readiness:empty {
+  display: none;
+}
+
+/* Una riga di testo con il suo link in fondo, non le due colonne di un avviso del lint. */
+.readiness .issue {
+  display: block;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -61,13 +61,17 @@ export const ArtFrameSchema = z.object({
 });
 export type ArtFrame = z.infer<typeof ArtFrameSchema>;
 
+/** Dimensioni in pixel di un'immagine: servono all'inquadratura, e si registrano quando l'immagine entra nel pannello. */
+export const ImageSizeSchema = z.object({ width: z.number().positive(), height: z.number().positive() });
+export type ImageSize = z.infer<typeof ImageSizeSchema>;
+
 export const ArtSchema = z.object({
   source: z.string().nullable(),
   status: ArtStatusSchema,
   /** sha del file d'arte al momento della composizione (§9.2): equivalente della staleness nel ramo manuale. */
   sha: z.string().nullable().optional(),
   /** Dimensioni in pixel dell'immagine: servono all'inquadratura. Registrate al collegamento. */
-  size: z.object({ width: z.number().positive(), height: z.number().positive() }).nullable().optional(),
+  size: ImageSizeSchema.nullable().optional(),
   frame: ArtFrameSchema.optional(),
 });
 export type Art = z.infer<typeof ArtSchema>;
@@ -84,11 +88,21 @@ export const SeedSchema = z.object({
 });
 export type Seed = z.infer<typeof SeedSchema>;
 
+/**
+ * Un'immagine generata per il pannello (§5.7). Come l'arte dell'autore ha le
+ * sue dimensioni e la sua inquadratura: il modello a volte inquadra troppo
+ * largo o taglia una testa, e si ritocca qui senza rigenerare. L'inquadratura
+ * è dell'immagine, non del pannello: un render nuovo riparte centrato, come
+ * un disegno nuovo importato, e l'undo riporta il render di prima con la sua.
+ * Non entra nello spec: inquadrare non rende vecchio il render.
+ */
 export const RenderRecordSchema = z.object({
   spec_hash: z.string(),
   file: z.string(),
   engine: z.string(),
   rendered_at: z.string(),
+  size: ImageSizeSchema.nullable().optional(),
+  frame: ArtFrameSchema.optional(),
 });
 
 /**

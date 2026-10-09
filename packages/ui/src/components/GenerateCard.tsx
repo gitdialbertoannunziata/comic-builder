@@ -1,5 +1,21 @@
 import { useRef, useState } from "react";
-import { FLUX2_FLEX, FLUX2_PRO, panelSeed, renderState, type CharacterSheet, type Command, type Panel, type Project, type ProjectStore } from "@comic-builder/core";
+import {
+  FLUX2_FLEX,
+  FLUX2_PRO,
+  panelSeed,
+  renderState,
+  sceneLocation,
+  STYLE_PRESETS,
+  styleChosen,
+  type CharacterSheet,
+  type Command,
+  type LocationSheet,
+  type Panel,
+  type Project,
+  type ProjectStore,
+  type ReferenceKind,
+  type Scene,
+} from "@comic-builder/core";
 import {
   AZURE_FLUX_DEPLOYMENT,
   AZURE_FLUX_FLEX_DEPLOYMENT,
@@ -12,6 +28,7 @@ import {
 } from "@comic-builder/image";
 import { generatePanels, promoteRender, type GenerationItem, type GenerationReport } from "../editor/generateArt.js";
 import { usePreference } from "../usePreference.js";
+import type { ReferencesTab } from "./ReferencesArea.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
@@ -74,6 +91,9 @@ interface Props {
   store: ProjectStore;
   project: Project;
   characters: Readonly<Record<string, CharacterSheet>>;
+  locations: Readonly<Record<string, LocationSheet>>;
+  /** La scena del pannello: dice in che luogo è ambientato. */
+  scene: Scene | undefined;
   pageId: string;
   panel: Panel;
   /** I pannelli della pagina coi loro spec; null se il formato mostrato non è quello su cui si genera. */
@@ -82,6 +102,8 @@ interface Props {
   primaryLabel: string;
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
+  /** Porta ai riferimenti dell'opera: lo stile, un luogo, un personaggio. */
+  onReferences: (tab: ReferencesTab, ref?: string) => void;
 }
 
 const usd = (value: number) => `${value.toFixed(2).replace(".", ",")} $`;
@@ -93,7 +115,7 @@ const STATE_LABEL = { none: "mai generata", fresh: "aggiornata", stale: "da rige
  * coerenza dei personaggi (F5) sta nei riferimenti delle schede: un render
  * riuscito si può tenere come riferimento, ed è così che la scheda cresce.
  */
-export function GenerateCard({ config, store, project, characters, pageId, panel, items, primaryLabel, run, endGesture }: Props) {
+export function GenerateCard({ config, store, project, characters, locations, scene, pageId, panel, items, primaryLabel, run, endGesture, onReferences }: Props) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<GenerationReport | null>(null);
@@ -153,20 +175,45 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
     void generate([{ pageId, panel: next, spec: { ...item.spec, seed: panelSeed(project, next) } }]);
   }
 
-  async function keep(character: string) {
+  const place = sceneLocation({ locations }, scene);
+
+  /**
+   * Curatela: un render riuscito diventa riferimento — dello stile dell'opera,
+   * del luogo, di un personaggio. Le vignette che lo riceveranno risultano da
+   * rigenerare: è voluto, ora hanno un riferimento in più.
+   */
+  async function keep(kind: ReferenceKind, ref: string) {
     if (!record) return;
-    const path = await promoteRender(store, record.file, character);
+    const directory = kind === "style" ? "style" : kind === "location" ? `locations/${ref}` : `characters/${ref}`;
+    const path = await promoteRender(store, record.file, directory);
     if (!path) return setNote("Il file del render non c'è più: rigenera la vignetta.");
-    const references = characters[character]?.references ?? [];
-    if (!references.some((r) => r.path === path)) {
-      run({ type: "character.upsert", ref: character, patch: { references: [...references, { path, note: `da ${panel.id}`, use: true }] } });
+    const entry = { path, note: `da ${panel.id}`, use: true };
+    if (kind === "style") {
+      if (!project.style.references.some((r) => r.path === path)) run({ type: "project.style", references: [...project.style.references, entry] });
+      setNote("Tenuta come tavola di stile: da ora si allega a ogni generazione dell'opera, e tutte le vignette risultano da rigenerare.");
+    } else if (kind === "location") {
+      const sheet = locations[ref];
+      if (!sheet?.references.some((r) => r.path === path)) run({ type: "location.upsert", ref, patch: { ...(sheet ? {} : { name: place?.name ?? ref }), references: [...(sheet?.references ?? []), entry] } });
+      setNote(`Tenuta come immagine di «${place?.name ?? ref}»: le vignette ambientate lì risultano da rigenerare, ora hanno il posto da guardare.`);
+    } else {
+      const references = characters[ref]?.references ?? [];
+      if (!references.some((r) => r.path === path)) run({ type: "character.upsert", ref, patch: { references: [...references, entry] } });
+      setNote(`Tenuta come riferimento di ${characters[ref]?.name || ref}. Le vignette in cui compare risultano da rigenerare: ora hanno un riferimento in più.`);
     }
-    setNote(`Tenuta come riferimento di ${character}. Le vignette in cui compare risultano da rigenerare: è voluto, ora hanno un riferimento in più.`);
   }
 
+  // Cosa riceve il modello, per tipo: la coerenza dipende da questo più che dal prompt.
+  const attached = item?.spec.references ?? [];
+  const byKind = (kind: ReferenceKind) => attached.filter((r) => r.kind === kind);
   const counts = new Map<string, number>();
-  for (const reference of item?.spec.references ?? []) counts.set(reference.character, (counts.get(reference.character) ?? 0) + 1);
+  for (const reference of byKind("character")) counts.set(reference.ref, (counts.get(reference.ref) ?? 0) + 1);
   const without = panel.characters.map((c) => c.ref).filter((ref) => !counts.has(ref));
+  const attachedText = [
+    byKind("style").length > 0 ? `${byKind("style").length} ${byKind("style").length === 1 ? "tavola" : "tavole"} di stile` : null,
+    byKind("location").length > 0 ? `${byKind("location").length} del luogo` : null,
+    ...[...counts].map(([ref, n]) => `${characters[ref]?.name || ref} ×${n}`),
+  ].filter(Boolean);
+  const presetLabel = STYLE_PRESETS.find((p) => p.id === project.style.preset)?.label ?? STYLE_PRESETS[0]!.label;
 
   return (
     <div className="card">
@@ -184,12 +231,47 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
               Questa vignetta: <strong>{STATE_LABEL[state]}</strong> · {item.spec.width}×{item.spec.height} px · seed {item.spec.seed}
             </p>
             {panel.art.source && <p className="issue issue--info">Ha arte tua collegata, e quella vince: il render si vedrà solo scollegandola.</p>}
-            {panel.characters.length > 0 && (
-              <p className="field__hint">
-                Riferimenti allegati: {counts.size === 0 ? "nessuno" : [...counts].map(([ref, n]) => `${ref} ×${n}`).join(", ")}.
-                {without.length > 0 && <> Senza riferimenti ({without.join(", ")}) il modello ha solo la descrizione, e il personaggio cambia da una vignetta all'altra: aggiungili nell'area Personaggi.</>}
-              </p>
-            )}
+            <p className="field__hint">Immagini allegate: {attachedText.length === 0 ? "nessuna" : attachedText.join(" · ")}.</p>
+            {/* Ciò che manca perché il capitolo non sembri un collage, nell'ordine in cui pesa: stile, luogo, personaggi. */}
+            <ul className="readiness">
+              {!styleChosen(project.style) && (
+                <li className="issue issue--warning">
+                  Nessuno stile scelto per l'opera: si usa «{presetLabel}».{" "}
+                  <button type="button" className="link-btn" onClick={() => onReferences("stile")}>
+                    scegli lo stile
+                  </button>
+                </li>
+              )}
+              {byKind("style").length === 0 && (
+                <li className="issue issue--info">
+                  Nessuna tavola di stile: il segno può variare da una vignetta all'altra. Quando una vignetta ti convince, tienila come tavola di stile qui sotto.
+                </li>
+              )}
+              {place && !place.sheet?.description.trim() && (
+                <li className="issue issue--warning">
+                  «{place.name}» non ha una descrizione: il modello riceve solo il nome e reinventa il posto a ogni vignetta.{" "}
+                  <button type="button" className="link-btn" onClick={() => onReferences("luoghi", place.ref)}>
+                    descrivilo
+                  </button>
+                </li>
+              )}
+              {place && place.sheet?.description.trim() && byKind("location").length === 0 && (
+                <li className="issue issue--info">
+                  «{place.name}» non ha immagini: con una tavola del luogo la stanza resta la stessa stanza.{" "}
+                  <button type="button" className="link-btn" onClick={() => onReferences("luoghi", place.ref)}>
+                    genera la tavola
+                  </button>
+                </li>
+              )}
+              {without.length > 0 && (
+                <li className="issue issue--info">
+                  Senza immagini ({without.map((ref) => characters[ref]?.name || ref).join(", ")}) il modello ha solo la descrizione, e il personaggio cambia da una vignetta all'altra.{" "}
+                  <button type="button" className="link-btn" onClick={() => onReferences("personaggi", without[0])}>
+                    genera la scheda
+                  </button>
+                </li>
+              )}
+            </ul>
 
             <div className="tool-row">
               <button type="button" className="btn btn--small btn--primary" disabled={busy || !ready} onClick={() => void generate([item])}>
@@ -240,11 +322,19 @@ export function GenerateCard({ config, store, project, characters, pageId, panel
         ))}
         {error && <p className="issue issue--error">{error}</p>}
 
-        {record && !panel.art.source && panel.characters.length > 0 && (
+        {record && !panel.art.source && (
           <div className="tool-row">
-            <span className="field__label">è venuto bene? tienilo come riferimento di</span>
+            <span className="field__label">è venuto bene? tienilo come</span>
+            <button type="button" className="btn btn--small" disabled={busy} onClick={() => void keep("style", "style")} title="Si allegherà a ogni generazione dell'opera: il modello ne copia il segno, non il contenuto">
+              tavola di stile
+            </button>
+            {place && (
+              <button type="button" className="btn btn--small" disabled={busy} onClick={() => void keep("location", place.ref)} title="Si allegherà alle vignette ambientate lì">
+                immagine di «{place.name}»
+              </button>
+            )}
             {panel.characters.map((c) => (
-              <button key={c.ref} type="button" className="btn btn--small" disabled={busy} onClick={() => void keep(c.ref)}>
+              <button key={c.ref} type="button" className="btn btn--small" disabled={busy} onClick={() => void keep("character", c.ref)} title="Si allegherà alle vignette in cui compare">
                 {characters[c.ref]?.name || c.ref}
               </button>
             ))}

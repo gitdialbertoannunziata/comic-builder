@@ -1,5 +1,6 @@
-import { SceneSchema, beatId, issue, type Appearance, type Scene, type ValidationIssue } from "@comic-builder/core";
+import { SceneSchema, beatId, issue, locationRef, type Appearance, type Scene, type ValidationIssue } from "@comic-builder/core";
 import { BreakdownSchema, breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME, type BreakdownCast, type BreakdownScene } from "./breakdownSchema.js";
+import type { BreakdownPlace } from "./locations.js";
 import { breakdownSystemPrompt, breakdownUserPrompt, type CharacterContext } from "./prompt.js";
 import { LlmError, LlmTruncatedError, type LlmService } from "./service.js";
 
@@ -53,6 +54,8 @@ export interface BreakdownResult {
    * chi riceve crea la scheda a chi non l'ha, e non tocca le altre.
    */
   cast: BreakdownCastMember[];
+  /** I luoghi delle scene, uno per nome, con la descrizione proposta (vuota se il modello non l'ha data). */
+  locations: BreakdownPlace[];
   /** Cosa non tornava nell'output del modello e come è stato sistemato. */
   issues: ValidationIssue[];
   meta: { service: string; model: string; durationMs: number };
@@ -269,6 +272,7 @@ export function halveChunk(chunk: ScriptChunk): [ScriptChunk, ScriptChunk] | nul
 interface PartResult {
   scenes: BreakdownScene[];
   cast: BreakdownCast[];
+  locations: BreakdownPlace[];
   continuation: boolean;
   model: string;
   durationMs: number;
@@ -327,6 +331,22 @@ function castFor(scenes: readonly Scene[], parts: readonly PartResult[]): Breakd
   return [...members.values()];
 }
 
+/** Un luogo per nome usato dalle scene; per la descrizione vale la prima parte che ne dà una. */
+function locationsFor(scenes: readonly Scene[], parts: readonly PartResult[]): BreakdownPlace[] {
+  const places = new Map<string, BreakdownPlace>();
+  for (const scene of scenes) {
+    const ref = locationRef(scene.location);
+    if (ref && !places.has(ref)) places.set(ref, { name: scene.location.trim(), description: "" });
+  }
+  for (const part of parts) {
+    for (const { name, description } of part.locations) {
+      const place = places.get(locationRef(name));
+      if (place) place.description ||= description.trim();
+    }
+  }
+  return [...places.values()];
+}
+
 export async function breakdownScript(input: BreakdownInput): Promise<BreakdownResult> {
   const issues: ValidationIssue[] = [];
   const scriptLines = input.script.split("\n").length;
@@ -375,7 +395,11 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
 
     // Il cast è un di più: un fornitore che non vincola allo schema può
     // ometterlo, e lo spoglio delle scene non va buttato per questo.
-    const data = response.data && typeof response.data === "object" && !("cast" in response.data) ? { ...response.data, cast: [] } : response.data;
+    // Lo stesso per i luoghi.
+    const data =
+      response.data && typeof response.data === "object"
+        ? { ...("cast" in response.data ? {} : { cast: [] }), ...("locations" in response.data ? {} : { locations: [] }), ...response.data }
+        : response.data;
     const parsed = BreakdownSchema.safeParse(data);
     if (!parsed.success) {
       // Nessuna riparazione possibile: se la forma non regge, non c'è nulla da
@@ -392,7 +416,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
       scene.characters.forEach((c) => known.add(c));
       scene.beats.forEach((b) => b.lines.forEach((l) => l.speaker && known.add(l.speaker)));
     }
-    parts.push({ scenes: parsed.data.scenes, cast: parsed.data.cast, continuation: chunk.continuation, model: response.meta.model, durationMs: response.meta.durationMs });
+    parts.push({ scenes: parsed.data.scenes, cast: parsed.data.cast, locations: parsed.data.locations, continuation: chunk.continuation, model: response.meta.model, durationMs: response.meta.durationMs });
     done++;
   }
   input.onProgress?.({ done, total: done });
@@ -403,6 +427,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
   return {
     scenes,
     cast: castFor(scenes, parts),
+    locations: locationsFor(scenes, parts),
     issues,
     meta: {
       service: input.llm.name,

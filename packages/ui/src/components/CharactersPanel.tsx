@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   appearanceText,
-  artMediaType,
   characterRefs,
   characterSheetPath,
   compileCharacterSheetSpec,
-  isArtFile,
   SHEET_VIEWS,
   type CharacterPatch,
   type CharacterSheet,
@@ -14,8 +12,11 @@ import {
   type ProjectStore,
   type SheetView,
 } from "@comic-builder/core";
-import { runRenderQueue, type ImageService, type ReferenceImage } from "@comic-builder/image";
+import type { ImageService } from "@comic-builder/image";
 import { makeService, serviceReady, specModel, type ImageConfig } from "./GenerateCard.js";
+import { ReferenceImages } from "./ReferenceImages.js";
+import { generateReference } from "../editor/generateArt.js";
+import { listArrows } from "../keyboard.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -25,6 +26,8 @@ interface Props {
   image: ImageConfig;
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
+  /** Il personaggio da aprire, quando ci si arriva da una vignetta. */
+  focus?: { ref: string; at: number } | null;
 }
 
 const APPEARANCE_FIELDS: Array<[keyof CharacterSheet["appearance"], string, string]> = [
@@ -46,56 +49,23 @@ function completeness(sheet: CharacterSheet | undefined): "none" | "partial" | "
 
 const COMPLETENESS_LABEL = { none: "senza scheda", partial: "scheda incompleta", full: "scheda completa" } as const;
 
-/** Anteprime delle immagini di riferimento, lette dalla cartella del progetto. */
-function useReferenceUrls(store: ProjectStore, paths: readonly string[]): Map<string, string> {
-  const [urls, setUrls] = useState(new Map<string, string>());
-  const key = paths.join("\n");
-  useEffect(() => {
-    let alive = true;
-    const created: string[] = [];
-    void (async () => {
-      const map = new Map<string, string>();
-      for (const path of paths) {
-        const bytes = await store.readBytes(path);
-        if (!bytes) continue;
-        const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
-        created.push(url);
-        map.set(path, url);
-      }
-      if (alive) setUrls(map);
-    })();
-    return () => {
-      alive = false;
-      created.forEach((u) => URL.revokeObjectURL(u));
-    };
-    // `key` riassume `paths`: cambia solo quando cambiano i percorsi.
-  }, [store, key]);
-  return urls;
-}
-
 /**
  * Le schede personaggio (§5.1). Il documento conosce i personaggi per nome;
  * qui si dice com'è fatto ognuno, una volta per la serie. È ciò che le
  * istruzioni per i modelli esterni ripetono in ogni pannello, e ciò che
  * rende riconoscibile un personaggio da una vignetta all'altra.
  */
-export function CharactersPanel({ doc, store, image, run, endGesture }: Props) {
+export function CharactersPanel({ doc, store, image, run, endGesture, focus = null }: Props) {
   const refs = useMemo(() => [...characterRefs(doc)].sort(), [doc]);
   const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (focus) setSelected(focus.ref);
+  }, [focus]);
   const [newVariant, setNewVariant] = useState("");
-  const input = useRef<HTMLInputElement>(null);
   const ref = selected && refs.includes(selected) ? selected : null;
   const sheet = ref ? doc.characters[ref] : undefined;
-  const urls = useReferenceUrls(store, sheet?.references.map((r) => r.path) ?? []);
 
   const upsert = (patch: CharacterPatch, field: string) => ref && run({ type: "character.upsert", ref, patch }, { gesture: `${ref}:${field}` });
-
-  async function addReference(file: File) {
-    if (!ref) return;
-    const path = `characters/${ref}/${file.name.replace(/[^\w.-]+/g, "_")}`;
-    await store.writeBytes(path, new Uint8Array(await file.arrayBuffer()));
-    run({ type: "character.upsert", ref, patch: { references: [...(sheet?.references ?? []), { path, note: "", use: true }] } });
-  }
 
   const [generating, setGenerating] = useState<string | null>(null);
   const [sheetNote, setSheetNote] = useState<{ level: "info" | "error"; text: string } | null>(null);
@@ -123,20 +93,10 @@ export function CharactersPanel({ doc, store, image, run, endGesture }: Props) {
       for (const view of views) {
         setGenerating(`${SHEET_VIEWS[view].label} (${made + 1}/${views.length})`);
         const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image) });
-        const references: ReferenceImage[] = [];
-        for (const reference of spec.references) {
-          const data = await store.readBytes(reference.path);
-          if (!data) throw new Error(`Riferimento non trovato: ${reference.path}. Toglilo dalla scheda, o rimetti il file.`);
-          references.push({ path: reference.path, data, mediaType: artMediaType(reference.path) ?? "image/png" });
-        }
-        // Un lavoro per volta, ma dalla coda: è lei che aspetta il limite al minuto e riprova.
-        const [outcome] = await runRenderQueue([{ id: view, request: () => ({ spec, references }) }], { service, retries: 5 });
-        if (!outcome || outcome.status !== "done") throw new Error(outcome?.status === "failed" ? outcome.error : "Generazione interrotta.");
         const path = characterSheetPath(spec, view);
-        await store.writeBytes(path, outcome.result.data);
+        cost += (await generateReference({ store, service, spec, path })).costUsd;
         current = { ...current, references: [...current.references, { path, note: SHEET_VIEWS[view].label, use: true }] };
         run({ type: "character.upsert", ref, patch: { references: current.references } });
-        cost += outcome.result.meta.costUsd ?? 0;
         made++;
       }
       setSheetNote({
@@ -152,12 +112,22 @@ export function CharactersPanel({ doc, store, image, run, endGesture }: Props) {
 
   return (
     <div className="stack">
-      <div className="character-list">
+      <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
         {refs.length === 0 && <p className="field__hint">Nessun personaggio: arrivano dallo spoglio del copione.</p>}
-        {refs.map((r) => {
+        {refs.map((r, i) => {
           const level = completeness(doc.characters[r]);
           return (
-            <button key={r} type="button" className="character-chip" aria-pressed={r === ref} onClick={() => setSelected(r === ref ? null : r)} title={COMPLETENESS_LABEL[level]}>
+            <button
+              key={r}
+              type="button"
+              className="character-chip"
+              data-item
+              tabIndex={r === ref || (ref === null && i === 0) ? 0 : -1}
+              aria-pressed={r === ref}
+              // Le frecce scelgono il vicino con un clic da tastiera (detail 0): solo un clic vero su quello già scelto lo chiude.
+              onClick={(e) => setSelected(r === ref && e.detail > 0 ? null : r)}
+              title={COMPLETENESS_LABEL[level]}
+            >
               <span className={`dot dot--sheet-${level}`} />
               {doc.characters[r]?.name || r}
             </button>
@@ -249,70 +219,37 @@ export function CharactersPanel({ doc, store, image, run, endGesture }: Props) {
             </div>
 
             <span className="field__label">immagini di riferimento</span>
-            {(
-              <>
-                <div className="reference-grid">
-                  {(sheet?.references ?? []).map((r) => (
-                    <figure key={r.path} className="reference">
-                      {urls.get(r.path) ? <img src={urls.get(r.path)} alt="" /> : <span className="art-thumb art-thumb--missing">?</span>}
-                      <figcaption>
-                        {r.path.split("/").pop()}{" "}
-                        <label title="Se allegarla al modello quando si genera: tieni solo quelle in cui il personaggio è proprio lui">
-                          <input
-                            type="checkbox"
-                            checked={r.use}
-                            onChange={(e) => upsert({ references: sheet!.references.map((x) => (x.path === r.path ? { ...x, use: e.target.checked } : x)) }, "references")}
-                          />{" "}
-                          per generare
-                        </label>{" "}
-                        <button type="button" className="link-btn" onClick={() => upsert({ references: sheet!.references.filter((x) => x.path !== r.path) }, "references")}>
-                          togli
-                        </button>
-                      </figcaption>
-                    </figure>
-                  ))}
-                </div>
-                <div className="tool-row">
-                  <button type="button" className="btn btn--small" onClick={() => input.current?.click()}>
-                    + immagine…
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--small btn--primary"
-                    disabled={generating !== null || !describable || !serviceReady(image)}
-                    onClick={() => void generateSheet(["front", "three-quarter", "full-body"])}
-                    title="Fronte, tre quarti e figura intera, dall'aspetto scritto qui sopra e nello stile del progetto"
-                  >
-                    Genera la scheda (3 viste)
-                  </button>
-                  {(Object.keys(SHEET_VIEWS) as SheetView[]).map((view) => (
-                    <button key={view} type="button" className="link-btn" disabled={generating !== null || !describable || !serviceReady(image)} onClick={() => void generateSheet([view])}>
-                      + {SHEET_VIEWS[view].label}
-                    </button>
-                  ))}
-                </div>
-                {generating && <p className="muted">Genero {generating}…</p>}
-                {sheetNote && <p className={`issue issue--${sheetNote.level}`}>{sheetNote.text}</p>}
-                {!describable && <p className="field__hint">Per generare la scheda serve almeno un campo dell'aspetto: è da lì che il modello lo disegna.</p>}
-                {describable && !serviceReady(image) && <p className="field__hint">Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».</p>}
-                <input
-                  ref={input}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file && isArtFile(file.name)) void addReference(file);
-                  }}
-                />
-                <p className="field__hint">
-                  La scheda generata parte dall'aspetto scritto sopra; ogni vista guarda quelle già spuntate, quindi tieni la prima che ti convince e genera le altre da lì.
-                  Quelle spuntate si allegano da sole quando generi una vignetta in cui compare (al massimo otto per vignetta, divise fra i personaggi): è ciò che lo tiene uguale
-                  da una all'altra. Bastano due o tre buone — fronte, tre quarti, figura intera.
-                </p>
-              </>
-            )}
+            <ReferenceImages
+              store={store}
+              references={sheet?.references ?? []}
+              onChange={(references) => ref && run({ type: "character.upsert", ref, patch: { references } })}
+              directory={`characters/${ref}`}
+              useHint="Se allegarla al modello quando si genera: tieni solo quelle in cui il personaggio è proprio lui"
+            >
+              <button
+                type="button"
+                className="btn btn--small btn--primary"
+                disabled={generating !== null || !describable || !serviceReady(image)}
+                onClick={() => void generateSheet(["front", "three-quarter", "full-body"])}
+                title="Fronte, tre quarti e figura intera, dall'aspetto scritto qui sopra e nello stile dell'opera"
+              >
+                Genera la scheda (3 viste)
+              </button>
+              {(Object.keys(SHEET_VIEWS) as SheetView[]).map((view) => (
+                <button key={view} type="button" className="link-btn" disabled={generating !== null || !describable || !serviceReady(image)} onClick={() => void generateSheet([view])}>
+                  + {SHEET_VIEWS[view].label}
+                </button>
+              ))}
+            </ReferenceImages>
+            {generating && <p className="muted">Genero {generating}…</p>}
+            {sheetNote && <p className={`issue issue--${sheetNote.level}`}>{sheetNote.text}</p>}
+            {!describable && <p className="field__hint">Per generare la scheda serve almeno un campo dell'aspetto: è da lì che il modello lo disegna.</p>}
+            {describable && !serviceReady(image) && <p className="field__hint">Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».</p>}
+            <p className="field__hint">
+              La scheda generata parte dall'aspetto scritto sopra e dalle tavole di stile dell'opera; ogni vista guarda quelle già spuntate, quindi tieni la prima che ti
+              convince e genera le altre da lì. Quelle spuntate si allegano da sole quando generi una vignetta in cui compare: è ciò che lo tiene uguale da una all'altra.
+              Bastano due o tre buone — fronte, tre quarti, figura intera.
+            </p>
           </div>
         </div>
       )}

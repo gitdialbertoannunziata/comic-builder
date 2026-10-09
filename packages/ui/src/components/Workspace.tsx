@@ -10,6 +10,8 @@ import {
   lintPage,
   neighbourPanel,
   PageSchema,
+  shownArt,
+  shownArtPatch,
   pageForTarget,
   tailPoint,
   validateDocument,
@@ -49,6 +51,7 @@ import { PanelCharacters } from "./PanelCharacters.js";
 import { ExportPanel } from "./ExportPanel.js";
 import { Tabs } from "./Tabs.js";
 import { Section } from "./Section.js";
+import type { ReferencesTab } from "./ReferencesArea.js";
 
 /** Le aree di lavoro: una alla volta, scelte dalla barra. */
 export type Area = "copione" | "pagine" | "personaggi" | "revisioni" | "export";
@@ -111,6 +114,8 @@ interface WorkspaceProps {
   fontError: ReturnType<typeof useFont>["error"];
   area: Area;
   onArea: (area: Area) => void;
+  /** Porta ai riferimenti dell'opera (stile, un luogo, un personaggio): ci si arriva dalla scheda Arte. */
+  onReferences: (tab: ReferencesTab, ref?: string) => void;
 }
 
 /**
@@ -118,7 +123,7 @@ interface WorkspaceProps {
  * Revisioni e l'Export. Le tre aree restano montate e si nascondono: ciò
  * che si è incollato o scelto in una non si perde passando a un'altra.
  */
-export function Workspace({ editor, art, platform, image, chapter, pages, font, fontBytes, fontError, area, onArea }: WorkspaceProps) {
+export function Workspace({ editor, art, platform, image, chapter, pages, font, fontBytes, fontError, area, onArea, onReferences }: WorkspaceProps) {
   const { doc, run, endGesture } = editor;
   // La selezione non è documento: non entra nella cronologia né nel file.
   // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
@@ -160,6 +165,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
         chapter: { id: chapter.id, number: chapter.number, title: chapter.title },
         projectStyle: doc.project.style,
         characters: doc.characters,
+        locations: doc.locations,
         seriesSeed: doc.project.series_seed,
         scenes: doc.scenes.scenes,
         font,
@@ -278,7 +284,9 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
         const fit = preview.fits.get(b.id);
         return fit ? [{ id: b.id, box: balloonBox(b, panelBox, fit) }] : [];
       });
-      return [compilePanel({ project: doc.project, page: shown, panel, panelBox, balloonBoxes, targetId: preview.targetId, scene, characters: doc.characters })];
+      // La scena del pannello, non della pagina: è lei a dire il luogo.
+      const own = doc.scenes.scenes.find((s) => s.id === panel.scene_id) ?? scene;
+      return [compilePanel({ project: doc.project, page: shown, panel, panelBox, balloonBoxes, targetId: preview.targetId, scene: own, characters: doc.characters, locations: doc.locations })];
     });
     const page = compilePageBrief({
       page: shown,
@@ -288,7 +296,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       readingDirection: doc.project.reading_direction,
     });
     return { list, page };
-  }, [preview, doc.project, doc.characters, scene]);
+  }, [preview, doc.project, doc.characters, doc.locations, doc.scenes.scenes, scene]);
   const refs = useMemo(() => [...characterRefs(doc)].sort(), [doc]);
 
   // Gli spec di generazione (§9.1) per la pagina, solo sul formato principale:
@@ -298,9 +306,17 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
     if (!briefs || !preview || preview.targetId !== primaryTarget.id) return null;
     return briefs.list.flatMap((brief) => {
       const panel = page.panels.find((p) => p.id === brief.panelId);
-      return panel ? [{ pageId: page.id, panel, spec: compileRenderSpec({ brief, panel, characters: doc.characters, model, megapixels: image.megapixels }) }] : [];
+      if (!panel) return [];
+      const own = doc.scenes.scenes.find((s) => s.id === panel.scene_id) ?? scene;
+      return [
+        {
+          pageId: page.id,
+          panel,
+          spec: compileRenderSpec({ brief, panel, project: doc.project, scene: own, characters: doc.characters, locations: doc.locations, model, megapixels: image.megapixels }),
+        },
+      ];
     });
-  }, [briefs, preview, page, doc.characters, model, image.megapixels]);
+  }, [briefs, preview, page, doc.project, doc.scenes.scenes, doc.characters, doc.locations, scene, model, image.megapixels]);
 
   // Avvisi sui personaggi (Appendice A) che riguardano la pagina aperta.
   const characterIssues = useMemo(() => {
@@ -547,6 +563,33 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
   // Un centesimo del pannello per colpo, cinque con Shift: lo stesso passo dei campi numerici.
   const STEP = 0.01;
 
+  // L'immagine della vignetta (arte dell'autore o render), per inquadrarla anche da tastiera.
+  const shown = shownArt(selectedPanel, primaryTarget.id);
+  const framingKeys = framing && view === "page" && shown?.size != null;
+  function reframeArt(change: (frame: { fit: "cover" | "contain"; zoom: number; focus_x: number; focus_y: number }) => Partial<{ zoom: number; focus_x: number; focus_y: number }>) {
+    if (!shown) return;
+    const frame = { fit: "cover" as const, zoom: 1, focus_x: 0.5, focus_y: 0.5, ...shown.frame };
+    const next = { ...frame, ...change(frame) };
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    const patch = shownArtPatch(selectedPanel, primaryTarget.id, { ...next, zoom: clamp(next.zoom, 0.1, 10), focus_x: clamp(next.focus_x, 0, 1), focus_y: clamp(next.focus_y, 0, 1) });
+    if (patch) nudge({ type: "panel.update", pageId: page.id, panelId: selectedPanel.id, patch }, `${selectedPanel.id}:art-frame`);
+  }
+
+  // Prima delle altre: mentre si inquadra, frecce e + − sono dell'immagine, non delle vignette né dei balloon.
+  useShortcuts(
+    "Inquadratura dell'immagine",
+    15,
+    [
+      // Come col trascinamento: l'immagine va dove punta la freccia, quindi al centro arriva il punto dall'altra parte.
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Sposta l'immagine nella vignetta", run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.02, focus_y: f.focus_y - arrow(e)[2] * 0.02 })) },
+      { keys: arrowKeys("Shift+"), shown: "Shift + frecce", label: "La sposta a passi grandi", run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.1, focus_y: f.focus_y - arrow(e)[2] * 0.1 })) },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: "Ingrandisce / rimpicciolisce", run: (e) => reframeArt((f) => ({ zoom: f.zoom * (e.key === "-" ? 1 / 1.1 : 1.1) })) },
+      { keys: ["0"], label: "Torna centrata, a misura", once: true, run: () => reframeArt(() => ({ zoom: 1, focus_x: 0.5, focus_y: 0.5 })) },
+      { keys: ["Escape", "i"], shown: "Esc / I", label: "Fine inquadratura", once: true, run: () => setFraming(false) },
+    ],
+    area === "pagine" && framingKeys,
+  );
+
   useShortcuts(
     "Area Pagine",
     10,
@@ -579,6 +622,17 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       },
       { keys: ["b"], label: "Scheda Balloon", once: true, run: () => setInspectorTab("balloon") },
       { keys: ["a"], label: "Scheda Arte", once: true, run: () => setInspectorTab("arte") },
+      {
+        keys: ["i"],
+        label: "Inquadra l'immagine della vignetta (tua o generata)",
+        once: true,
+        run: () => {
+          if (!shown?.size) return false;
+          setInspectorTab("arte");
+          setView("page");
+          setFraming(true);
+        },
+      },
       {
         keys: ["s"],
         label: "Pagina ↔ striscia",
@@ -753,7 +807,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             {view === "page" && (
               <p className="field__hint">
                 {framing
-                  ? "Inquadratura dell'arte: trascina per spostarla, rotella per ingrandirla."
+                  ? "Inquadratura dell'immagine: trascina o frecce per spostarla, rotella o + − per ingrandirla, 0 la ricentra, Esc per finire."
                   : pageTargetId === primaryTarget.id
                     ? "Trascina balloon, punta della coda e gutter · trascina un'immagine su una vignetta per dargliela · Ctrl+Z annulla · ? per le scorciatoie."
                     : `In ${targetLabel(pageTargetId)} si spostano solo i balloon, e solo per questo formato. Griglia e vignette si ritoccano sul formato principale.`}
@@ -853,6 +907,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             <ArtCard
               pageId={page.id}
               panel={selectedPanel}
+              target={primaryTarget.id}
               store={editor.assets}
               inMemory={editor.store === null}
               url={art.urls.get(selectedPanel.id)}
@@ -871,16 +926,19 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
               store={editor.assets}
               project={doc.project}
               characters={doc.characters}
+              locations={doc.locations}
+              scene={doc.scenes.scenes.find((s) => s.id === selectedPanel.scene_id) ?? scene}
               pageId={page.id}
               panel={selectedPanel}
               items={generation}
               primaryLabel={targetLabel(primaryTarget.id)}
               run={run}
               endGesture={endGesture}
+              onReferences={onReferences}
             />
 
             {selectedBrief && briefs && (
-              <PromptCard brief={selectedBrief} pageBrief={briefs.page} panel={selectedPanel} pageId={page.id} project={doc.project} run={run} endGesture={endGesture} />
+              <PromptCard brief={selectedBrief} pageBrief={briefs.page} panel={selectedPanel} pageId={page.id} run={run} endGesture={endGesture} onStyle={() => onReferences("stile")} />
             )}
           </div>
         </aside>

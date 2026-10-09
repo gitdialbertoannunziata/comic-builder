@@ -7,6 +7,7 @@ import {
   scaleStyles,
   type PanelBrief,
   type CharacterSheet,
+  type LocationSheet,
   type Scene,
   finishTargetExport,
   findTarget,
@@ -41,6 +42,8 @@ export interface ExportInput {
   seriesSeed?: number;
   scenes?: readonly Scene[];
   characters?: Readonly<Record<string, CharacterSheet>>;
+  /** Schede dei luoghi: il brief di ogni pannello dice com'è fatto il posto, non solo come si chiama. */
+  locations?: Readonly<Record<string, LocationSheet>>;
   font: LoadedFont;
   fontBytes: Uint8Array;
   choices: readonly ExportChoice[];
@@ -153,6 +156,7 @@ export async function exportChapter(input: ExportInput): Promise<ExportOutcome> 
               targetId: primaryTarget.id,
               ...(scene ? { scene } : {}),
               ...(input.characters ? { characters: input.characters } : {}),
+              ...(input.locations ? { locations: input.locations } : {}),
             }),
           ];
         });

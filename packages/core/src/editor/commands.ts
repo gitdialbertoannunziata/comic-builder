@@ -12,6 +12,8 @@ import { findMatches, matchesAsRevisions, type FindOptions } from "../revisions/
 import { refFromName } from "../revisions/readable.js";
 import { characterRefs, renameCharacterRefs } from "./renameCharacter.js";
 import { CharacterSheetSchema, type CharacterSheet } from "../schema/characters.js";
+import { LocationSheetSchema, type LocationSheet } from "../schema/locations.js";
+import type { ReferenceImage } from "../schema/common.js";
 import type { Chapter } from "../schema/chapters.js";
 import type { Scene } from "../schema/scenes.js";
 import { addChapter, moveChapter, removeChapter, setChapterContent, updateChapter } from "./chapters.js";
@@ -70,9 +72,11 @@ export type Command =
   | { type: "script.set"; chapterId: string; text: string; sha: string }
   | { type: "text.replace"; chapterId: string; find: string; replace: string; options: FindOptions; by: string; at: string }
   | { type: "character.rename"; from: string; to: string }
-  | { type: "project.style"; positive: string[]; negative: string[] }
+  | { type: "project.style"; positive?: string[]; negative?: string[]; references?: ReferenceImage[]; preset?: string }
   | { type: "character.upsert"; ref: string; patch: CharacterPatch }
   | { type: "character.remove"; ref: string }
+  | { type: "location.upsert"; ref: string; patch: LocationPatch }
+  | { type: "location.remove"; ref: string }
   | { type: "project.rename"; title: string }
   | { type: "project.notes"; notes: string }
   | { type: "chapter.add"; title: string }
@@ -80,6 +84,8 @@ export type Command =
   | { type: "chapter.move"; chapterId: string; toIndex: number }
   | { type: "chapter.remove"; chapterId: string }
   | { type: "chapter.set-content"; chapterId: string; pages: Page[]; scenes: Scene[]; script?: string };
+
+export type LocationPatch = Partial<Omit<LocationSheet, "schema" | "id">>;
 
 export type CharacterPatch = Partial<Omit<CharacterSheet, "schema" | "id" | "appearance">> & { appearance?: Partial<CharacterSheet["appearance"]> };
 
@@ -690,6 +696,16 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
       if (!doc.characters[command.ref]) throw new CommandError(`Nessuna scheda per «${command.ref}»`);
       return { ...doc, characters: Object.fromEntries(Object.entries(doc.characters).filter(([ref]) => ref !== command.ref)) };
     }
+    case "location.upsert": {
+      const ref = refFromName(command.ref);
+      if (!ref || ref !== command.ref) throw new CommandError(`«${command.ref}» non è un ref di luogo valido: minuscolo, senza spazi né accenti (es. ${ref || "la_stanza"})`);
+      const current = doc.locations[ref] ?? LocationSheetSchema.parse({ schema: 1, id: ref });
+      return { ...doc, locations: { ...doc.locations, [ref]: { ...current, ...command.patch, schema: 1, id: ref } } };
+    }
+    case "location.remove": {
+      if (!doc.locations[command.ref]) throw new CommandError(`Nessuna scheda per il luogo «${command.ref}»`);
+      return { ...doc, locations: Object.fromEntries(Object.entries(doc.locations).filter(([ref]) => ref !== command.ref)) };
+    }
     case "project.notes":
       return { ...doc, project: { ...doc.project, series_notes: command.notes } };
     case "project.rename":
@@ -719,7 +735,20 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
     case "project.style": {
       // La bibbia di stile del progetto (§5.2): vale per ogni pannello, sotto il prompt dell'autore.
       const clean = (list: string[]) => list.map((s) => s.trim()).filter((s) => s.length > 0);
-      return { ...doc, project: { ...doc.project, style: { ...doc.project.style, positive: clean(command.positive), negative: clean(command.negative) } } };
+      const style = doc.project.style;
+      return {
+        ...doc,
+        project: {
+          ...doc.project,
+          style: {
+            ...style,
+            ...(command.positive ? { positive: clean(command.positive) } : {}),
+            ...(command.negative ? { negative: clean(command.negative) } : {}),
+            ...(command.references ? { references: command.references } : {}),
+            ...(command.preset !== undefined ? { preset: command.preset } : {}),
+          },
+        },
+      };
     }
     case "script.set": {
       // Il copione nuovo diventa il riferimento: le prossime revisioni si confrontano con questo.
@@ -807,6 +836,10 @@ export function describeCommand(command: Command): string {
       return `Scheda di ${command.ref}`;
     case "character.remove":
       return `Togli la scheda di ${command.ref}`;
+    case "location.upsert":
+      return `Scheda del luogo ${command.ref}`;
+    case "location.remove":
+      return `Togli la scheda del luogo ${command.ref}`;
     case "project.rename":
       return "Rinomina il progetto";
     case "project.notes":

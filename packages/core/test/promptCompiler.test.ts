@@ -28,7 +28,7 @@ describe("Compilatore pannello → istruzioni (§9.1)", () => {
   it("mood e asse di scena non entrano nel prompt (§6.1); il tono entra nel brief", () => {
     const tense = compile({ ...talking, camera: { ...talking.camera, mood: "dread", axis_side: "A-right" } });
     expect(tense.positive).not.toMatch(/dread|A-right|axis/i);
-    expect(tense.brief).toMatch(/Tone .*dread/);
+    expect(tense.brief).toMatch(/Mood .*dread/);
     expect(tense.brief).not.toContain("A-right");
   });
 

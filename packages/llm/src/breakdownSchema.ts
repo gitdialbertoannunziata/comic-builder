@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BeatFunctionSchema, BalloonTypeSchema, MoodSchema, LightingSchema } from "@comic-builder/core";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { BreakdownPlaceSchema } from "./locations.js";
 
 /**
  * Il contratto di output dello spoglio.
@@ -99,6 +100,8 @@ export const BreakdownSchema = z.object({
   scenes: z.array(BreakdownSceneSchema).min(1),
   /** I personaggi che compaiono nel capitolo, con ciò che il testo ne dice. */
   cast: z.array(BreakdownCastSchema),
+  /** I luoghi delle scene, descritti per chi disegna: la materia delle schede dei luoghi. */
+  locations: z.array(BreakdownPlaceSchema),
 });
 
 export type Breakdown = z.infer<typeof BreakdownSchema>;

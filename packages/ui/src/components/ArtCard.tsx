@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
-import type { ArtFrame, Command, Panel, ProjectStore } from "@comic-builder/core";
+import { useEffect, useRef, useState } from "react";
+import { shownArt, shownArtPatch, type ArtFrame, type Command, type ImageSize, type Panel, type ProjectStore } from "@comic-builder/core";
 import { importArt } from "../editor/importArt.js";
 
 interface Props {
   pageId: string;
   panel: Panel;
+  /** Il target su cui si genera: il suo render è l'immagine del pannello quando non c'è arte dell'autore. */
+  target: string;
   /** Dove vanno le immagini: la cartella del progetto, o la memoria della scheda finché non c'è. */
   store: ProjectStore;
   /** Vero se il progetto non è ancora in una cartella: le immagini stanno in memoria. */
@@ -13,7 +15,7 @@ interface Props {
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
   scan: () => Promise<void>;
-  /** Inquadratura col mouse sulla pagina: trascina per spostare, rotella per lo zoom. */
+  /** Inquadratura sulla pagina: trascina o frecce per spostare, rotella o + − per lo zoom. */
   framing: boolean;
   onToggleFraming: () => void;
 }
@@ -36,10 +38,32 @@ const STATUS_LABELS: Record<(typeof STATUSES)[number], string> = {
  * prima di scegliere una cartella: l'immagine resta in memoria, e al
  * salvataggio viene copiata in `art/`.
  */
-export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, scan, framing, onToggleFraming }: Props) {
-  const frame = { ...DEFAULT_FRAME, ...panel.art.frame };
-  const setFrame = (patch: Partial<ArtFrame>, gesture?: string) =>
-    run({ type: "panel.update", pageId, panelId: panel.id, patch: { art: { ...panel.art, frame: { ...frame, ...patch } } } }, gesture ? { gesture } : {});
+export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endGesture, scan, framing, onToggleFraming }: Props) {
+  // L'immagine che il pannello mostra: l'arte dell'autore, o il render. Si inquadrano allo stesso modo.
+  const shown = shownArt(panel, target);
+  const frame = { ...DEFAULT_FRAME, ...shown?.frame };
+
+  // Un render di prima che le dimensioni si registrassero non le ha: si leggono dall'immagine,
+  // e vanno nel documento col primo ritocco dell'inquadratura.
+  const [measured, setMeasured] = useState<ImageSize | null>(null);
+  const needsSize = shown !== null && shown.size === null;
+  useEffect(() => {
+    setMeasured(null);
+    if (!needsSize || !url) return;
+    let alive = true;
+    const img = new Image();
+    img.onload = () => alive && img.naturalWidth > 0 && setMeasured({ width: img.naturalWidth, height: img.naturalHeight });
+    img.src = url;
+    return () => {
+      alive = false;
+    };
+  }, [needsSize, url, shown?.file]);
+  const size = shown?.size ?? measured;
+
+  const setFrame = (patch: Partial<ArtFrame>, gesture?: string) => {
+    const change = shownArtPatch(panel, target, { ...frame, ...patch }, size);
+    if (change) run({ type: "panel.update", pageId, panelId: panel.id, patch: change }, gesture ? { gesture } : {});
+  };
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,18 +89,21 @@ export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, 
       </p>
 
       <div className="stack">
-          {panel.art.source ? (
+          {shown ? (
             <div className="art-row">
               {url ? <img className="art-thumb" src={url} alt="" /> : <span className="art-thumb art-thumb--missing">?</span>}
               <span className="art-meta">
-                <code>{panel.art.source}</code>
+                {shown.kind === "render" && <span className="field__label">generata</span>}
+                <code>{shown.file}</code>
                 {!url && <span className="issue issue--warning">file non trovato nella cartella</span>}
               </span>
             </div>
-          ) : (
+          ) : null}
+          {!panel.art.source && (
             <p className="field__hint">
               Carica un'immagine, oppure trascinala sul pannello nella pagina.
               {inMemory ? " Resta in questa scheda finché non salvi il progetto in una cartella." : <> Se la esporti tu in <code>art/{panel.id}.png</code>, si collega da sola.</>}
+              {shown?.kind === "render" && " La tua vince su quella generata."}
             </p>
           )}
 
@@ -111,10 +138,10 @@ export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, 
               </select>
             </label>
           </div>
-          {panel.art.source && url && (
+          {shown && url && (
             <div className="art-frame">
               <span className="field__label">inquadratura</span>
-              {!panel.art.size ? (
+              {!size ? (
                 <p className="field__hint">Leggo le dimensioni dell'immagine…</p>
               ) : (
                 <>
@@ -127,7 +154,17 @@ export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, 
                         intera
                       </button>
                     </span>
-                    <button type="button" className="btn btn--small" aria-pressed={framing} onClick={onToggleFraming}>
+                    <button
+                      type="button"
+                      className="btn btn--small"
+                      aria-pressed={framing}
+                      onClick={() => {
+                        // Sulla pagina l'inquadratura si calcola dalle dimensioni: se non sono ancora nel documento, ci vanno adesso.
+                        if (!framing && needsSize) setFrame({});
+                        onToggleFraming();
+                      }}
+                      title="Sulla pagina: trascina o frecce per spostare, rotella o + − per ingrandire (I)"
+                    >
                       {framing ? "Fine inquadratura" : "Inquadra sulla pagina"}
                     </button>
                     <button type="button" className="link-btn" onClick={() => setFrame(DEFAULT_FRAME)}>
@@ -148,7 +185,8 @@ export function ArtCard({ pageId, panel, store, inMemory, url, run, endGesture, 
                     />
                     <span className="muted">{Math.round(frame.zoom * 100)}%</span>
                   </label>
-                  {framing && <p className="field__hint">Sulla pagina: trascina dentro il pannello per spostare il disegno, rotella per ingrandire.</p>}
+                  {framing && <p className="field__hint">Sulla pagina: trascina dentro il pannello (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire.</p>}
+                  {shown.kind === "render" && <p className="field__hint">L'inquadratura è di questa immagine: una rigenerata riparte centrata, e Ctrl+Z riporta quella di prima con la sua.</p>}
                 </>
               )}
             </div>

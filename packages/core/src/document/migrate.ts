@@ -4,7 +4,7 @@
  * corrente. Una riga oggi; una settimana di lavoro risparmiata fra tre mesi,
  * quando lo schema cambierà e i progetti vecchi dovranno aprirsi lo stesso.
  */
-export type DocumentKind = "project" | "scenes" | "chapters" | "page" | "revisions" | "character";
+export type DocumentKind = "project" | "scenes" | "chapters" | "page" | "revisions" | "character" | "location";
 
 export const CURRENT_SCHEMA = 1;
 
@@ -22,6 +22,7 @@ const MIGRATIONS: Record<DocumentKind, Migration[]> = {
   page: [],
   revisions: [],
   character: [],
+  location: [],
 };
 
 export class MigrationError extends Error {}

@@ -5,6 +5,8 @@ import {
   balloonBox,
   dragTrackBoundary,
   gutterHandles,
+  shownArt,
+  shownArtPatch,
   tailPoint,
   type Box,
   type Command,
@@ -12,7 +14,7 @@ import {
   type LetteringFit,
   type Page,
 } from "@comic-builder/core";
-import { primaryGeometry } from "../project.js";
+import { primaryGeometry, primaryTarget } from "../project.js";
 
 interface Props {
   page: Page;
@@ -62,15 +64,16 @@ export function PageEditor(props: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [dropPanel, setDropPanel] = useState<string | null | undefined>(undefined);
 
-  // Il pannello in inquadratura, con la sua arte e dove sta ora.
+  // Il pannello in inquadratura, con l'immagine che mostra (arte dell'autore o render) e dove sta ora.
   const framed = (() => {
     const id = props.framingPanelId;
     if (!id) return null;
     const panel = page.panels.find((p) => p.id === id);
     const box = boxes.get(id);
-    if (!panel?.art.source || !panel.art.size || !box) return null;
-    const frame = { fit: "cover" as const, zoom: 1, focus_x: 0.5, focus_y: 0.5, ...panel.art.frame };
-    return { panel, box, frame, placement: artPlacement(box, panel.art.size, frame) };
+    const shown = panel ? shownArt(panel, primaryTarget.id) : null;
+    if (!panel || !shown?.size || !box) return null;
+    const frame = { fit: "cover" as const, zoom: 1, focus_x: 0.5, focus_y: 0.5, ...shown.frame };
+    return { panel, box, frame, placement: artPlacement(box, shown.size, frame) };
   })();
 
   // La rotella serve un ascoltatore non passivo, o la colonna scorre mentre
@@ -85,11 +88,9 @@ export function PageEditor(props: Props) {
       if (!current) return;
       event.preventDefault();
       const zoom = Math.min(10, Math.max(0.1, current.frame.zoom * Math.exp(-event.deltaY * 0.0015)));
+      const patch = shownArtPatch(current.panel, primaryTarget.id, { ...current.frame, zoom });
       // Un giro di rotella è un passo di undo: i passi vicini nel tempo si fondono.
-      run(
-        { type: "panel.update", pageId: page.id, panelId: current.panel.id, patch: { art: { ...current.panel.art, frame: { ...current.frame, zoom } } } },
-        { gesture: `art-wheel-${current.panel.id}-${Math.floor(Date.now() / 700)}` },
-      );
+      if (patch) run({ type: "panel.update", pageId: page.id, panelId: current.panel.id, patch }, { gesture: `art-wheel-${current.panel.id}-${Math.floor(Date.now() / 700)}` });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -123,8 +124,9 @@ export function PageEditor(props: Props) {
       // Spostare il disegno a destra vuol dire portare al centro un punto più a sinistra.
       const focus_x = Math.min(1, Math.max(0, drag.focusX - (p.x - drag.startX) / drag.width));
       const focus_y = Math.min(1, Math.max(0, drag.focusY - (p.y - drag.startY) / drag.height));
-      const frame = { fit: "cover" as const, zoom: 1, ...panel.art.frame, focus_x, focus_y };
-      run({ type: "panel.update", pageId: page.id, panelId: panel.id, patch: { art: { ...panel.art, frame } } }, { gesture: drag.gesture });
+      const frame = { fit: "cover" as const, zoom: 1, ...shownArt(panel, primaryTarget.id)?.frame, focus_x, focus_y };
+      const patch = shownArtPatch(panel, primaryTarget.id, frame);
+      if (patch) run({ type: "panel.update", pageId: page.id, panelId: panel.id, patch }, { gesture: drag.gesture });
     } else if (drag.kind === "tail") {
       const point = { x: (p.x - drag.panelBox.x) / drag.panelBox.width, y: (p.y - drag.panelBox.y) / drag.panelBox.height };
       const clamped = { x: Math.min(1, Math.max(0, point.x)), y: Math.min(1, Math.max(0, point.y)) };
@@ -266,7 +268,7 @@ export function PageEditor(props: Props) {
                   });
                 }}
               >
-                <title>Trascina per spostare il disegno, rotella per ingrandire</title>
+                <title>Trascina (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire</title>
               </rect>
             </>
           )}
