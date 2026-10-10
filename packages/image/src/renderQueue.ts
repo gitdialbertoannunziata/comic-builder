@@ -26,6 +26,7 @@ export interface QueueOptions {
   /** Tentativi oltre il primo, solo per gli errori che ha senso riprovare. */
   retries?: number;
   signal?: AbortSignal;
+  cancelInFlight?: boolean;
   /** Chiamata a ogni lavoro concluso, nell'ordine in cui finiscono: chi chiama salva subito, non a fine coda. */
   onOutcome?: (outcome: RenderOutcome, progress: { done: number; total: number }) => void | Promise<void>;
   sleep?: (ms: number) => Promise<void>;
@@ -59,7 +60,11 @@ export async function runRenderQueue(jobs: readonly RenderJob[], options: QueueO
     for (let attempt = 1; ; attempt++) {
       if (signal?.aborted) return { id: job.id, status: "cancelled" };
       try {
-        const request = { ...(await job.request()), ...(signal ? { signal } : {}) };
+        const prepared = await job.request();
+        if (signal?.aborted) return { id: job.id, status: "cancelled" };
+        const request = { ...prepared };
+        if (options.cancelInFlight === false) delete request.signal;
+        else if (signal) request.signal = signal;
         const result = await service.generate(request);
         return { id: job.id, status: "done", request, result, attempts: attempt };
       } catch (error) {
@@ -85,6 +90,8 @@ export async function runRenderQueue(jobs: readonly RenderJob[], options: QueueO
     }
   }
 
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 2, jobs.length)) }, worker));
+  const workers = await Promise.allSettled(Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 2, jobs.length)) }, worker));
+  const failed = workers.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
   return outcomes;
 }

@@ -103,6 +103,7 @@ export class LlamaServerLlmService implements LlmService {
             { role: "user", content: request.user },
           ],
           response_format: { type: "json_schema", json_schema: { name: request.schemaName, strict: true, schema: request.schema } },
+          chat_template_kwargs: { enable_thinking: false },
           temperature: this.options.temperature ?? 0.2,
           max_tokens: this.options.maxTokens ?? 16000,
           stream: true,

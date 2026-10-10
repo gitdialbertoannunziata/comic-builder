@@ -7,6 +7,7 @@ import {
   OpenAiLlmService,
   LlamaServerLlmService,
   breakdownScript,
+  type BreakdownProgress,
   type BreakdownCastMember,
   type BreakdownPlace,
   type LlmService,
@@ -34,7 +35,7 @@ export interface LlmChoice {
 export interface RunBreakdownInput extends LlmChoice {
   script: string;
   /** Avanzamento dello spoglio a parti: un capitolo lungo richiede più richieste. */
-  onProgress?: (progress: { done: number; total: number }) => void;
+  onProgress?: (progress: BreakdownProgress) => void;
   chapterId: string;
   /** Ciò che si sa dell'opera: personaggi con scheda, luoghi già visti, regole della serie, riassunto del precedente. */
   context?: ChapterContext;
@@ -87,6 +88,7 @@ export function llmServiceFor(input: LlmChoice): LlmService {
 export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdownResult> {
   const result = await breakdownScript({
     llm: llmServiceFor(input),
+    strategy: input.service === "local" ? "scenes" : "chunks",
     script: input.script,
     // Stesso percorso in cui il copione si salva (script/<capitolo>.md): la
     // provenienza dei pannelli punta al file giusto per le revisioni (§10.1).

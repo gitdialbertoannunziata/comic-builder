@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FLUX2_FLEX,
   FLUX2_KLEIN_4B,
@@ -33,6 +33,7 @@ import { usePreference } from "../usePreference.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
 import { desktop, networkFetch, useKeyNote } from "../platform/desktop.js";
 import { local, openLocalModels } from "../platform/localModels.js";
+import { useGeneration } from "../useGeneration.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
@@ -119,9 +120,11 @@ interface Props {
   /** La scena del pannello: dice in che luogo è ambientato. */
   scene: Scene | undefined;
   pageId: string;
+  pageNumber: number;
   panel: Panel;
   /** I pannelli della pagina coi loro spec; null se il formato mostrato non è quello su cui si genera. */
   items: readonly GenerationItem[] | null;
+  isItemCurrent: (item: GenerationItem) => boolean;
   /** Etichetta del formato principale, per dire dove andare quando `items` è null. */
   primaryLabel: string;
   run: (command: Command, options?: { gesture?: string }) => boolean;
@@ -139,15 +142,17 @@ const STATE_LABEL = { none: "mai generata", fresh: "aggiornata", stale: "da rige
  * coerenza dei personaggi (F5) sta nei riferimenti delle schede: un render
  * riuscito si può tenere come riferimento, ed è così che la scheda cresce.
  */
-export function GenerateCard({ config, store, project, characters, locations, scene, pageId, panel, items, primaryLabel, run, endGesture, onReferences }: Props) {
-  const [busy, setBusy] = useState(false);
+export function GenerateCard({ config, store, project, characters, locations, scene, pageId, pageNumber, panel, items, isItemCurrent, primaryLabel, run, endGesture, onReferences }: Props) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<GenerationReport | null>(null);
+  const [reportPage, setReportPage] = useState(pageNumber);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [cap, setCap] = usePreference("imageCapUsd", 2);
   const keyNote = useKeyNote();
-  const abort = useRef<AbortController | null>(null);
+  const generation = useGeneration(store, project.id);
+  const busy = generation.phase !== null;
+  useEffect(() => { setReport(null); setError(null); setProgress(null); setNote(null); }, [store, project.id]);
 
   const item = items?.find((i) => i.panel.id === panel.id) ?? null;
   const state = item ? renderState(panel, item.spec) : "none";
@@ -158,10 +163,10 @@ export function GenerateCard({ config, store, project, characters, locations, sc
   // La stima non ha bisogno della chiave: si vede quanto costa prima di metterla.
   const estimator: ImageService =
     config.service === "mock" ? new MockImageService() : config.service === "local" ? localService(config) : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
-  const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec));
+  const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec), config.service === "local" ? 1 : 2);
 
   async function generate(list: readonly GenerationItem[]) {
-    if (list.length === 0) return;
+    if (list.length === 0 || busy) return;
     setError(null);
     setReport(null);
     setNote(null);
@@ -170,25 +175,27 @@ export function GenerateCard({ config, store, project, characters, locations, sc
       setError(`La stima (${usd(expected.usd)}) supera il tetto di spesa (${usd(cap)}): alzalo qui sotto, o genera meno vignette.`);
       return;
     }
-    let service: ImageService;
+    setProgress(null);
+    setReportPage(pageNumber);
     try {
-      service = makeService(config);
+      setReport(await generation.schedule(config.service, "image", `Pagina ${pageNumber} · ${list.length} vignette · ${config.service === "local" ? config.localModel ?? "locale" : specModel(config)}`, async (signal, isCurrent) => {
+        setProgress({ done: 0, total: list.length });
+        const targetValid = (entry: GenerationItem) => isCurrent() && isItemCurrent(entry);
+        return generatePanels({
+          store, service: makeService(config), items: list,
+          run: (command, options) => isCurrent() && run(command, options),
+          endGesture: () => { if (isCurrent()) endGesture(); },
+          signal, concurrency: config.service === "local" ? 1 : 2,
+          cancelInFlight: config.service !== "local",
+          isValid: targetValid,
+          onProgress: (progress) => { if (isCurrent()) setProgress(progress); },
+        });
+      }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return;
-    }
-    const controller = new AbortController();
-    abort.current = controller;
-    setBusy(true);
-    setProgress({ done: 0, total: list.length });
-    try {
-      setReport(await generatePanels({ store, service, items: list, run, endGesture, signal: controller.signal, onProgress: setProgress }));
-    } catch (cause) {
+      if (!generation.isCurrent()) return;
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBusy(false);
-      setProgress(null);
-      abort.current = null;
+      if (generation.isCurrent()) setProgress(null);
     }
   }
 
@@ -322,11 +329,12 @@ export function GenerateCard({ config, store, project, characters, locations, sc
                 </button>
               )}
               {busy && (
-                <button type="button" className="link-btn" onClick={() => abort.current?.abort()}>
+                <button type="button" className="link-btn" onClick={generation.cancel}>
                   ferma
                 </button>
               )}
             </div>
+            {generation.phase === "queued" && <p className="field__hint" role="status">Immagini in coda</p>}
             {!ready && (
               <p className="field__hint">
                 {config.service === "azure"
@@ -349,6 +357,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
         )}
         {report && (
           <p className={`issue issue--${report.failed.length > 0 ? "warning" : "info"}`}>
+            Pagina {reportPage} · {" "}
             {[
               report.done > 0 ? `${report.done} generate` : null,
               report.cached > 0 ? `${report.cached} ritrovate in renders/ senza spesa` : null,
@@ -471,13 +480,14 @@ export function GenerateCard({ config, store, project, characters, locations, sc
  */
 function LocalEngineFields({ config }: { config: ImageConfig }) {
   const [status, setStatus] = useState<{ level: "info" | "error"; text: string } | null>(null);
-  const [checking, setChecking] = useState(false);
+  const generation = useGeneration(config.localManaged ? local : config.localUrl);
+  const checking = generation.phase !== null;
 
   async function check() {
-    setChecking(true);
+    if (checking) return;
     setStatus(null);
     try {
-      const info = await localService(config).check();
+      const info = await generation.schedule("local", "image", `Verifica ${config.localModel ?? "motore immagini locale"}`, () => localService(config).check());
       const klein = /klein/i.test(info.model) && /4b/i.test(info.model);
       setStatus(
         klein
@@ -485,9 +495,8 @@ function LocalEngineFields({ config }: { config: ImageConfig }) {
           : { level: "error", text: `Risponde, ma ha caricato «${info.model}»: lo spec registra FLUX.2 [klein] 4B, e i render direbbero il falso. Avvialo con klein 4B.` },
       );
     } catch (cause) {
+      if (!generation.isCurrent()) return;
       setStatus({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      setChecking(false);
     }
   }
 
@@ -519,7 +528,7 @@ function LocalEngineFields({ config }: { config: ImageConfig }) {
       )}
       <div className="tool-row">
         <button type="button" className="btn btn--small" disabled={checking || (config.localManaged && !config.localModel)} onClick={() => void check()}>
-          {checking ? "Verifico…" : "Verifica il motore"}
+          {generation.phase === "queued" ? "Verifica in coda…" : checking ? "Verifico…" : "Verifica il motore"}
         </button>
       </div>
       {status && <p className={`issue issue--${status.level}`}>{status.text}</p>}

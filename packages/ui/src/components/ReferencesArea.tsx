@@ -20,6 +20,7 @@ interface Props {
   focus: { ref: string; at: number } | null;
   describe: (places: readonly PlaceToDescribe[]) => Promise<BreakdownPlace[]>;
   describer: string;
+  describeService: string;
 }
 
 const LEAD: Record<ReferencesTab, string> = {
@@ -34,7 +35,7 @@ const LEAD: Record<ReferencesTab, string> = {
  * che la stanza resti la stessa stanza, i personaggi che la faccia resti la
  * stessa faccia. Valgono per tutta la serie, non per un capitolo.
  */
-export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab, focus, describe, describer }: Props) {
+export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab, focus, describe, describer, describeService }: Props) {
   return (
     <>
       <header className="area__head">
@@ -59,7 +60,7 @@ export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab,
         <CharactersPanel doc={doc} store={store} image={image} run={run} endGesture={endGesture} focus={tab === "personaggi" ? focus : null} />
       </div>
       <div role="tabpanel" hidden={tab !== "luoghi"}>
-        <LocationsPanel doc={doc} store={store} image={image} run={run} endGesture={endGesture} describe={describe} describer={describer} focus={tab === "luoghi" ? focus : null} />
+        <LocationsPanel doc={doc} store={store} image={image} run={run} endGesture={endGesture} describe={describe} describer={describer} describeService={describeService} focus={tab === "luoghi" ? focus : null} />
       </div>
     </>
   );

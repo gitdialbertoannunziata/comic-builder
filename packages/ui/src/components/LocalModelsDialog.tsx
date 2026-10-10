@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useGeneration } from "../useGeneration.js";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { FLUX2_KLEIN_4B, type RenderSpec } from "@comic-builder/core";
 import { LocalSdImageService } from "@comic-builder/image";
 import { LlamaServerLlmService } from "@comic-builder/llm";
 import { desktopFetch } from "../platform/desktop.js";
 import { gb, local, refreshLocalModels, setLocalOverview, useLocalModels, type Backend, type EngineKind, type InstallProgress, type LocalOverview } from "../platform/localModels.js";
+import { generationScheduler, scheduleGeneration } from "../generationScheduler.js";
 
 interface Props {
   open: boolean;
@@ -58,7 +60,7 @@ export function LocalModelsDialog({ open, onClose, onUse }: Props) {
         ) : !overview ? (
           <p className="muted">Guardo cosa c'è in questo computer…</p>
         ) : (
-          <Wizard overview={overview} step={step} onStep={setStep} onUse={onUse} onClose={onClose} />
+          open && <Wizard overview={overview} step={step} onStep={setStep} onUse={onUse} onClose={onClose} />
         )}
       </div>
     </dialog>
@@ -76,6 +78,8 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
   const [progress, setProgress] = useState<InstallProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const installed = Boolean(overview.state.models.text || overview.state.models.image);
+  const jobs = useSyncExternalStore(generationScheduler.subscribe, generationScheduler.getSnapshot, generationScheduler.getSnapshot);
+  const localBusy = jobs.some((job) => job.lane === "local");
 
   const size = useMemo(() => {
     let total = 0;
@@ -90,11 +94,14 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
   }, [overview, text, image, backend]);
 
   async function install() {
+    if (generationScheduler.getSnapshot().some((job) => job.lane === "local")) return;
     setError(null);
     onStep("install");
     const off = local!.onProgress(setProgress);
     try {
-      setLocalOverview(await local!.install({ backend, memoryGB, text, image }));
+      await scheduleGeneration("local", "text", "Installazione modelli locali", async () => {
+        setLocalOverview(await local!.install({ backend, memoryGB, text, image }));
+      });
       onStep("try");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(cause));
@@ -158,8 +165,10 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
               <button
                 type="button"
                 className="link-btn"
+                disabled={localBusy}
                 onClick={async () => {
-                  if (window.confirm(`Togliere motori e modelli locali (${overview.folder})? Si riscaricano dalla procedura.`)) setLocalOverview(await local!.remove());
+                  if (generationScheduler.getSnapshot().some((job) => job.lane === "local")) return;
+                  if (window.confirm(`Togliere motori e modelli locali (${overview.folder})? Si riscaricano dalla procedura.`)) await scheduleGeneration("local", "text", "Rimozione modelli locali", async () => { setLocalOverview(await local!.remove()); });
                 }}
               >
                 togli i modelli locali
@@ -232,10 +241,11 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
           <button type="button" className="btn btn--small" onClick={() => onStep("computer")}>
             Indietro
           </button>
-          <button type="button" className="btn btn--small btn--primary" disabled={(!text && !image) || noDisk} onClick={() => void install()}>
+          <button type="button" className="btn btn--small btn--primary" disabled={(!text && !image) || noDisk || localBusy} onClick={() => void install()}>
             {size > 0 ? `Scarica e installa (${gb(size)})` : "Installa"}
           </button>
         </div>
+        {localBusy && <p className="field__hint">Installazione disponibile quando la coda locale e' libera.</p>}
       </div>
     );
   }
@@ -287,28 +297,32 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
   const has = { text: Boolean(overview.state.models.text), image: Boolean(overview.state.models.image) };
   const [results, setResults] = useState<Partial<Record<EngineKind, { ok: boolean; text: string; image?: string }>>>({});
   const [busy, setBusy] = useState<EngineKind | null>(null);
+  const generation = useGeneration(local);
 
   async function tryText() {
+    if (busy) return;
     setBusy("text");
     const started = Date.now();
     try {
       const llm = new LlamaServerLlmService({ resolveBaseUrl: () => local!.start("text"), fetchImpl: desktopFetch, maxTokens: 200 });
-      const answer = await llm.complete({
+      const answer = await generation.schedule("local", "text", `Prova ${overview.models.find((model) => model.id === overview.state.models.text)?.label ?? "testo locale"}`, () => llm.complete({
         system: "Rispondi solo con JSON conforme allo schema.",
         user: "Scrivi una battuta di un fumetto, in italiano, di non più di dieci parole.",
         schema: { type: "object", properties: { battuta: { type: "string" } }, required: ["battuta"], additionalProperties: false },
         schemaName: "Prova",
-      });
+      }));
       const line = (answer.data as { battuta?: string }).battuta ?? "";
       setResults((r) => ({ ...r, text: { ok: true, text: `«${line}» — ${Math.round((Date.now() - started) / 1000)} s, avvio del motore compreso.` } }));
     } catch (cause) {
+      if (!generation.isCurrent()) return;
       setResults((r) => ({ ...r, text: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
     } finally {
-      setBusy(null);
+      if (generation.isCurrent()) setBusy(null);
     }
   }
 
   async function tryImage() {
+    if (busy) return;
     setBusy("image");
     const started = Date.now();
     try {
@@ -328,19 +342,21 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
         control_image: null,
         compiler: 2,
       };
-      const result = await service.generate({ spec, references: [] });
+      const result = await generation.schedule("local", "image", `Prova ${overview.models.find((model) => model.id === overview.state.models.image)?.label ?? "immagini locali"}`, () => service.generate({ spec, references: [] }));
       const url = URL.createObjectURL(new Blob([result.data as BlobPart], { type: result.mediaType }));
       setResults((r) => ({ ...r, image: { ok: true, text: `512×512 in ${Math.round((Date.now() - started) / 1000)} s, avvio del motore compreso. Una vignetta vera, con i riferimenti, chiede di più.`, image: url } }));
     } catch (cause) {
+      if (!generation.isCurrent()) return;
       setResults((r) => ({ ...r, image: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
     } finally {
-      setBusy(null);
+      if (generation.isCurrent()) setBusy(null);
     }
   }
 
   return (
     <div className="stack">
       <p className="local-models__step">4 di 4 · prova</p>
+      {generation.phase === "queued" && <p className="field__hint" role="status">Prova in coda</p>}
       <p className="field__hint">Ogni motore parte quando serve e si ferma quando parte l'altro: spoglio e immagini vanno a turno, così non si contendono la memoria.</p>
       {has.text && (
         <div className="local-models__try">

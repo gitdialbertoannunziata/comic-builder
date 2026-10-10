@@ -1,5 +1,5 @@
 import { artMediaType, renderPaths, specHash, type Command, type ImageSize, type Panel, type ProjectStore, type RenderSpec } from "@comic-builder/core";
-import { runRenderQueue, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
+import { ImageCancelledError, runRenderQueue, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
 import { imageSize } from "./useArtWatcher.js";
 
 /** Un pannello da generare, con lo spec che il documento compila adesso. */
@@ -7,6 +7,12 @@ export interface GenerationItem {
   pageId: string;
   panel: Panel;
   spec: RenderSpec;
+}
+
+export function generationContentMatches(current: GenerationItem, queued: GenerationItem): boolean {
+  return current.pageId === queued.pageId
+    && JSON.stringify({ ...current.panel, render: queued.panel.render }) === JSON.stringify(queued.panel)
+    && JSON.stringify({ ...current.spec, model: queued.spec.model, width: queued.spec.width, height: queued.spec.height, aspect: queued.spec.aspect, target: queued.spec.target }) === JSON.stringify(queued.spec);
 }
 
 export interface GenerationReport {
@@ -39,6 +45,9 @@ export async function generatePanels(input: {
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
   signal?: AbortSignal;
+  concurrency?: number;
+  cancelInFlight?: boolean;
+  isValid?: (item: GenerationItem) => boolean;
   onProgress?: (progress: { done: number; total: number }) => void;
 }): Promise<GenerationReport> {
   const { store, service, items, run } = input;
@@ -54,7 +63,7 @@ export async function generatePanels(input: {
 
   // Un'immagine nuova riparte centrata, senza l'inquadratura di quella di prima: come un disegno nuovo importato.
   const link = (item: GenerationItem, file: string, size: ImageSize) =>
-    run(
+    (!input.isValid || input.isValid(item)) && run(
       {
         type: "panel.update",
         pageId: item.pageId,
@@ -65,53 +74,63 @@ export async function generatePanels(input: {
     );
 
   const jobs: Array<RenderJob & { item: GenerationItem }> = [];
-  for (const item of items) {
-    const { image } = renderPaths(item.spec);
-    const cached = await store.readBytes(image);
-    if (cached) {
-      link(item, image, await sizeOf(item, cached));
-      report.cached++;
-      tick();
-      continue;
-    }
-    jobs.push({
-      id: item.panel.id,
-      item,
-      request: async (): Promise<ImageRequest> => ({ spec: item.spec, references: await readReferences(store, item.spec) }),
-    });
-  }
-
-  const byId = new Map(jobs.map((job) => [job.id, job.item]));
-  await runRenderQueue(jobs, {
-    service,
-    // Più tentativi del default: col limite di richieste al minuto di un
-    // deployment, una pagina intera aspetta più volte prima di finire.
-    retries: 5,
-    ...(input.signal ? { signal: input.signal } : {}),
-    onOutcome: async (outcome) => {
-      const item = byId.get(outcome.id)!;
-      if (outcome.status === "done") {
-        const paths = renderPaths(item.spec);
-        await store.writeBytes(paths.image, outcome.result.data);
-        const references = await Promise.all(outcome.request.references.map(async (r) => ({ path: r.path, sha256: await sha256(r.data) })));
-        await store.writeText(
-          paths.sidecar,
-          `${JSON.stringify({ spec: item.spec, spec_hash: specHash(item.spec), engine: service.name, rendered_at: new Date().toISOString(), cost_usd: outcome.result.meta.costUsd, remote_id: outcome.result.meta.remoteId ?? null, references }, null, 2)}\n`,
-        );
-        link(item, paths.image, await sizeOf(item, outcome.result.data));
-        report.done++;
-        report.costUsd += outcome.result.meta.costUsd ?? 0;
-      } else if (outcome.status === "failed") {
-        report.failed.push({ panelId: outcome.id, error: outcome.error });
-      } else {
-        report.cancelled++;
+  try {
+    for (const item of items) {
+      if (input.signal?.aborted) throw new ImageCancelledError(service.name);
+      if (input.isValid && !input.isValid(item)) throw new Error("La vignetta e' cambiata dopo il clic. Rilancia la generazione.");
+      const { image } = renderPaths(item.spec);
+      const cached = await store.readBytes(image);
+      if (cached) {
+        link(item, image, await sizeOf(item, cached));
+        report.cached++;
+        tick();
+        continue;
       }
-      tick();
-    },
-  });
+      jobs.push({
+        id: item.panel.id,
+        item,
+        request: async (): Promise<ImageRequest> => {
+          if (input.isValid && !input.isValid(item)) throw new Error("La vignetta e' cambiata mentre era in coda.");
+          return { spec: item.spec, references: await readReferences(store, item.spec) };
+        },
+      });
+    }
 
-  input.endGesture();
-  return report;
+    const byId = new Map(jobs.map((job) => [job.id, job.item]));
+    await runRenderQueue(jobs, {
+      service,
+      ...(input.concurrency !== undefined ? { concurrency: input.concurrency } : {}),
+      ...(input.cancelInFlight !== undefined ? { cancelInFlight: input.cancelInFlight } : {}),
+      // Più tentativi del default: col limite di richieste al minuto di un
+      // deployment, una pagina intera aspetta più volte prima di finire.
+      retries: 5,
+      ...(input.signal ? { signal: input.signal } : {}),
+      onOutcome: async (outcome) => {
+        const item = byId.get(outcome.id)!;
+        if (outcome.status === "done") {
+          const paths = renderPaths(item.spec);
+          await store.writeBytes(paths.image, outcome.result.data);
+          const references = await Promise.all(outcome.request.references.map(async (r) => ({ path: r.path, sha256: await sha256(r.data) })));
+          await store.writeText(
+            paths.sidecar,
+            `${JSON.stringify({ spec: item.spec, spec_hash: specHash(item.spec), engine: service.name, rendered_at: new Date().toISOString(), cost_usd: outcome.result.meta.costUsd, remote_id: outcome.result.meta.remoteId ?? null, references }, null, 2)}\n`,
+          );
+          link(item, paths.image, await sizeOf(item, outcome.result.data));
+          report.done++;
+          report.costUsd += outcome.result.meta.costUsd ?? 0;
+        } else if (outcome.status === "failed") {
+          report.failed.push({ panelId: outcome.id, error: outcome.error });
+        } else {
+          report.cancelled++;
+        }
+        tick();
+      },
+    });
+
+    return report;
+  } finally {
+    input.endGesture();
+  }
 }
 
 const WHERE: Record<RenderSpec["references"][number]["kind"], string> = {
@@ -136,10 +155,10 @@ export async function readReferences(store: ProjectStore, spec: RenderSpec): Pro
  * di un luogo), scritta dove dice `path`. Passa dalla coda anche se è una:
  * è la coda che aspetta il limite di richieste al minuto e riprova.
  */
-export async function generateReference(input: { store: ProjectStore; service: ImageService; spec: RenderSpec; path: string }): Promise<{ costUsd: number }> {
+export async function generateReference(input: { store: ProjectStore; service: ImageService; spec: RenderSpec; path: string; signal?: AbortSignal; cancelInFlight?: boolean }): Promise<{ costUsd: number }> {
   const { store, service, spec, path } = input;
   const references = await readReferences(store, spec);
-  const [outcome] = await runRenderQueue([{ id: spec.panel, request: () => ({ spec, references }) }], { service, retries: 5 });
+  const [outcome] = await runRenderQueue([{ id: spec.panel, request: () => ({ spec, references }) }], { service, retries: 5, ...(input.signal ? { signal: input.signal } : {}), ...(input.cancelInFlight !== undefined ? { cancelInFlight: input.cancelInFlight } : {}), concurrency: 1 });
   if (!outcome || outcome.status !== "done") throw new Error(outcome?.status === "failed" ? outcome.error : "Generazione interrotta.");
   await store.writeBytes(path, outcome.result.data);
   return { costUsd: outcome.result.meta.costUsd ?? 0 };

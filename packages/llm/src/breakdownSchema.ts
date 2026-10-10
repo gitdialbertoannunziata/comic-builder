@@ -126,3 +126,18 @@ export function breakdownJsonSchema(): Record<string, unknown> {
 }
 
 export const BREAKDOWN_SCHEMA_NAME = "Breakdown";
+
+export const ScenePlanSchema = z.object({
+  scenes: z.array(z.object({
+    title: z.string().trim().min(1),
+    from_line: z.number().int().positive(),
+    to_line: z.number().int().positive(),
+  })).min(1),
+});
+
+export function scenePlanJsonSchema(): Record<string, unknown> {
+  return zodToJsonSchema(ScenePlanSchema, {
+    $refStrategy: "none",
+    target: "jsonSchema7",
+  }) as Record<string, unknown>;
+}

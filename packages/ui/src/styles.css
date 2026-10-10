@@ -125,6 +125,45 @@ button {
   height: 100%;
 }
 
+.shell__bar {
+  min-width: 0;
+}
+
+.generation-queues {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.generation-queues summary {
+  cursor: pointer;
+}
+
+.generation-queues__list {
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.generation-queues__list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
+.generation-queues__list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.generation-queues__list button {
+  flex-shrink: 0;
+}
+
 /* Un'area di lavoro alla volta riempie lo spazio sotto la barra; le altre
    restano montate ma nascoste, così non perdono ciò che vi si è scritto. */
 [hidden] {

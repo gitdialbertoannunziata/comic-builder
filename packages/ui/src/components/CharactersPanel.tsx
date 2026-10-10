@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   appearanceText,
   characterRefs,
@@ -12,11 +12,11 @@ import {
   type ProjectStore,
   type SheetView,
 } from "@comic-builder/core";
-import type { ImageService } from "@comic-builder/image";
 import { makeService, serviceReady, specModel, type ImageConfig } from "./GenerateCard.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
+import { useGeneration } from "../useGeneration.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -70,6 +70,9 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
   const [generating, setGenerating] = useState<string | null>(null);
   const [sheetNote, setSheetNote] = useState<{ level: "info" | "error"; text: string } | null>(null);
   const describable = sheet !== undefined && appearanceText(sheet).length > 0;
+  const generation = useGeneration(store, doc.project.id);
+  const latest = useRef(doc);
+  latest.current = doc;
 
   /**
    * Genera viste della scheda (F5), una dopo l'altra: ognuna si aggiunge ai
@@ -77,41 +80,51 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
    * che fa della scheda una persona sola invece di tre sosia.
    */
   async function generateSheet(views: readonly SheetView[]) {
-    if (!ref || !sheet) return;
+    if (!ref || !sheet || generating) return;
     setSheetNote(null);
-    let service: ImageService;
-    try {
-      service = makeService(image);
-    } catch (cause) {
-      setSheetNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
-      return;
-    }
+    setGenerating("In coda");
     let current = sheet;
     let cost = 0;
     let made = 0;
+    const created: CharacterSheet["references"] = [];
     try {
-      for (const view of views) {
-        setGenerating(`${SHEET_VIEWS[view].label} (${made + 1}/${views.length})`);
-        const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image) });
-        const path = characterSheetPath(spec, view);
-        cost += (await generateReference({ store, service, spec, path })).costUsd;
-        current = { ...current, references: [...current.references, { path, note: SHEET_VIEWS[view].label, use: true }] };
-        run({ type: "character.upsert", ref, patch: { references: current.references } });
-        made++;
-      }
+      await generation.schedule(image.service, "image", `Personaggio ${sheet.name} · ${image.service === "local" ? image.localModel ?? "locale" : specModel(image)}`, async (signal, isCurrent) => {
+        const service = makeService(image);
+        for (const view of views) {
+          if (!isCurrent()) throw new DOMException("Generazione annullata.", "AbortError");
+          const now = latest.current.characters[ref];
+          if (!now || appearanceText(now) !== appearanceText(sheet)) throw new Error("La scheda personaggio e' cambiata. Rilancia la generazione.");
+          current = { ...current, references: [...now.references, ...created.filter((entry) => !now.references.some((reference) => reference.path === entry.path))] };
+          setGenerating(`${SHEET_VIEWS[view].label} (${made + 1}/${views.length})`);
+          const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image) });
+          const path = characterSheetPath(spec, view);
+          cost += (await generateReference({ store, service, spec, path, signal, cancelInFlight: image.service !== "local" })).costUsd;
+          if (!isCurrent()) throw new DOMException("Generazione annullata.", "AbortError");
+          const updated = latest.current.characters[ref];
+          if (!updated || appearanceText(updated) !== appearanceText(sheet)) throw new Error("La scheda personaggio e' cambiata durante la generazione.");
+          created.push({ path, note: SHEET_VIEWS[view].label, use: true });
+          current = { ...current, references: [...updated.references, ...created.filter((entry) => !updated.references.some((reference) => reference.path === entry.path))] };
+          run({ type: "character.upsert", ref, patch: { references: current.references } });
+          made++;
+        }
+      }, () => latest.current.characters[ref] === sheet);
       setSheetNote({
         level: "info",
         text: `${made} ${made === 1 ? "immagine aggiunta" : "immagini aggiunte"} ai riferimenti${cost > 0 ? ` · addebitati ${cost.toFixed(2).replace(".", ",")} $` : ""}. Togli la spunta a quelle che non gli somigliano.`,
       });
     } catch (cause) {
+      if (!generation.isCurrent()) return;
       setSheetNote({ level: "error", text: `${made > 0 ? `${made} fatte, poi: ` : ""}${cause instanceof Error ? cause.message : String(cause)}` });
     } finally {
-      setGenerating(null);
+      if (generation.isCurrent()) setGenerating(null);
     }
   }
 
+  useEffect(() => { setGenerating(null); setSheetNote(null); }, [store, doc.project.id]);
+
   return (
     <div className="stack">
+      {generation.phase === "queued" && <p className="field__hint" role="status">Riferimenti personaggio in coda</p>}
       <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
         {refs.length === 0 && <p className="field__hint">Nessun personaggio: arrivano dallo spoglio del copione.</p>}
         {refs.map((r, i) => {

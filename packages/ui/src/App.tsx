@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
-import { describeLocations, type PlaceToDescribe } from "@comic-builder/llm";
+import { describeLocations, type PlaceToDescribe, type BreakdownProgress } from "@comic-builder/llm";
 import { useFont } from "./useFont.js";
 import { llmServiceFor, runBreakdown, type LlmChoice } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
@@ -24,6 +24,8 @@ import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
 import { LocalModelsDialog } from "./components/LocalModelsDialog.js";
 import { ConfigurationDialog } from "./components/ConfigurationDialog.js";
 import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
+import { useGeneration } from "./useGeneration.js";
+import { GenerationQueues } from "./components/GenerationQueues.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
@@ -72,6 +74,9 @@ export function App() {
   const draftKey = `${doc.project.id}:${chapter.id}`;
   const script = drafts[draftKey] ?? doc.scripts[chapter.id] ?? "";
   const setScript = (text: string) => setDrafts((d) => ({ ...d, [draftKey]: text }));
+  const latest = useRef({ doc, drafts, assets: editor.assets, chapterId: chapter.id });
+  latest.current = { doc, drafts, assets: editor.assets, chapterId: chapter.id };
+  const breakdown = useGeneration(editor.assets, doc.project.id);
 
   // Il nome del progetto anche nella scheda del browser.
   useEffect(() => {
@@ -129,6 +134,7 @@ export function App() {
     localModel: installedModel(localModels, "image")?.label ?? null,
   };
   const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
+  const textModel = service === "local" ? installedModel(localModels, "text")?.label ?? "locale" : service === "mock" ? "euristico" : service === "ollama" ? ollamaModel : service === "anthropic" ? anthropicModel : service === "deepseek" ? deepseekModel : openaiModel;
   const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });
 
   // L'area Riferimenti: quale scheda, e cosa aprire quando ci si arriva da una vignetta.
@@ -140,25 +146,34 @@ export function App() {
     setArea("personaggi");
   };
 
-  const [running, setRunning] = useState(false);
-  const [breakdownProgress, setBreakdownProgress] = useState<{ done: number; total: number } | null>(null);
+  const running = breakdown.phase !== null;
+  const [breakdownProgress, setBreakdownProgress] = useState<BreakdownProgress | null>(null);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BreakdownSummary | null>(null);
+  useEffect(() => { setSummary(null); setBreakdownError(null); setBreakdownProgress(null); }, [editor.assets, doc.project.id]);
 
   const { font, bytes: fontBytes, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
 
   async function onRunBreakdown() {
-    setRunning(true);
+    if (running) return;
     setBreakdownError(null);
+    const unchanged = () => {
+      const now = latest.current;
+      const target = now.doc.chapters.chapters.find((entry) => entry.id === chapter.id);
+      return now.assets === editor.assets && now.doc.project.id === doc.project.id && target === chapter
+        && (now.drafts[draftKey] ?? now.doc.scripts[chapter.id] ?? "") === script
+        && chapter.pages.every((id) => now.doc.pages[id] === doc.pages[id]);
+    };
     try {
-      const result = await runBreakdown({
+      const result = await breakdown.schedule(llm.service, "text", `Spoglio ${chapter.title} · ${llm.service}/${textModel}`, (_signal, isCurrent) => runBreakdown({
         script,
         ...llm,
         chapterId: chapter.id,
         // Gli altri capitoli: personaggi esistenti e riassunto del precedente.
         context: chapterContext(doc, chapter.id),
-        onProgress: setBreakdownProgress,
-      });
+        onProgress: (progress) => { if (isCurrent()) setBreakdownProgress(progress); },
+      }), unchanged);
+      if (!unchanged()) throw new Error("Il copione o le pagine sono cambiati durante lo spoglio. I risultati non sono stati applicati: rilancia il lavoro.");
       if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
       // Lo spoglio riempie il capitolo aperto e basta: gli altri restano come
       // sono. È un passo della cronologia: Ctrl+Z riporta il capitolo di prima.
@@ -169,7 +184,7 @@ export function App() {
       // l'autore ha scritto resta suo.
       const filled: string[] = [];
       for (const member of result.cast) {
-        const sheet = doc.characters[member.ref];
+        const sheet = latest.current.doc.characters[member.ref];
         const appearance = Object.fromEntries(Object.entries(member.appearance).filter(([key, value]) => value && !sheet?.appearance[key as keyof typeof member.appearance]?.trim()));
         const patch = {
           ...(!sheet?.name.trim() ? { name: member.name } : {}),
@@ -184,7 +199,7 @@ export function App() {
       const places: string[] = [];
       for (const place of result.locations) {
         const ref = locationRef(place.name);
-        const sheet = doc.locations[ref];
+        const sheet = latest.current.doc.locations[ref];
         if (!ref || !place.description || sheet?.description.trim()) continue;
         run({ type: "location.upsert", ref, patch: sheet ? { description: place.description } : { name: place.name, description: place.description } }, { gesture });
         places.push(place.name);
@@ -203,13 +218,13 @@ export function App() {
         ],
       });
       // Le pagine sono nate: si va a vederle. L'esito resta nell'area Copione.
-      setArea("pagine");
+      if (latest.current.chapterId === chapter.id) setArea("pagine");
     } catch (error) {
+      if (!breakdown.isCurrent()) return;
       setBreakdownError(error instanceof Error ? error.message : String(error));
       setSummary(null);
     } finally {
-      setRunning(false);
-      setBreakdownProgress(null);
+      if (breakdown.isCurrent()) setBreakdownProgress(null);
     }
   }
 
@@ -254,18 +269,21 @@ export function App() {
 
   return (
     <div className="shell">
-      <ProjectBar
-        editor={editor}
-        chapters={chapters}
-        chapterId={chapter.id}
-        onSelectChapter={selectChapter}
-        area={area}
-        onArea={setArea}
-        openRevisions={openRevisions}
-        onHelp={() => setHelp(true)}
-        onConfiguration={() => setConfigurationOpen(true)}
-        {...(local ? { onLocalModels: () => setLocalDialog(true) } : {})}
-      />
+      <div className="shell__bar">
+        <ProjectBar
+          editor={editor}
+          chapters={chapters}
+          chapterId={chapter.id}
+          onSelectChapter={selectChapter}
+          area={area}
+          onArea={setArea}
+          openRevisions={openRevisions}
+          onHelp={() => setHelp(true)}
+          onConfiguration={() => setConfigurationOpen(true)}
+          {...(local ? { onLocalModels: () => setLocalDialog(true) } : {})}
+        />
+        <GenerationQueues />
+      </div>
       <ShortcutsHelp open={help} onClose={() => setHelp(false)} />
       <ConfigurationDialog
         open={configurationOpen}
@@ -339,6 +357,7 @@ export function App() {
               openaiKeyFromEnv={prefilled.openaiKeyFromEnv}
               onRun={() => void onRunBreakdown()}
               running={running}
+              queued={breakdown.phase === "queued"}
               progress={breakdownProgress}
               error={breakdownError}
               summary={summary}
@@ -377,7 +396,8 @@ export function App() {
             onTab={setReferencesTab}
             focus={referencesFocus}
             describe={describe}
-            describer={service === "mock" ? "euristico" : service}
+            describer={textModel}
+            describeService={service}
           />
         </div>
       </div>

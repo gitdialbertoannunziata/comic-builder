@@ -42,6 +42,7 @@ describe("Modello locale (llama-server di llama.cpp)", () => {
     expect(response.meta.model).toBe("qwen3.5-9b");
     expect(calls[0]!.url).toBe("http://127.0.0.1:18080/v1/chat/completions");
     expect(calls[0]!.body).toMatchObject({ stream: true, response_format: { type: "json_schema", json_schema: { name: "Prova", strict: true, schema: { type: "object" } } } });
+    expect(calls[0]!.body.chat_template_kwargs).toEqual({ enable_thinking: false });
     expect(service.constraint).toBe("grammar");
   });
 
@@ -76,7 +77,7 @@ describe("Modello locale (llama-server di llama.cpp)", () => {
     await expect(empty.complete(request)).rejects.toBeInstanceOf(LlmError);
   });
 
-  it("lo spoglio vero passa da qui", async () => {
+  it("lo spoglio disabilita il ragionamento per non esaurire i token prima del JSON", async () => {
     const answer = {
       scenes: [
         {
@@ -92,7 +93,15 @@ describe("Modello locale (llama-server di llama.cpp)", () => {
       cast: [],
       locations: [{ name: "Il faro", description: "Torre bianca su uno sperone di roccia." }],
     };
-    const llm = new LlamaServerLlmService({ baseUrl: "http://x", fetchImpl: (async () => sse(JSON.stringify(answer))) as typeof fetch });
+    const llm = new LlamaServerLlmService({
+      baseUrl: "http://x",
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { chat_template_kwargs?: { enable_thinking?: boolean } };
+        return body.chat_template_kwargs?.enable_thinking === false
+          ? sse(JSON.stringify(answer))
+          : sse("", { finish: "length" });
+      }) as typeof fetch,
+    });
     const result = await breakdownScript({ llm, script: "# Il faro\nIl faro all'alba.", scriptFile: "script/ep001.md" });
     expect(result.scenes[0]?.location).toBe("Il faro");
     expect(result.locations).toEqual([{ name: "Il faro", description: "Torre bianca su uno sperone di roccia." }]);

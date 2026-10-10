@@ -1,4 +1,5 @@
 import type { ValidationIssue } from "@comic-builder/core";
+import type { BreakdownProgress } from "@comic-builder/llm";
 import { useKeyNote } from "../platform/desktop.js";
 import { installedModel, local, openLocalModels, useLocalModels } from "../platform/localModels.js";
 
@@ -42,8 +43,9 @@ interface Props {
   openaiKeyFromEnv: boolean;
   onRun: () => void;
   running: boolean;
+  queued?: boolean;
   /** «parte 2 di 4» mentre lo spoglio procede a parti. */
-  progress?: { done: number; total: number } | null;
+  progress?: BreakdownProgress | null;
   error: string | null;
   summary: BreakdownSummary | null;
 }
@@ -81,6 +83,7 @@ export function ScriptPanel({
   openaiKeyFromEnv,
   onRun,
   running,
+  queued = false,
   progress,
   error,
   summary,
@@ -320,10 +323,14 @@ export function ScriptPanel({
           )}
 
           <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
-            {running
-              ? progress && progress.total > 1
-                ? `Spoglio… parte ${Math.min(progress.done + 1, progress.total)} di ${progress.total}`
-                : "Spoglio in corso…"
+            {queued ? "Spoglio in coda…" : running
+              ? progress?.phase === "planning"
+                ? "Individuo le scene…"
+                : progress?.phase === "scenes"
+                  ? `Spoglio… scena ${progress.scene} di ${progress.scenes}`
+                  : progress && progress.total > 1
+                    ? `Spoglio… parte ${Math.min(progress.done + 1, progress.total)} di ${progress.total}`
+                    : "Spoglio in corso…"
               : "Spoglia il capitolo"}
           </button>
 

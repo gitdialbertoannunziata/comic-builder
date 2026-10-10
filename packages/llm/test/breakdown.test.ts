@@ -10,7 +10,7 @@ import { MockLlmService, heuristicBreakdown } from "../src/mockService.js";
 import { OllamaLlmService } from "../src/ollamaService.js";
 import { breakdownScript } from "../src/breakdown.js";
 import { BreakdownSchema, breakdownJsonSchema } from "../src/breakdownSchema.js";
-import { LlmError, type LlmService } from "../src/service.js";
+import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest } from "../src/service.js";
 
 const SCRIPT = `# Il faro di Capo Vento
 
@@ -183,6 +183,116 @@ describe("breakdownScript — dal capitolo alle scene del progetto", () => {
     };
 
     await expect(breakdownScript({ llm: broken, script: SCRIPT, scriptFile: "f.md" })).rejects.toThrow(LlmError);
+  });
+});
+
+describe("Spoglio sequenziale per scene", () => {
+  const script = "# Cucina\nSARA: Torno presto.\n# Giardino\nSARA: Eccomi.";
+  const ranges = [{ title: "Cucina", from_line: 1, to_line: 2 }, { title: "Giardino", from_line: 3, to_line: 4 }];
+
+  it("pianifica, spoglia in sequenza e condivide identita' e luoghi senza rinumerare le righe", async () => {
+    const calls: LlmRequest[] = [];
+    const progress: unknown[] = [];
+    const llm: LlmService = {
+      name: "locale", constraint: "grammar",
+      complete: async (request) => {
+        calls.push(request);
+        if (request.schemaName === "ScenePlan") return { data: { scenes: ranges }, meta: { model: "qwen", durationMs: 5 } };
+        const numbered = request.user.split("\n").filter((line) => /^\d+\t/.test(line)).join("\n");
+        return { data: heuristicBreakdown(numbered), meta: { model: "qwen", durationMs: 10 } };
+      },
+    };
+    const result = await breakdownScript({ llm, script, scriptFile: "f.md", strategy: "scenes", onProgress: (value) => progress.push(value) });
+    expect(calls.map((call) => call.schemaName)).toEqual(["ScenePlan", "Breakdown", "Breakdown"]);
+    expect(calls[1]!.user).toContain("1\t# Cucina\n2\tSARA: Torno presto.");
+    expect(calls[1]!.user).not.toContain("4\tSARA: Eccomi.");
+    expect(calls[2]!.user).toContain("3\t# Giardino\n4\tSARA: Eccomi.");
+    expect(calls[2]!.user).toContain("sara «Sara»");
+    expect(calls[2]!.user).toContain("Luoghi già visti");
+    expect(result.scenes.map((scene) => scene.id)).toEqual(["s001", "s002"]);
+    expect(result.scenes.flatMap((scene) => scene.beats.flatMap((beat) => beat.lines.map((line) => line.text)))).toEqual(["Torno presto.", "Eccomi."]);
+    expect(result.scenes[1]!.beats.at(-1)!.source?.from_line).toBe(4);
+    expect(result.cast.map((member) => member.ref)).toEqual(["sara"]);
+    expect(result.meta.durationMs).toBe(25);
+    expect(progress).toContainEqual({ done: 0, total: 1, phase: "planning" });
+    expect(progress).toContainEqual({ done: 1, total: 2, phase: "scenes", scene: 2, scenes: 2 });
+  });
+
+  it.each([
+    [],
+    [{ title: "Scena", from_line: 2, to_line: 4 }],
+    [{ title: "Scena", from_line: 1, to_line: 3 }],
+    [{ title: "Scena", from_line: 1, to_line: 5 }],
+    [{ title: "Uno", from_line: 1, to_line: 3 }, { title: "Due", from_line: 3, to_line: 4 }],
+  ].map((scenes) => ({ scenes })))("rifiuta un piano non completo prima di spogliare: $scenes", async ({ scenes }) => {
+    let calls = 0;
+    const llm: LlmService = {
+      name: "locale", constraint: "grammar",
+      complete: async () => { calls++; return { data: { scenes }, meta: { model: "qwen", durationMs: 1 } }; },
+    };
+    await expect(breakdownScript({ llm, script, scriptFile: "f.md", strategy: "scenes" })).rejects.toThrow(LlmError);
+    expect(calls).toBe(1);
+  });
+
+  it("rifiuta un beat che cita le righe di un'altra scena", async () => {
+    const llm: LlmService = {
+      name: "locale", constraint: "grammar",
+      complete: async (request) => ({
+        data: request.schemaName === "ScenePlan" ? { scenes: ranges } : heuristicBreakdown("3\t# Giardino\n4\tSARA: Eccomi."),
+        meta: { model: "qwen", durationMs: 1 },
+      }),
+    };
+    await expect(breakdownScript({ llm, script, scriptFile: "f.md", strategy: "scenes" })).rejects.toThrow("fuori dalle righe assegnate");
+  });
+
+  it("dimezza solo la scena troncata e ricuce le battute mantenendo il contatore di scena", async () => {
+    let planned = 0;
+    let attempts = 0;
+    const progress: unknown[] = [];
+    const llm: LlmService = {
+      name: "locale", constraint: "grammar",
+      complete: async (request) => {
+        if (request.schemaName === "ScenePlan") {
+          planned++;
+          return { data: { scenes: [{ title: "Cucina", from_line: 1, to_line: 5 }] }, meta: { model: "qwen", durationMs: 1 } };
+        }
+        if (attempts++ === 0) throw new LlmTruncatedError("troncata", "locale");
+        const numbered = request.user.split("\n").filter((line) => /^\d+\t/.test(line)).join("\n");
+        return { data: heuristicBreakdown(numbered), meta: { model: "qwen", durationMs: 1 } };
+      },
+    };
+    const result = await breakdownScript({
+      llm, script: "# Cucina\nSARA: Torno presto.\n\nSARA: Eccomi.\n", scriptFile: "f.md", strategy: "scenes",
+      onProgress: (value) => progress.push(value),
+    });
+    expect(planned).toBe(1);
+    expect(attempts).toBe(3);
+    expect(result.scenes).toHaveLength(1);
+    expect(result.scenes[0]!.beats.flatMap((beat) => beat.lines.map((line) => line.text))).toEqual(["Torno presto.", "Eccomi."]);
+    expect(progress).toContainEqual({ done: 1, total: 2, phase: "scenes", scene: 1, scenes: 1 });
+  });
+
+  it("divide preventivamente le scene lunghe conservando le righe e la continuita' fra finestre", async () => {
+    const longScript = Array.from({ length: 10 }, (_, index) => `SARA: Battuta numero ${index}.\n`).join("\n");
+    let plans = 0;
+    const llm: LlmService = {
+      name: "locale", constraint: "grammar",
+      complete: async (request) => {
+        const numbered = request.user.split("\n").filter((line) => /^\d+\t/.test(line));
+        if (request.schemaName === "ScenePlan") {
+          plans++;
+          return {
+            data: { scenes: [{ title: "Cucina", from_line: Number(numbered[0]!.split("\t")[0]), to_line: Number(numbered.at(-1)!.split("\t")[0]) }] },
+            meta: { model: "qwen", durationMs: 1 },
+          };
+        }
+        return { data: heuristicBreakdown(numbered.join("\n")), meta: { model: "qwen", durationMs: 1 } };
+      },
+    };
+    const result = await breakdownScript({ llm, script: longScript, scriptFile: "f.md", strategy: "scenes", chunkChars: 100 });
+    expect(plans).toBeGreaterThan(1);
+    expect(result.scenes).toHaveLength(1);
+    expect(result.scenes[0]!.beats.flatMap((beat) => beat.lines.map((line) => line.text))).toEqual(Array.from({ length: 10 }, (_, index) => `Battuta numero ${index}.`));
   });
 });
 

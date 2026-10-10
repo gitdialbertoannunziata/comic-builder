@@ -5,6 +5,7 @@ import { makeService, serviceReady, specModel, type ImageConfig } from "./Genera
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
+import { useGeneration } from "../useGeneration.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -16,6 +17,7 @@ interface Props {
   describe: (places: readonly PlaceToDescribe[]) => Promise<BreakdownPlace[]>;
   /** Chi lo farebbe, per l'etichetta del bottone: «claude», «euristico»… */
   describer: string;
+  describeService: string;
   /** Il luogo da aprire, quando ci si arriva da una vignetta. */
   focus: { ref: string; at: number } | null;
 }
@@ -41,7 +43,7 @@ const usd = (value: number) => `${value.toFixed(2).replace(".", ",")} $`;
  * ambientata lì, le immagini spuntate le si allegano: è ciò che tiene la
  * finestra dallo stesso lato e la scrivania della stessa forma.
  */
-export function LocationsPanel({ doc, store, image, run, endGesture, describe, describer, focus }: Props) {
+export function LocationsPanel({ doc, store, image, run, endGesture, describe, describer, describeService, focus }: Props) {
   const locations = useMemo(() => projectLocations(doc), [doc]);
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
@@ -53,20 +55,25 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
   // Il documento di adesso, non quello di quando la richiesta è partita: nel frattempo l'autore può aver scritto.
   const latest = useRef(doc);
   latest.current = doc;
+  const generation = useGeneration(store, doc.project.id);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ level: "info" | "error"; text: string } | null>(null);
   const undescribed = locations.filter((l) => !l.sheet?.description.trim());
+  const descriptionScope = useGeneration(store, doc.project.id);
+  useEffect(() => { setBusy(null); setNote(null); }, [store, doc.project.id]);
 
   /** Una scheda che non c'è nasce col nome che le scene usano: è da lì che si ritrova. */
   const upsert = (patch: LocationPatch, field?: string) =>
     location && run({ type: "location.upsert", ref: location.ref, patch: sheet ? patch : { name: location.name, ...patch } }, field ? { gesture: `${location.ref}:${field}` } : {});
 
   async function propose(targets: readonly ProjectLocation[]) {
-    if (targets.length === 0) return;
+    if (targets.length === 0 || busy) return;
     setNote(null);
     setBusy(targets.length === 1 ? "propongo la descrizione…" : `propongo ${targets.length} descrizioni…`);
     try {
-      const answers = await describe(targets.map(toDescribe));
+      const input = targets.map(toDescribe);
+      const answers = await descriptionScope.schedule(describeService, "text", `${targets.length} descrizioni · ${describer}`, () => describe(input));
+      if (!descriptionScope.isCurrent()) return;
       const filled: string[] = [];
       targets.forEach((target, i) => {
         const description = answers[i]?.description.trim();
@@ -83,31 +90,35 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
           : { level: "info", text: "Il modello non ha proposto niente: scrivi la descrizione a mano." },
       );
     } catch (cause) {
+      if (!descriptionScope.isCurrent()) return;
       setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
     } finally {
-      setBusy(null);
+      if (descriptionScope.isCurrent()) setBusy(null);
     }
   }
 
   /** Una tavola del luogo vuoto, nello stile dell'opera: diventa il riferimento delle vignette ambientate lì. */
   async function plate() {
-    if (!location) return;
+    if (!location || busy) return;
     setNote(null);
     setBusy("genero la tavola del luogo…");
     try {
       const current = sheet ?? LocationSheetSchema.parse({ schema: 1, id: location.ref, name: location.name });
       const spec = compileLocationSpec({ project: doc.project, location: current, model: specModel(image) });
       const path = locationSheetPath(spec);
-      const { costUsd } = await generateReference({ store, service: makeService(image), spec, path });
-      run({ type: "location.upsert", ref: location.ref, patch: { ...(sheet ? {} : { name: location.name }), references: [...current.references, { path, note: "tavola", use: true }] } });
+      const { costUsd } = await generation.schedule(image.service, "image", `Luogo ${location.name} · ${image.service === "local" ? image.localModel ?? "locale" : specModel(image)}`, (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => latest.current.locations[location.ref] === (sheet ?? undefined));
+      const now = latest.current.locations[location.ref];
+      if (now?.description !== sheet?.description) throw new Error("La descrizione del luogo e' cambiata durante la generazione.");
+      run({ type: "location.upsert", ref: location.ref, patch: { ...(now ? {} : { name: location.name }), references: [...(now?.references ?? current.references), { path, note: "tavola", use: true }] } });
       setNote({
         level: "info",
         text: `Tavola aggiunta${costUsd > 0 ? ` · addebitati ${usd(costUsd)}` : ""}. Se non è il posto giusto togli la spunta e generane un'altra; se lo è, ogni vignetta ambientata qui la riceverà.`,
       });
     } catch (cause) {
+      if (!generation.isCurrent()) return;
       setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
     } finally {
-      setBusy(null);
+      if (generation.isCurrent()) setBusy(null);
     }
   }
 
@@ -118,6 +129,8 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
 
   return (
     <div className="stack">
+      {generation.phase === "queued" && <p className="field__hint" role="status">Tavola del luogo in coda</p>}
+      {descriptionScope.phase === "queued" && <p className="field__hint" role="status">Descrizioni dei luoghi in coda</p>}
       <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
         {locations.map((l) => {
           const level = completeness(l);

@@ -110,6 +110,10 @@ export function installedModel(overview: LocalOverview | null, kind: EngineKind)
   return model ? { id: model.id, label: model.label } : null;
 }
 
+export function localModelIdentity(kind: EngineKind): string {
+  return JSON.stringify([current?.state.models[kind] ?? null, current?.state.engines[kind] ?? null, current?.state.memoryGB ?? null]);
+}
+
 // --- Aprire la procedura guidata da qualunque punto ---
 
 const openers = new Set<(focus?: EngineKind) => void>();
