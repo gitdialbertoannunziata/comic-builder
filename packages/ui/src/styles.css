@@ -520,6 +520,7 @@ button {
 input[type="text"],
 input[type="number"],
 input[type="password"],
+.configuration input[type="url"],
 select,
 textarea {
   font: inherit;
@@ -2589,6 +2590,32 @@ kbd {
 .local-models__title .link-btn {
   font-size: 12px;
   font-weight: 400;
+}
+
+.configuration__group {
+  min-width: 0;
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ink-line);
+}
+
+.configuration__group legend {
+  padding: 0 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.configuration__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+
+.configuration input,
+.configuration select {
+  width: 100%;
+  min-width: 0;
 }
 
 .local-models__step {

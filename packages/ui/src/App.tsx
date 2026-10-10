@@ -22,6 +22,7 @@ import { useSecret } from "./platform/desktop.js";
 import { focusCanvas, isTyping, LIST_LEGEND, useLegend, useShortcuts } from "./keyboard.js";
 import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
 import { LocalModelsDialog } from "./components/LocalModelsDialog.js";
+import { ConfigurationDialog } from "./components/ConfigurationDialog.js";
 import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
@@ -93,6 +94,7 @@ export function App() {
   const [imageService, setImageService] = usePreference<ImageConfig["service"]>("imageService", prefilled.azureFluxKeyFromEnv || !prefilled.bflKeyFromEnv ? "azure" : "flux");
   const [bflKey, setBflKey] = useSecret("bfl", prefilled.bflKey);
   const [bflModel, setBflModel] = usePreference("bflModel", prefilled.bflModel);
+  const [bflBaseUrl, setBflBaseUrl] = usePreference("bflBaseUrl", prefilled.bflBaseUrl);
   const [azureFluxKey, setAzureFluxKey] = useSecret("azure-flux", prefilled.azureFluxKey);
   const [azureFluxEndpoint, setAzureFluxEndpoint] = usePreference("azureFluxEndpoint", prefilled.azureFluxEndpoint);
   const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
@@ -101,6 +103,7 @@ export function App() {
   // I modelli locali dell'app desktop: installati dalla procedura guidata, avviati dall'app.
   const localModels = useLocalModels();
   const [localDialog, setLocalDialog] = useState(false);
+  const [configurationOpen, setConfigurationOpen] = useState(false);
   useEffect(() => onOpenLocalModels(() => setLocalDialog(true)), []);
   const image: ImageConfig = {
     service: imageService,
@@ -110,7 +113,7 @@ export function App() {
     keyFromEnv: prefilled.bflKeyFromEnv,
     model: bflModel,
     onModel: setBflModel,
-    baseUrl: prefilled.bflBaseUrl,
+    baseUrl: bflBaseUrl,
     azureKey: azureFluxKey,
     onAzureKey: setAzureFluxKey,
     azureKeyFromEnv: prefilled.azureFluxKeyFromEnv,
@@ -260,9 +263,36 @@ export function App() {
         onArea={setArea}
         openRevisions={openRevisions}
         onHelp={() => setHelp(true)}
+        onConfiguration={() => setConfigurationOpen(true)}
         {...(local ? { onLocalModels: () => setLocalDialog(true) } : {})}
       />
       <ShortcutsHelp open={help} onClose={() => setHelp(false)} />
+      <ConfigurationDialog
+        open={configurationOpen}
+        onClose={() => setConfigurationOpen(false)}
+        config={{ ...llm, bflKey, bflModel, bflBaseUrl, azureFluxKey, azureFluxEndpoint, azureFluxDeployment }}
+        onChange={(field, value) => ({
+          anthropicKey: setAnthropicKey,
+          anthropicModel: setAnthropicModel,
+          deepseekKey: setDeepseekKey,
+          deepseekModel: setDeepseekModel,
+          openaiKey: setOpenaiKey,
+          openaiModel: setOpenaiModel,
+          openaiBaseUrl: setOpenaiBaseUrl,
+          ollamaHost: setOllamaHost,
+          ollamaModel: setOllamaModel,
+          bflKey: setBflKey,
+          bflModel: setBflModel,
+          bflBaseUrl: setBflBaseUrl,
+          azureFluxKey: setAzureFluxKey,
+          azureFluxEndpoint: setAzureFluxEndpoint,
+          azureFluxDeployment: setAzureFluxDeployment,
+        })[field](value)}
+        service={service}
+        onService={setService}
+        imageService={imageService}
+        onImageService={setImageService}
+      />
       <LocalModelsDialog
         open={localDialog}
         onClose={() => setLocalDialog(false)}
