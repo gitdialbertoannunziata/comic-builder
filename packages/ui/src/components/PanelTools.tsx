@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { Camera, Command, Page, Panel } from "@comic-builder/core";
 import { SHOT_OPTIONS, SHOT_LABELS } from "../cameraOptions.js";
 
@@ -77,8 +78,8 @@ export function PanelTools({ page, panel, run, onSelectPanel }: Props) {
 
   return (
     <div className="card">
-      <p className="card__title">inquadratura rapida</p>
-      <div className="shots" role="radiogroup" aria-label="Taglio dell'inquadratura">
+      <p className="card__title">{t("inquadratura rapida")}</p>
+      <div className="shots" role="radiogroup" aria-label={t("Taglio dell'inquadratura")}>
         {SHOT_OPTIONS.map((shot) => (
           <button
             key={shot}
@@ -86,7 +87,7 @@ export function PanelTools({ page, panel, run, onSelectPanel }: Props) {
             role="radio"
             aria-checked={panel.camera.shot === shot}
             className="shot"
-            title={`${shot} — ${SHOT_LABELS[shot]}`}
+            title={`${shot} — ${t(SHOT_LABELS[shot])}`}
             onClick={() => run({ type: "panel.camera", pageId: page.id, panelId: panel.id, camera: { shot } })}
           >
             <ShotIcon shot={shot} />
@@ -95,14 +96,12 @@ export function PanelTools({ page, panel, run, onSelectPanel }: Props) {
         ))}
       </div>
 
-      <p className="card__title card__title--gap">griglia</p>
+      <p className="card__title card__title--gap">{t("griglia")}</p>
       <div className="tool-row">
-        <button type="button" className="btn btn--small" onClick={() => run({ type: "panel.split", pageId: page.id, panelId: panel.id, axis: "cols" })} title="Due pannelli affiancati">
-          ◫ dividi in verticale
-        </button>
-        <button type="button" className="btn btn--small" onClick={() => run({ type: "panel.split", pageId: page.id, panelId: panel.id, axis: "rows" })} title="Due pannelli uno sopra l'altro">
-          ⊟ dividi in orizzontale
-        </button>
+        <button type="button" className="btn btn--small" onClick={() => run({ type: "panel.split", pageId: page.id, panelId: panel.id, axis: "cols" })} title={t("Due pannelli affiancati")}>
+          {t("◫ dividi in verticale")}</button>
+        <button type="button" className="btn btn--small" onClick={() => run({ type: "panel.split", pageId: page.id, panelId: panel.id, axis: "rows" })} title={t("Due pannelli uno sopra l'altro")}>
+          {t("⊟ dividi in orizzontale")}</button>
       </div>
       {neighbours.length > 0 ? (
         <div className="tool-row">
@@ -111,7 +110,7 @@ export function PanelTools({ page, panel, run, onSelectPanel }: Props) {
               key={other.id}
               type="button"
               className="btn btn--small"
-              title={`Unisci con ${other.id}`}
+              title={t("Unisci con {0}", other.id)}
               onClick={() => {
                 if (run({ type: "panel.merge", pageId: page.id, panelIds: [panel.id, other.id] })) {
                   // Resta quello che si legge prima: la selezione lo segue.
@@ -120,12 +119,12 @@ export function PanelTools({ page, panel, run, onSelectPanel }: Props) {
                 }
               }}
             >
-              unisci a {side}
+              {t("unisci a")}{" "}{side}
             </button>
           ))}
         </div>
       ) : (
-        <p className="field__hint">Nessun vicino con cui formare un rettangolo: niente da unire.</p>
+        <p className="field__hint">{t("Nessun vicino con cui formare un rettangolo: niente da unire.")}</p>
       )}
     </div>
   );

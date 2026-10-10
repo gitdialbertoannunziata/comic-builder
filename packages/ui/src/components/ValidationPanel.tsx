@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { ZodIssue } from "zod";
 import type { ValidationIssue } from "@comic-builder/core";
 
@@ -27,7 +28,7 @@ export function ValidationPanel({ schemaIssues, docIssues, onSelectPanel, knownP
   const total = schemaIssues.length + docIssues.length;
 
   if (total === 0) {
-    return <p className="all-clear">Nessun problema — documento valido.</p>;
+    return <p className="all-clear">{t("Nessun problema — documento valido.")}</p>;
   }
 
   return (

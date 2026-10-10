@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef, useState } from "react";
 import type { PrefilledConfig } from "../devConfig.js";
 import { useKeyNote } from "../platform/desktop.js";
@@ -63,29 +64,29 @@ export function ConfigurationDialog({ open, onClose, config, onChange, service, 
     >
       <div className="local-models__body">
         <h2 className="local-models__title">
-          <span id="configuration-title">Configurazione</span>
-          <button type="button" className="link-btn" onClick={onClose}>chiudi</button>
+          <span id="configuration-title">{t("Configurazione")}</span>
+          <button type="button" className="link-btn" onClick={onClose}>{t("chiudi")}</button>
         </h2>
-        <Tabs label="Configurazione servizi" value={tab} onChange={setTab} items={[{ id: "text", label: "Testo" }, { id: "image", label: "Immagini" }]} />
-        <p className="field__hint">Chiavi API: {keyNote}</p>
-        <div role="tabpanel" aria-label={tab === "text" ? "Testo" : "Immagini"}>
+        <Tabs label={t("Configurazione servizi")} value={tab} onChange={setTab} items={[{ id: "text", label: t("Testo") }, { id: "image", label: t("Immagini") }]} />
+        <p className="field__hint">{t("Chiavi API:")}{" "}{keyNote}</p>
+        <div role="tabpanel" aria-label={tab === "text" ? t("Testo") : t("Immagini")}>
           <label className="field">
-            <span className="field__label">Servizio attivo</span>
+            <span className="field__label">{t("Servizio attivo")}</span>
             {tab === "text" ? (
               <select value={service} onChange={(event) => onService(event.target.value as LlmChoice["service"])}>
-                <option value="mock">Simulato</option>
+                <option value="mock">{t("Simulato")}</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="deepseek">DeepSeek</option>
                 <option value="openai">OpenAI</option>
                 <option value="ollama">Ollama</option>
-                {local && <option value="local">Modello locale</option>}
+                {local && <option value="local">{t("Modello locale")}</option>}
               </select>
             ) : (
               <select value={imageService} onChange={(event) => onImageService(event.target.value as ImageConfig["service"])}>
-                <option value="mock">Simulato</option>
+                <option value="mock">{t("Simulato")}</option>
                 <option value="azure">Azure AI Foundry</option>
                 <option value="flux">Black Forest Labs</option>
-                <option value="local">Modello locale</option>
+                <option value="local">{t("Modello locale")}</option>
               </select>
             )}
           </label>
@@ -95,7 +96,7 @@ export function ConfigurationDialog({ open, onClose, config, onChange, service, 
               <div className="configuration__fields">
                 {group.fields.map((field) => (
                   <label className="field" key={field.key}>
-                    <span className="field__label">{field.label}</span>
+                    <span className="field__label">{t(field.label)}</span>
                     <input
                       type={field.type ?? "text"}
                       value={config[field.key]}

@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { describeTarget, type ExportOutcome } from "../exportPages.js";
 import { project } from "../project.js";
 import { targetLabel } from "../labels.js";
@@ -75,8 +76,7 @@ export function ExportPanel({
     <div className="stack">
       <div className="field">
         <span className="field__label">
-          formati — dal progetto, capitolo intero ({pageCount} pag.)
-        </span>
+          {t("formati — dal progetto, capitolo intero (")}{pageCount} {" "}{t("pag.)")}</span>
         <div className="targets">
           {project.targets.map((target) => {
             const key = `target:${target.id}`;
@@ -95,14 +95,14 @@ export function ExportPanel({
             );
           })}
           {EXTRAS.map((extra) => (
-            <label key={extra.key} className="target" title={extra.hint}>
+            <label key={extra.key} className="target" title={t(extra.hint)}>
               <input
                 type="checkbox"
                 checked={choices.has(extra.key)}
                 onChange={() => toggle(extra.key)}
               />
-              <span className="target__name">{extra.label}</span>
-              <span className="target__spec">{extra.hint}</span>
+              <span className="target__name">{t(extra.label)}</span>
+              <span className="target__spec">{t(extra.hint)}</span>
             </label>
           ))}
         </div>
@@ -115,34 +115,30 @@ export function ExportPanel({
           onChange={(e) => onDraftChange(e.target.checked)}
         />
         <span>
-          includi la specifica di disegno
-          <span className="field__hint">
+          {t("includi la specifica di disegno")}<span className="field__hint">
             {" "}
-            — spenta, un pannello senza arte resta vuoto
-          </span>
+            {t("— spenta, un pannello senza arte resta vuoto")}</span>
         </span>
       </label>
 
       <div className="field">
-        <span className="field__label">destinazione</span>
+        <span className="field__label">{t("destinazione")}</span>
         {canChooseDestination ? (
           <>
             <button type="button" className="btn" onClick={onChooseDestination}>
               {destination
-                ? `cartella: ${destination}`
-                : "Scegli una cartella…"}
+                ? t("cartella: {0}", destination)
+                : t("Scegli una cartella…")}
             </button>
             <span className="field__hint">
               {destination
-                ? "Una sottocartella per formato."
-                : "Senza cartella scelta, tutto finisce nei download in un unico .zip, una cartella per formato."}
+                ? t("Una sottocartella per formato.")
+                : t("Senza cartella scelta, tutto finisce nei download in un unico .zip, una cartella per formato.")}
             </span>
           </>
         ) : (
           <span className="field__hint">
-            Questo browser non consente di scegliere una cartella: tutto finisce
-            nei suoi download, in un unico .zip con una cartella per formato.
-          </span>
+            {t("Questo browser non consente di scegliere una cartella: tutto finisce nei suoi download, in un unico .zip con una cartella per formato.")}</span>
         )}
       </div>
 
@@ -164,17 +160,16 @@ export function ExportPanel({
             const report = s.slicePlan?.report;
             return (
               <li key={s.targetId}>
-                <strong>{s.label}</strong> — {s.files} file
+                <strong>{t(s.label)}</strong> — {s.files} file
                 {s.slicePlan && report && (
                   <div className="export-report__slice">
                     {s.slicePlan.slices.length} slice
                     {report.shortSlices > 0
-                      ? ` (${report.shortSlices} corte)`
+                      ? t(" ({0} corte)", report.shortSlices)
                       : ""}{" "}
                     ·{" "}
                     {s.slicePlan.cuts.filter((c) => c.kind === "gutter").length}{" "}
-                    di {s.slicePlan.cuts.length} tagli nei gutter · pagine da
-                    controllare {report.pagesToCheck.length}/{report.pages} (
+                    {t("di")}{" "}{s.slicePlan.cuts.length} {" "}{t("tagli nei gutter · pagine da controllare")}{" "}{report.pagesToCheck.length}/{report.pages} (
                     {Math.round(report.checkRatio * 100)}%){" "}
                     <span
                       className={
@@ -184,8 +179,8 @@ export function ExportPanel({
                       }
                     >
                       {report.checkRatio < GATE_RATIO
-                        ? "gate F2.1 superato"
-                        : "sopra il 20%: gate F2.1 non superato"}
+                        ? t("gate F2.1 superato")
+                        : t("sopra il 20%: gate F2.1 non superato")}
                     </span>
                   </div>
                 )}

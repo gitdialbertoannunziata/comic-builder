@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useState } from "react";
 import { MAX_STYLE_REFERENCES, STYLE_PRESETS, styleChosen, styleText, type Command, type ProjectDoc, type ProjectStore } from "@comic-builder/core";
 import { ReferenceImages } from "./ReferenceImages.js";
@@ -35,7 +36,7 @@ export function StylePanel({ doc, store, run }: Props) {
   return (
     <div className="stack">
       <div className="card">
-        <p className="card__title">da dove partire</p>
+        <p className="card__title">{t("da dove partire")}</p>
         <div className="style-presets" onKeyDown={(e) => void listArrows(e)}>
           {STYLE_PRESETS.map((preset, i) => {
             const active = chosen && current === preset.positive;
@@ -50,20 +51,20 @@ export function StylePanel({ doc, store, run }: Props) {
                 onClick={() => run({ type: "project.style", positive: fragments(preset.positive), preset: preset.id })}
                 title={preset.positive}
               >
-                <strong>{preset.label}</strong>
-                <span>{preset.hint}</span>
+                <strong>{t(preset.label)}</strong>
+                <span>{t(preset.hint)}</span>
               </button>
             );
           })}
         </div>
-        <p className="field__hint">Un clic scrive lo stile qui sotto: è un punto di partenza, correggilo finché somiglia a ciò che vuoi. Ctrl+Z torna a quello di prima.</p>
+        <p className="field__hint">{t("Un clic scrive lo stile qui sotto: è un punto di partenza, correggilo finché somiglia a ciò che vuoi. Ctrl+Z torna a quello di prima.")}</p>
       </div>
 
       <div className="card">
-        <p className="card__title">come è disegnata l'opera</p>
+        <p className="card__title">{t("come è disegnata l'opera")}</p>
         <div className="stack">
           <label className="field">
-            <span className="field__label">stile (vale per ogni immagine dell'opera)</span>
+            <span className="field__label">{t("stile (vale per ogni immagine dell'opera)")}</span>
             <textarea
               rows={3}
               value={text}
@@ -72,36 +73,32 @@ export function StylePanel({ doc, store, run }: Props) {
               onBlur={() => run({ type: "project.style", positive: fragments(text) })}
             />
             <span className="field__hint">
-              Il segno, il colore, l'ombreggiatura, la texture: in inglese il modello lo legge meglio. Dillo in positivo («hand-drawn», «flat colours») invece di elencare ciò che non vuoi.
-            </span>
+              {t("Il segno, il colore, l'ombreggiatura, la texture: in inglese il modello lo legge meglio. Dillo in positivo («hand-drawn», «flat colours») invece di elencare ciò che non vuoi.")}</span>
           </label>
           {!chosen && (
             <p className="issue issue--warning">
-              Nessuno stile scelto: finché non lo scrivi vale «{STYLE_PRESETS.find((p) => p.id === style.preset)?.label ?? STYLE_PRESETS[0]!.label}», perché un'opera senza stile esce come un collage.
-            </p>
+              {t("Nessuno stile scelto: finché non lo scrivi vale «")}{t(STYLE_PRESETS.find((p) => p.id === style.preset)?.label ?? STYLE_PRESETS[0]!.label)}{t("», perché un'opera senza stile esce come un collage.")}</p>
           )}
           <label className="field">
-            <span className="field__label">da evitare</span>
-            <input type="text" value={avoid} placeholder="lascialo vuoto, se puoi" onChange={(e) => setAvoid(e.target.value)} onBlur={() => run({ type: "project.style", negative: fragments(avoid) })} />
-            <span className="field__hint">FLUX.2 non ha un prompt negativo: ciò che scrivi qui finisce nominato nel prompt, e a volte compare proprio per questo.</span>
+            <span className="field__label">{t("da evitare")}</span>
+            <input type="text" value={avoid} placeholder={t("lascialo vuoto, se puoi")} onChange={(e) => setAvoid(e.target.value)} onBlur={() => run({ type: "project.style", negative: fragments(avoid) })} />
+            <span className="field__hint">{t("FLUX.2 non ha un prompt negativo: ciò che scrivi qui finisce nominato nel prompt, e a volte compare proprio per questo.")}</span>
           </label>
         </div>
       </div>
 
       <div className="card">
-        <p className="card__title">tavole di stile</p>
+        <p className="card__title">{t("tavole di stile")}</p>
         <ReferenceImages
           store={store}
           references={style.references}
           onChange={(references) => run({ type: "project.style", references })}
           directory="style"
-          useHint={`Se allegarla a ogni generazione: il modello ne copia il segno, non il contenuto. Se ne allegano al massimo ${MAX_STYLE_REFERENCES}.`}
+          useHint={t("Se allegarla a ogni generazione: il modello ne copia il segno, non il contenuto. Se ne allegano al massimo {0}.", MAX_STYLE_REFERENCES)}
         />
-        {used > MAX_STYLE_REFERENCES && <p className="issue issue--info">Ne sono spuntate {used}: si allegano le prime {MAX_STYLE_REFERENCES}, per lasciare posto a luoghi e personaggi.</p>}
+        {used > MAX_STYLE_REFERENCES && <p className="issue issue--info">{t("Ne sono spuntate")}{" "}{used}{t(": si allegano le prime")}{" "}{MAX_STYLE_REFERENCES}{t(", per lasciare posto a luoghi e personaggi.")}</p>}
         <p className="field__hint">
-          Un'immagine che ha già il segno giusto vale più di qualunque descrizione: si allega a ogni vignetta, scheda e tavola di luogo, e il modello ne copia linea, colore e
-          ombre — non il soggetto. La più semplice da avere: genera una vignetta, e se ti convince tienila come tavola di stile dalla scheda Arte.
-        </p>
+          {t("Un'immagine che ha già il segno giusto vale più di qualunque descrizione: si allega a ogni vignetta, scheda e tavola di luogo, e il modello ne copia linea, colore e ombre — non il soggetto. La più semplice da avere: genera una vignetta, e se ti convince tienila come tavola di stile dalla scheda Arte.")}</p>
       </div>
     </div>
   );

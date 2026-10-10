@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { Camera } from "@comic-builder/core";
 import { Segmented } from "./Segmented.js";
 import { CAMERA_FIELD_LABELS } from "../labels.js";
@@ -38,7 +39,7 @@ export function CameraForm({ camera, onChange }: Props) {
         options={SHOT_OPTIONS.map((s) => ({
           value: s,
           label: s,
-          title: SHOT_LABELS[s],
+          title: t(SHOT_LABELS[s]),
           // INSERT non sta sulla scala dal campo lunghissimo al primissimo piano:
           // è un'altra cosa, e staccarlo lo dice senza spiegarlo.
           detached: s === "INSERT",
@@ -49,7 +50,7 @@ export function CameraForm({ camera, onChange }: Props) {
         label={CAMERA_FIELD_LABELS.angle}
         value={camera.angle}
         onChange={(v) => set("angle", v)}
-        options={ANGLE_OPTIONS.map((a) => ({ value: a, label: a, title: ANGLE_LABELS[a] }))}
+        options={ANGLE_OPTIONS.map((a) => ({ value: a, label: a, title: t(ANGLE_LABELS[a]) }))}
       />
 
       <Segmented

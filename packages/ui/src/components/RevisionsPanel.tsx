@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   canForceRevision,
@@ -58,7 +59,7 @@ const STATE_LABEL: Record<RevisionState, string> = {
   lost: "non più nel documento",
 };
 
-const kindLabel = (e: RevisionEntry) => (e.kind === "set" && e.field ? FIELD_LABEL[e.field] : KIND_LABEL[e.kind]);
+const kindLabel = (e: RevisionEntry) => (e.kind === "set" && e.field ? t(FIELD_LABEL[e.field]) : t(KIND_LABEL[e.kind]));
 
 /** Il prima e il dopo: parola per parola dove è testo, uno accanto all'altro dove è un valore. */
 function Change({ entry }: { entry: RevisionEntry }) {
@@ -75,7 +76,7 @@ function Change({ entry }: { entry: RevisionEntry }) {
   if (entry.kind === "set" && (entry.field === "speaker" || entry.field === "balloon_type")) {
     return (
       <p className="revision__diff">
-        <del>{entry.from || "nessuno"}</del> → <ins>{entry.to || "nessuno"}</ins>
+        <del>{entry.from || t("nessuno")}</del> → <ins>{entry.to || t("nessuno")}</ins>
       </p>
     );
   }
@@ -158,28 +159,28 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
   async function exportForReview() {
     const text = exportReadable(doc, chapterId);
     const where = await write([{ name: `${chapterId}-revisione.md`, data: text, mediaType: "text/markdown" }]);
-    done(`File per lo sceneggiatore esportato (${where}). Te lo rimanda corretto: lo reimporti qui.`);
+    done(t("File per lo sceneggiatore esportato ({0}). Te lo rimanda corretto: lo reimporti qui.", where));
   }
 
   async function importAnnotated(file: File) {
     const result = parseAnnotated(doc, chapterId, await file.text());
     setWarnings(result.warnings);
     if (result.corrections.length === 0) {
-      done("Nessuna differenza nel file: niente da correggere.");
+      done(t("Nessuna differenza nel file: niente da correggere."));
       return;
     }
     const parts = partitionIncoming(doc, chapterId, result.corrections);
     const skipped = [
-      parts.alreadyOpen.length > 0 ? `${parts.alreadyOpen.length} già in attesa` : "",
-      parts.alreadyRejected.length > 0 ? `${parts.alreadyRejected.length} già rifiutate, non riproposte (si riaprono dallo storico)` : "",
+      parts.alreadyOpen.length > 0 ? t("{0} già in attesa", parts.alreadyOpen.length) : "",
+      parts.alreadyRejected.length > 0 ? t("{0} già rifiutate, non riproposte (si riaprono dallo storico)", parts.alreadyRejected.length) : "",
     ].filter(Boolean);
     const tail = skipped.length > 0 ? ` ${skipped.join("; ")}.` : "";
     if (parts.fresh.length === 0) {
-      done(`Niente di nuovo in «${file.name}».${tail}`);
+      done(t("Niente di nuovo in «{0}».{1}", file.name, tail));
       return;
     }
     if (run({ type: "revision.add", chapterId, entries: result.corrections, by, at: now() })) {
-      done(`${parts.fresh.length} correzioni importate da «${file.name}». Accettale o rifiutale qui sotto.${tail}`);
+      done(t("{0} correzioni importate da «{1}». Accettale o rifiutale qui sotto.{2}", parts.fresh.length, file.name, tail));
     }
   }
 
@@ -204,15 +205,15 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
         return { label: entry.panel!, panel: entry.panel };
       case "page": {
         const page = doc.pages[entry.page!];
-        return { label: page ? `pagina ${page.order}` : `pagina ${entry.page} (non c'è più)`, panel: page?.panels[0]?.id ?? null };
+        return { label: page ? t("pagina {0}", page.order) : t("pagina {0} (non c'è più)", entry.page), panel: page?.panels[0]?.id ?? null };
       }
       case "scene": {
         const scene = doc.scenes.scenes.find((s) => s.id === entry.scene);
         const first = chapterPages.flatMap((p) => p.panels).find((p) => p.scene_id === entry.scene);
-        return { label: scene ? `scena «${scene.title}»` : `scena ${entry.scene} (non c'è più)`, panel: first?.id ?? null };
+        return { label: scene ? t("scena «{0}»", scene.title) : t("scena {0} (non c'è più)", entry.scene), panel: first?.id ?? null };
       }
       case "chapter":
-        return { label: "tutto il capitolo", panel: null };
+        return { label: t("tutto il capitolo"), panel: null };
     }
   }
 
@@ -229,16 +230,16 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
             ? run({ type: "revision.reject", chapterId, ids: [id], by: me, at: now(), ...(text ? { resolution: text } : {}) })
             : run({ type: "revision.lesson", chapterId, id, lesson: text || null });
     if (ok) {
-      if (asking.what === "lesson" && text) done("Regola aggiunta alla serie: arriva allo spoglio di ogni capitolo (la vedi in Copione, «cosa riceve il modello»).");
+      if (asking.what === "lesson" && text) done(t("Regola aggiunta alla serie: arriva allo spoglio di ogni capitolo (la vedi in Copione, «cosa riceve il modello»)."));
       setAsking(null);
     }
   }
 
   const ASK: Record<Asking["what"], { label: string; confirm: string }> = {
-    edit: { label: "testo proposto", confirm: "Salva" },
-    done: { label: "cosa hai fatto (facoltativo)", confirm: "Fatta" },
-    reject: { label: "perché (facoltativo)", confirm: "Rifiuta" },
-    lesson: { label: "regola per la serie: vale per ogni capitolo", confirm: "Salva la regola" },
+    edit: { label: t("testo proposto"), confirm: t("Salva") },
+    done: { label: t("cosa hai fatto (facoltativo)"), confirm: "Fatta" },
+    reject: { label: t("perché (facoltativo)"), confirm: "Rifiuta" },
+    lesson: { label: t("regola per la serie: vale per ogni capitolo"), confirm: t("Salva la regola") },
   };
 
   function askBox(entry: RevisionEntry) {
@@ -254,8 +255,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
             {ASK[asking.what].confirm}
           </button>
           <button type="button" className="link-btn" onClick={() => setAsking(null)}>
-            annulla
-          </button>
+            {t("annulla")}</button>
         </div>
       </div>
     );
@@ -264,16 +264,15 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
   function lessonRow(entry: RevisionEntry) {
     return (
       <p className="revision__lesson">
-        {entry.lesson && <span>regola per la serie: «{entry.lesson}» </span>}
+        {entry.lesson && <span>{t("regola per la serie: «")}{entry.lesson}» </span>}
         <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "lesson", text: entry.lesson ?? suggestLesson(entry) })}>
-          {entry.lesson ? "cambia" : "vale per la serie…"}
+          {entry.lesson ? "cambia" : t("vale per la serie…")}
         </button>
         {entry.lesson && (
           <>
             {" "}
             <button type="button" className="link-btn" onClick={() => run({ type: "revision.lesson", chapterId, id: entry.id, lesson: null })}>
-              togli
-            </button>
+              {t("togli")}</button>
           </>
         )}
       </p>
@@ -287,7 +286,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
     if (impact.corrections.length > 0) run({ type: "revision.add", chapterId, entries: impact.corrections, by, at: now() }, { gesture });
     run({ type: "script.set", chapterId, text: compared, sha: await sha256(compared) }, { gesture });
     endGesture();
-    done(`Copione aggiornato: ${impact.touched.length} pannelli toccati, ${impact.corrections.length} correzioni da decidere.`);
+    done(t("Copione aggiornato: {0} pannelli toccati, {1} correzioni da decidere.", impact.touched.length, impact.corrections.length));
     setCompared(null);
     setNewScript("");
   }
@@ -296,15 +295,15 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
     const touched = entries.filter((e) => ids.includes(e.id));
     if (run({ type: "revision.apply", chapterId, ids, by: me, at: now(), ...(force ? { force } : {}) })) {
       const balloons = touched.filter((e) => e.kind === "text" || e.kind === "add" || e.kind === "remove").length;
-      done(`${ids.length} correzioni applicate: ${balloons} battute riletterate, il resto della pagina non si tocca.`);
+      done(t("{0} correzioni applicate: {1} battute riletterate, il resto della pagina non si tocca.", ids.length, balloons));
     }
   }
 
-  useLegend("Revisioni, su una voce aperta", 40, [
-    { keys: ["ArrowUp", "ArrowDown"], shown: "↑ ↓", label: "Voce precedente / successiva" },
-    { keys: ["a"], label: "Accetta (per una nota: fatta…)" },
+  useLegend(t("Revisioni, su una voce aperta"), 40, [
+    { keys: ["ArrowUp", "ArrowDown"], shown: "↑ ↓", label: t("Voce precedente / successiva") },
+    { keys: ["a"], label: t("Accetta (per una nota: fatta…)") },
     { keys: ["r"], label: "Rifiuta" },
-    { keys: ["Enter"], label: "Va alla vignetta" },
+    { keys: ["Enter"], label: t("Va alla vignetta") },
   ]);
 
   /**
@@ -352,14 +351,12 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
     <div className="revisions">
       <div className="stack revisions__in">
         <div className="card">
-          <p className="card__title">scambio con lo sceneggiatore</p>
+          <p className="card__title">{t("scambio con lo sceneggiatore")}</p>
           <div className="tool-row">
             <button type="button" className="btn btn--small" onClick={() => void exportForReview()}>
-              Esporta per la revisione (.md)
-            </button>
+              {t("Esporta per la revisione (.md)")}</button>
             <button type="button" className="btn btn--small" onClick={() => fileInput.current?.click()}>
-              Importa il file corretto…
-            </button>
+              {t("Importa il file corretto…")}</button>
             <input
               ref={fileInput}
               type="file"
@@ -373,18 +370,17 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
             />
           </div>
           <label className="field field--inline">
-            <span className="field__label">corretto da</span>
+            <span className="field__label">{t("corretto da")}</span>
             <input type="text" value={by} onChange={(e) => setBy(e.target.value)} />
           </label>
         </div>
 
         <div className="card">
-          <p className="card__title">nuova versione del copione</p>
-          <textarea rows={4} placeholder="Incolla qui il capitolo come lo rimanda lo sceneggiatore…" value={newScript} onChange={(e) => setNewScript(e.target.value)} />
+          <p className="card__title">{t("nuova versione del copione")}</p>
+          <textarea rows={4} placeholder={t("Incolla qui il capitolo come lo rimanda lo sceneggiatore…")} value={newScript} onChange={(e) => setNewScript(e.target.value)} />
           <div className="tool-row">
             <button type="button" className="btn btn--small" onClick={() => scriptInput.current?.click()}>
-              Carica da file…
-            </button>
+              {t("Carica da file…")}</button>
             <input
               ref={scriptInput}
               type="file"
@@ -397,19 +393,17 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               }}
             />
             <button type="button" className="btn btn--small" disabled={!newScript.trim()} onClick={compareScript}>
-              Confronta
-            </button>
+              {t("Confronta")}</button>
           </div>
-          {!doc.scripts[chapterId] && <p className="field__hint">Questo capitolo non ha ancora un copione di riferimento: il confronto vedrà tutto come nuovo.</p>}
+          {!doc.scripts[chapterId] && <p className="field__hint">{t("Questo capitolo non ha ancora un copione di riferimento: il confronto vedrà tutto come nuovo.")}</p>}
           {impact && (
             <div className="impact">
               {impact.hunks.length === 0 ? (
-                <p className="field__hint">Nessuna differenza dal copione di riferimento.</p>
+                <p className="field__hint">{t("Nessuna differenza dal copione di riferimento.")}</p>
               ) : (
                 <>
                   <p>
-                    {impact.hunks.length} parti cambiate · <strong>{impact.touched.length} pannelli toccati</strong> · {impact.corrections.length} correzioni
-                    {impact.unassigned.length > 0 && ` · ${impact.unassigned.length} parti nuove fuori da ogni pannello, da impaginare`}
+                    {impact.hunks.length} {" "}{t("parti cambiate ·")}{" "}<strong>{impact.touched.length} {" "}{t("pannelli toccati")}</strong> · {impact.corrections.length} {" "}{t("correzioni")}{impact.unassigned.length > 0 && t(" · {0} parti nuove fuori da ogni pannello, da impaginare", impact.unassigned.length)}
                   </p>
                   <div className="impact__panels">
                     {impact.touched.map((t) => (
@@ -419,8 +413,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
                     ))}
                   </div>
                   <button type="button" className="btn btn--small btn--primary" onClick={() => void adoptScript()}>
-                    Importa le correzioni e adotta questo copione
-                  </button>
+                    {t("Importa le correzioni e adotta questo copione")}</button>
                 </>
               )}
             </div>
@@ -428,30 +421,29 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
         </div>
 
         <div className="card">
-          <p className="card__title">nuova nota</p>
+          <p className="card__title">{t("nuova nota")}</p>
           <label className="field field--inline">
-            <span className="field__label">su</span>
+            <span className="field__label">{t("su")}</span>
             <select value={noteTarget} onChange={(e) => setNoteTarget(e.target.value)}>
-              <option value="chapter">tutto il capitolo</option>
+              <option value="chapter">{t("tutto il capitolo")}</option>
               {scenes.map((s) => (
                 <option key={s.id} value={`scene:${s.id}`}>
-                  scena «{s.title}»
+                  {t("scena «")}{s.title}»
                 </option>
               ))}
               {chapterPages.map((p) => (
                 <option key={p.id} value={`page:${p.id}`}>
-                  pagina {p.order}
+                  {t("pagina")}{" "}{p.order}
                 </option>
               ))}
             </select>
           </label>
-          <textarea rows={2} placeholder="Cosa c'è da rivedere: ritmo, layout, inquadrature, disegno…" value={noteText} onChange={(e) => setNoteText(e.target.value)} />
+          <textarea rows={2} placeholder={t("Cosa c'è da rivedere: ritmo, layout, inquadrature, disegno…")} value={noteText} onChange={(e) => setNoteText(e.target.value)} />
           <div className="tool-row">
             <button type="button" className="btn btn--small" disabled={!noteText.trim()} onClick={addNote}>
-              Aggiungi la nota
-            </button>
+              {t("Aggiungi la nota")}</button>
           </div>
-          <p className="field__hint">Una vignetta o una battuta si annotano dall'editor, con «annota…».</p>
+          <p className="field__hint">{t("Una vignetta o una battuta si annotano dall'editor, con «annota…».")}</p>
         </div>
 
         {message && <p className="muted revisions__message">{message}</p>}
@@ -465,10 +457,9 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
       <div className="card revisions__list">
         {filter && (
           <p className="revisions__filter">
-            Solo le voci di <strong>{doc.pages[filter] ? `pagina ${doc.pages[filter].order}` : filter}</strong>.{" "}
+            {t("Solo le voci di")}{" "}<strong>{doc.pages[filter] ? t("pagina {0}", doc.pages[filter].order) : filter}</strong>.{" "}
             <button type="button" className="link-btn" onClick={onClearFilter}>
-              mostra tutto il capitolo
-            </button>
+              {t("mostra tutto il capitolo")}</button>
           </p>
         )}
         {changelogIssues.map((i) => (
@@ -477,19 +468,18 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
           </p>
         ))}
         <p className="card__title card__title--row">
-          <span>revisioni aperte ({open.length})</span>
+          <span>{t("revisioni aperte (")}{open.length})</span>
           {open.length > 0 && (
             <span className="tool-row tool-row--tight">
               <button type="button" className="btn btn--small btn--primary" disabled={applicable.length === 0} onClick={() => accept(applicable.map((e) => e.id))}>
-                Accetta le applicabili ({applicable.length})
+                {t("Accetta le applicabili (")}{applicable.length})
               </button>
               <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: open.filter((e) => e.kind !== "note").map((e) => e.id), by: me, at: now() })}>
-                Rifiuta tutte
-              </button>
+                {t("Rifiuta tutte")}</button>
             </span>
           )}
         </p>
-        {open.length === 0 && <p className="field__hint">Nessuna revisione in attesa.</p>}
+        {open.length === 0 && <p className="field__hint">{t("Nessuna revisione in attesa.")}</p>}
         <ul className="revision-list" onKeyDown={onOpenKeys}>
           {open.map((entry, position) => {
             const conflict = conflicts.get(entry.id) ?? null;
@@ -507,41 +497,36 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
                     <span>{target.label}</span>
                   )}
                   <span className="muted">
-                    {ORIGIN_LABEL[entry.origin]} · {entry.by}
+                    {t(ORIGIN_LABEL[entry.origin])} · {entry.by}
                   </span>
                 </div>
                 <Change entry={entry} />
                 {note && entry.origin === "script" && (
-                  <p className="field__hint">Il copione cambia qui, ma non c'è una battuta da aggiornare con certezza (prosa, o una battuta già diversa nel fumetto): decidi tu cosa toccare.</p>
+                  <p className="field__hint">{t("Il copione cambia qui, ma non c'è una battuta da aggiornare con certezza (prosa, o una battuta già diversa nel fumetto): decidi tu cosa toccare.")}</p>
                 )}
-                {conflict && <p className="issue issue--warning">Non applicabile: {conflict}</p>}
+                {conflict && <p className="issue issue--warning">{t("Non applicabile:")}{" "}{conflict}</p>}
                 {askBox(entry) ?? (
                   <div className="tool-row tool-row--tight">
                     {note ? (
                       <button type="button" className="btn btn--small" onClick={() => setAsking({ id: entry.id, what: "done", text: "" })}>
-                        Fatta…
-                      </button>
+                        {t("Fatta…")}</button>
                     ) : (
                       <button type="button" className="btn btn--small" disabled={conflict !== null} onClick={() => accept([entry.id])}>
-                        Accetta
-                      </button>
+                        {t("Accetta")}</button>
                     )}
                     {conflict && canForceRevision(doc, entry, chapterId) && (
-                      <button type="button" className="btn btn--small" onClick={() => accept([entry.id], true)} title="Sovrascrive ciò che c'è ora; il changelog registra cosa c'era">
-                        Applica comunque
-                      </button>
+                      <button type="button" className="btn btn--small" onClick={() => accept([entry.id], true)} title={t("Sovrascrive ciò che c'è ora; il changelog registra cosa c'era")}>
+                        {t("Applica comunque")}</button>
                     )}
                     <button type="button" className="btn btn--small" onClick={() => run({ type: "revision.reject", chapterId, ids: [entry.id], by: me, at: now() })}>
                       {note ? "Scarta" : "Rifiuta"}
                     </button>
                     {entry.kind !== "remove" && entry.field !== "speaker" && entry.field !== "balloon_type" && (
                       <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "edit", text: entry.to ?? "" })}>
-                        modifica
-                      </button>
+                        {t("modifica")}</button>
                     )}
                     <button type="button" className="link-btn" onClick={() => setAsking({ id: entry.id, what: "reject", text: "" })}>
-                      {note ? "scarta" : "rifiuta"} con motivo
-                    </button>
+                      {note ? "scarta" : "rifiuta"} {" "}{t("con motivo")}</button>
                   </div>
                 )}
                 {asking?.id !== entry.id && lessonRow(entry)}
@@ -551,7 +536,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
         </ul>
         {closed.length > 0 && (
           <button type="button" className="link-btn" onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? "nascondi lo storico" : `storico: ${closed.filter((e) => e.status === "applied").length} applicate, ${closed.filter((e) => e.status === "rejected").length} rifiutate`}
+            {showHistory ? t("nascondi lo storico") : t("storico: {0} applicate, {1} rifiutate", closed.filter((e) => e.status === "applied").length, closed.filter((e) => e.status === "rejected").length)}
           </button>
         )}
         {showHistory && (
@@ -562,25 +547,23 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               return (
                 <li key={e.id} className="revision-past">
                   <code>{e.id}</code> {e.status === "applied" ? "✓" : "✗"} {kindLabel(e)} {targetOf(e).label}
-                  {state && <span className={`revision-past__state revision-past__state--${state}`}> · {STATE_LABEL[state]}</span>}
+                  {state && <span className={`revision-past__state revision-past__state--${state}`}> · {t(STATE_LABEL[state])}</span>}
                   <span className="muted">
                     {" "}
                     · {e.resolved_by}, {e.resolved_at ? new Date(e.resolved_at).toLocaleString() : ""}
                   </span>
                   <Change entry={e} />
-                  {e.replaced !== null && <p className="field__hint">Applicata sopra un testo diverso da quello atteso: «{e.replaced}».</p>}
+                  {e.replaced !== null && <p className="field__hint">{t("Applicata sopra un testo diverso da quello atteso: «")}{e.replaced}».</p>}
                   {e.resolution && <p className="field__hint">{e.status === "rejected" ? "Motivo" : "Fatto"}: {e.resolution}</p>}
                   {askBox(e) ?? (
                     <div className="tool-row tool-row--tight">
                       {reopenable && (
                         <button type="button" className="link-btn" onClick={() => run({ type: "revision.reopen", chapterId, ids: [e.id] })}>
-                          riapri
-                        </button>
+                          {t("riapri")}</button>
                       )}
                       {state === "current" && e.kind !== "remove" && (
-                        <button type="button" className="link-btn" onClick={() => run({ type: "revision.revert", chapterId, id: e.id, by: me, at: now() })} title="Torna al testo di prima, con una correzione inversa nel changelog">
-                          ripristina
-                        </button>
+                        <button type="button" className="link-btn" onClick={() => run({ type: "revision.revert", chapterId, id: e.id, by: me, at: now() })} title={t("Torna al testo di prima, con una correzione inversa nel changelog")}>
+                          {t("ripristina")}</button>
                       )}
                     </div>
                   )}
@@ -594,49 +577,48 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
 
       <div className="stack revisions__tools">
         <div className="card">
-          <p className="card__title">trova e sostituisci</p>
+          <p className="card__title">{t("trova e sostituisci")}</p>
           <div className="grid-2">
             <label className="field">
-              <span className="field__label">trova</span>
+              <span className="field__label">{t("trova")}</span>
               <input type="text" value={find} onChange={(e) => setFind(e.target.value)} />
             </label>
             <label className="field">
-              <span className="field__label">sostituisci con</span>
+              <span className="field__label">{t("sostituisci con")}</span>
               <input type="text" value={replace} onChange={(e) => setReplace(e.target.value)} />
             </label>
           </div>
           <div className="tool-row">
             <label className="field field--row">
               <input type="checkbox" checked={options.wholeWord ?? false} onChange={(e) => setOptions({ ...options, wholeWord: e.target.checked })} />
-              <span>parola intera</span>
+              <span>{t("parola intera")}</span>
             </label>
             <label className="field field--row">
               <input type="checkbox" checked={options.matchCase ?? false} onChange={(e) => setOptions({ ...options, matchCase: e.target.checked })} />
-              <span>maiuscole</span>
+              <span>{t("maiuscole")}</span>
             </label>
             <label className="field field--row">
               <input type="checkbox" checked={options.scope === "both"} onChange={(e) => setOptions({ ...options, scope: e.target.checked ? "both" : "balloons" })} />
-              <span>anche nelle azioni</span>
+              <span>{t("anche nelle azioni")}</span>
             </label>
           </div>
-          {find && <p className="field__hint">{matches.length === 0 ? "Nessuna occorrenza." : `${matches.reduce((n, m) => n + m.count, 0)} occorrenze in ${matches.length} testi.`}</p>}
+          {find && <p className="field__hint">{matches.length === 0 ? t("Nessuna occorrenza.") : t("{0} occorrenze in {1} testi.", matches.reduce((n, m) => n + m.count, 0), matches.length)}</p>}
           <button
             type="button"
             className="btn btn--small"
             disabled={matches.length === 0}
             onClick={() => {
-              if (run({ type: "text.replace", chapterId, find, replace, options, by: me, at: now() })) done(`«${find}» → «${replace}» in ${matches.length} testi, ognuno tracciato nel changelog.`);
+              if (run({ type: "text.replace", chapterId, find, replace, options, by: me, at: now() })) done(t("«{0}» → «{1}» in {2} testi, ognuno tracciato nel changelog.", find, replace, matches.length));
             }}
           >
-            Sostituisci tutto
-          </button>
+            {t("Sostituisci tutto")}</button>
         </div>
 
         <div className="card">
-          <p className="card__title">rinomina un personaggio</p>
+          <p className="card__title">{t("rinomina un personaggio")}</p>
           <div className="grid-2">
             <label className="field">
-              <span className="field__label">personaggio</span>
+              <span className="field__label">{t("personaggio")}</span>
               <select value={renameFrom} onChange={(e) => setRenameFrom(e.target.value)}>
                 <option value="">—</option>
                 {refs.map((r) => (
@@ -647,18 +629,18 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               </select>
             </label>
             <label className="field">
-              <span className="field__label">nuovo nome</span>
+              <span className="field__label">{t("nuovo nome")}</span>
               <input type="text" value={renameTo} onChange={(e) => setRenameTo(e.target.value)} />
             </label>
           </div>
-          <p className="field__hint">Cambia chi parla e chi è in vignetta in tutto il progetto. Il nome dentro le battute si cambia con trova e sostituisci.</p>
+          <p className="field__hint">{t("Cambia chi parla e chi è in vignetta in tutto il progetto. Il nome dentro le battute si cambia con trova e sostituisci.")}</p>
           <button
             type="button"
             className="btn btn--small"
             disabled={!renameFrom || !cleanRename}
             onClick={() => {
               if (run({ type: "character.rename", from: renameFrom, to: cleanRename })) {
-                done(`${renameFrom} ora si chiama ${cleanRename}.`);
+                done(t("{0} ora si chiama {1}.", renameFrom, cleanRename));
                 setFind(renameFrom);
                 setReplace(cleanRename);
                 setRenameFrom("");
@@ -666,8 +648,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
               }
             }}
           >
-            Rinomina
-          </button>
+            {t("Rinomina")}</button>
         </div>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import { t } from "../i18n.js";
+
 interface Option<T> {
   value: T;
   label: string;
@@ -22,18 +24,18 @@ interface Props<T extends string | number> {
 export function Segmented<T extends string | number>({ label, value, options, onChange }: Props<T>) {
   return (
     <div className="field">
-      <span className="field__label">{label}</span>
-      <div className="segmented" role="group" aria-label={label}>
+      <span className="field__label">{t(label)}</span>
+      <div className="segmented" role="group" aria-label={t(label)}>
         {options.map((option) => (
           <button
             key={String(option.value)}
             type="button"
             className={"seg" + (option.detached ? " seg--spaced" : "")}
             aria-pressed={option.value === value}
-            title={option.title ?? option.label}
+            title={t(option.title ?? option.label)}
             onClick={() => onChange(option.value)}
           >
-            {option.label}
+            {t(option.label)}
           </button>
         ))}
       </div>

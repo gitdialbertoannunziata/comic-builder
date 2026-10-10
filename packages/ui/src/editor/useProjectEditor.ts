@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acquireLock,
@@ -115,7 +116,7 @@ export interface ProjectEditor {
 export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   const [history, setHistory] = useState<History>(() => createHistory(initial));
   const [store, setStore] = useState<ProjectStore | null>(null);
-  const [memory] = useState(() => new MemoryProjectStore("questa scheda"));
+  const [memory] = useState(() => new MemoryProjectStore(t("questa scheda")));
   const [reopenHandle, setReopenHandle] = useState<DirectoryHandle | null>(null);
   const [recoveredAt, setRecoveredAt] = useState<Date | null>(null);
   const [saved, setSaved] = useState<ProjectDoc | null>(null);
@@ -191,7 +192,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
         if (!result.acquired) {
           setStatus({
             kind: "locked-out",
-            message: `Il progetto è stato aperto da ${result.held.holder}: salvataggio automatico sospeso per non sovrascriverlo.`,
+            message: t("Il progetto è stato aperto da {0}: salvataggio automatico sospeso per non sovrascriverlo.", result.held.holder),
           });
         }
       });
@@ -279,8 +280,8 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     if (lock.acquired) return true;
     const since = new Date(lock.held.at).toLocaleTimeString();
     const proceed = window.confirm(
-      `Questo progetto risulta aperto da ${lock.held.holder} (ultimo segnale alle ${since}).\n\n` +
-        "Se lo apri anche qui, le due finestre si sovrascriveranno a vicenda. Aprire lo stesso?",
+      t("Questo progetto risulta aperto da {0} (ultimo segnale alle {1}).\n\n", lock.held.holder, since) +
+        t("Se lo apri anche qui, le due finestre si sovrascriveranno a vicenda. Aprire lo stesso?"),
     );
     if (!proceed) return false;
     await acquireLock(next, session, holder, new Date(), { force: true });
@@ -317,7 +318,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     // Il permesso si chiede dentro un clic: il browser non lo concede fuori da un gesto.
     const state = (await reopenHandle.requestPermission?.({ mode: "readwrite" })) ?? "granted";
     if (state === "granted") await openHandle(reopenHandle);
-    else setNotice(`Permesso negato per «${reopenHandle.name}»: aprilo da «Apri progetto…».`);
+    else setNotice(t("Permesso negato per «{0}»: aprilo da «Apri progetto…».", reopenHandle.name));
   }
 
   async function newProject(title: string) {
@@ -351,7 +352,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       // `markFolderRestore`), non la si ritenta: si dimentica la cartella.
       if (folderRestoreCrashed()) {
         await forgetFolder();
-        setNotice("La riapertura automatica dell'ultimo progetto non è riuscita: aprilo da «Apri progetto…».");
+        setNotice(t("La riapertura automatica dell'ultimo progetto non è riuscita: aprilo da «Apri progetto…»."));
       }
       markFolderRestore(true);
       const handle = await rememberedFolder();
@@ -399,8 +400,8 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     try {
       if ((await next.readText(PROJECT_FILE)) !== null) {
         const overwrite = window.confirm(
-          `La cartella "${handle.name}" contiene già un progetto. Sostituirlo con quello aperto qui?\n\n` +
-            "Per lavorare su quello esistente, usa invece «Apri».",
+          t("La cartella \"{0}\" contiene già un progetto. Sostituirlo con quello aperto qui?\n\n", handle.name) +
+            t("Per lavorare su quello esistente, usa invece «Apri»."),
         );
         if (!overwrite) return;
       }
@@ -431,7 +432,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   async function save() {
     if (!store) {
       if (canOpenFolders()) await saveToFolder();
-      else setNotice("Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.");
+      else setNotice(t("Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge."));
       return;
     }
     if (status.kind === "locked-out") {

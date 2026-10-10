@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useState } from "react";
 
 interface Props {
@@ -30,11 +31,11 @@ export function NoteButton({ what, onAdd, open = 0, onShow }: Props) {
     <div className="note-button">
       <div className="tool-row tool-row--tight">
         <button type="button" className="link-btn" aria-expanded={writing} onClick={() => setWriting((v) => !v)}>
-          {writing ? "annulla" : `annota ${what}…`}
+          {writing ? t("annulla") : t("annota {0}…", t(what))}
         </button>
         {open > 0 && onShow && (
           <button type="button" className="link-btn note-button__open" onClick={onShow}>
-            {open === 1 ? "1 revisione aperta" : `${open} revisioni aperte`}
+            {open === 1 ? t("1 revisione aperta") : t("{0} revisioni aperte", open)}
           </button>
         )}
       </div>
@@ -44,7 +45,7 @@ export function NoteButton({ what, onAdd, open = 0, onShow }: Props) {
             type="text"
             autoFocus
             value={text}
-            placeholder="Cosa c'è da rivedere"
+            placeholder={t("Cosa c'è da rivedere")}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") add();
@@ -52,8 +53,7 @@ export function NoteButton({ what, onAdd, open = 0, onShow }: Props) {
             }}
           />
           <button type="button" className="btn btn--small" disabled={!text.trim()} onClick={add}>
-            Aggiungi
-          </button>
+            {t("Aggiungi")}</button>
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import {
   balloonBox,
   compilePageBrief,
@@ -79,16 +80,16 @@ export function describeTarget(target: OutputTarget): string {
       const size = target.size_mm
         ? `${target.size_mm[0]}×${target.size_mm[1]} mm a ${target.dpi ?? "?"} dpi`
         : `${target.size_px?.[0]}×${target.size_px?.[1]} px`;
-      const bleed = target.bleed_mm ? ` · bleed ${target.bleed_mm} mm` : "";
-      const color = target.color === "gray" ? " · grigi" : "";
+      const bleed = target.bleed_mm ? t(" · bleed {0} mm", target.bleed_mm) : "";
+      const color = target.color === "gray" ? t(" · grigi") : "";
       return `${size}${bleed}${color} · ${target.format.toUpperCase()}`;
     }
     case "strip":
-      return `larga ${target.width_px} px · slice ≤ ${target.slice_max_h} px · ${target.format.toUpperCase()}`;
+      return t("larga {0} px · slice ≤ {1} px · {2}", target.width_px, target.slice_max_h, target.format.toUpperCase());
     case "regions":
-      return `regioni dei pannelli di ${target.source}`;
+      return t("regioni dei pannelli di {0}", target.source);
     case "archive":
-      return `${target.format.toUpperCase()} delle immagini di ${target.source}`;
+      return t("{0} delle immagini di {1}", target.format.toUpperCase(), target.source);
   }
 }
 
@@ -140,8 +141,8 @@ export async function exportChapter(
         }),
       );
       summaries.push({
-        targetId: "documento",
-        label: "Documento JSON",
+        targetId: t("documento"),
+        label: t("Documento JSON"),
         files: input.pages.length,
       });
       continue;
@@ -219,8 +220,8 @@ export async function exportChapter(
         mediaType: "application/json",
       });
       summaries.push({
-        targetId: "istruzioni",
-        label: "Istruzioni per modelli esterni",
+        targetId: t("istruzioni"),
+        label: t("Istruzioni per modelli esterni"),
         files: input.pages.length + 1,
       });
       continue;
@@ -255,7 +256,7 @@ export async function exportChapter(
       const pointsPerInch = 72;
       const dpi = primaryTarget.dpi ?? 96;
       for (const [i, job] of plan.jobs.entries()) {
-        input.onProgress?.(`PDF: pagina ${i + 1} di ${plan.jobs.length}`);
+        input.onProgress?.(t("PDF: pagina {0} di {1}", i + 1, plan.jobs.length));
         const png = await rasterize({ ...job, format: "png" }, input.fontBytes);
         const image = await pdf.embedPng(png);
         const width = (job.width * pointsPerInch) / dpi;
@@ -274,13 +275,13 @@ export async function exportChapter(
 
     const target = findTarget(project, choice.id);
     if (!target) continue;
-    input.onProgress?.(`${target.id}: preparo…`);
+    input.onProgress?.(t("{0}: preparo…", target.id));
     const plan = planTargetExport(context, target.id);
 
     const rendered = new Map<string, Uint8Array>();
     for (const [i, job] of plan.jobs.entries()) {
       input.onProgress?.(
-        `${target.id}: immagine ${i + 1} di ${plan.jobs.length}`,
+        t("{0}: immagine {1} di {2}", target.id, i + 1, plan.jobs.length),
       );
       rendered.set(job.name, await rasterize(job, input.fontBytes));
     }

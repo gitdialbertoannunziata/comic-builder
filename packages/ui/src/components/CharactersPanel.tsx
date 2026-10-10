@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   appearanceText,
@@ -82,26 +83,26 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
   async function generateSheet(views: readonly SheetView[]) {
     if (!ref || !sheet || generating) return;
     setSheetNote(null);
-    setGenerating("In coda");
+    setGenerating(t("In coda"));
     let current = sheet;
     let cost = 0;
     let made = 0;
     const created: CharacterSheet["references"] = [];
     try {
-      await generation.schedule(image.service, "image", `Personaggio ${sheet.name} · ${image.service === "local" ? image.localModel ?? "locale" : specModel(image)}`, async (signal, isCurrent) => {
+      await generation.schedule(image.service, "image", t("Personaggio {0} · {1}", sheet.name, image.service === "local" ? image.localModel ?? "locale" : specModel(image)), async (signal, isCurrent) => {
         const service = makeService(image);
         for (const view of views) {
-          if (!isCurrent()) throw new DOMException("Generazione annullata.", "AbortError");
+          if (!isCurrent()) throw new DOMException(t("Generazione annullata."), "AbortError");
           const now = latest.current.characters[ref];
-          if (!now || appearanceText(now) !== appearanceText(sheet)) throw new Error("La scheda personaggio e' cambiata. Rilancia la generazione.");
+          if (!now || appearanceText(now) !== appearanceText(sheet)) throw new Error(t("La scheda personaggio e' cambiata. Rilancia la generazione."));
           current = { ...current, references: [...now.references, ...created.filter((entry) => !now.references.some((reference) => reference.path === entry.path))] };
           setGenerating(`${SHEET_VIEWS[view].label} (${made + 1}/${views.length})`);
           const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image) });
           const path = characterSheetPath(spec, view);
           cost += (await generateReference({ store, service, spec, path, signal, cancelInFlight: image.service !== "local" })).costUsd;
-          if (!isCurrent()) throw new DOMException("Generazione annullata.", "AbortError");
+          if (!isCurrent()) throw new DOMException(t("Generazione annullata."), "AbortError");
           const updated = latest.current.characters[ref];
-          if (!updated || appearanceText(updated) !== appearanceText(sheet)) throw new Error("La scheda personaggio e' cambiata durante la generazione.");
+          if (!updated || appearanceText(updated) !== appearanceText(sheet)) throw new Error(t("La scheda personaggio e' cambiata durante la generazione."));
           created.push({ path, note: SHEET_VIEWS[view].label, use: true });
           current = { ...current, references: [...updated.references, ...created.filter((entry) => !updated.references.some((reference) => reference.path === entry.path))] };
           run({ type: "character.upsert", ref, patch: { references: current.references } });
@@ -110,11 +111,11 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
       }, () => latest.current.characters[ref] === sheet);
       setSheetNote({
         level: "info",
-        text: `${made} ${made === 1 ? "immagine aggiunta" : "immagini aggiunte"} ai riferimenti${cost > 0 ? ` · addebitati ${cost.toFixed(2).replace(".", ",")} $` : ""}. Togli la spunta a quelle che non gli somigliano.`,
+        text: t("{0} {1} ai riferimenti{2}. Togli la spunta a quelle che non gli somigliano.", made, made === 1 ? "immagine aggiunta" : "immagini aggiunte", cost > 0 ? ` · addebitati ${cost.toFixed(2).replace(".", ",")} $` : ""),
       });
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setSheetNote({ level: "error", text: `${made > 0 ? `${made} fatte, poi: ` : ""}${cause instanceof Error ? cause.message : String(cause)}` });
+      setSheetNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${cause instanceof Error ? cause.message : String(cause)}` });
     } finally {
       if (generation.isCurrent()) setGenerating(null);
     }
@@ -124,9 +125,9 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
 
   return (
     <div className="stack">
-      {generation.phase === "queued" && <p className="field__hint" role="status">Riferimenti personaggio in coda</p>}
+      {generation.phase === "queued" && <p className="field__hint" role="status">{t("Riferimenti personaggio in coda")}</p>}
       <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
-        {refs.length === 0 && <p className="field__hint">Nessun personaggio: arrivano dallo spoglio del copione.</p>}
+        {refs.length === 0 && <p className="field__hint">{t("Nessun personaggio: arrivano dallo spoglio del copione.")}</p>}
         {refs.map((r, i) => {
           const level = completeness(doc.characters[r]);
           return (
@@ -139,7 +140,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
               aria-pressed={r === ref}
               // Le frecce scelgono il vicino con un clic da tastiera (detail 0): solo un clic vero su quello già scelto lo chiude.
               onClick={(e) => setSelected(r === ref && e.detail > 0 ? null : r)}
-              title={COMPLETENESS_LABEL[level]}
+              title={t(COMPLETENESS_LABEL[level])}
             >
               <span className={`dot dot--sheet-${level}`} />
               {doc.characters[r]?.name || r}
@@ -152,29 +153,28 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
         <div className="card">
           <p className="card__title card__title--row">
             <span>
-              scheda di <code>{ref}</code>
+              {t("scheda di")}{" "}<code>{ref}</code>
             </span>
             {sheet && (
-              <button type="button" className="link-btn" onClick={() => run({ type: "character.remove", ref })} title="Toglie la scheda; il personaggio resta nei pannelli">
-                togli la scheda
-              </button>
+              <button type="button" className="link-btn" onClick={() => run({ type: "character.remove", ref })} title={t("Toglie la scheda; il personaggio resta nei pannelli")}>
+                {t("togli la scheda")}</button>
             )}
           </p>
           <div className="stack">
             <label className="field">
-              <span className="field__label">nome nella storia</span>
+              <span className="field__label">{t("nome nella storia")}</span>
               <input type="text" value={sheet?.name ?? ""} placeholder="Sara Bellini" onChange={(e) => upsert({ name: e.target.value }, "name")} onBlur={endGesture} />
             </label>
             <label className="field">
-              <span className="field__label">chi è (per te, non entra nelle istruzioni)</span>
-              <input type="text" value={sheet?.summary ?? ""} placeholder="tecnica del faro, testarda" onChange={(e) => upsert({ summary: e.target.value }, "summary")} onBlur={endGesture} />
+              <span className="field__label">{t("chi è (per te, non entra nelle istruzioni)")}</span>
+              <input type="text" value={sheet?.summary ?? ""} placeholder={t("tecnica del faro, testarda")} onChange={(e) => upsert({ summary: e.target.value }, "summary")} onBlur={endGesture} />
             </label>
 
-            <p className="field__hint">L'aspetto va nelle istruzioni per i modelli: in inglese rende meglio, ma l'italiano funziona.</p>
+            <p className="field__hint">{t("L'aspetto va nelle istruzioni per i modelli: in inglese rende meglio, ma l'italiano funziona.")}</p>
             <div className="grid-2">
               {APPEARANCE_FIELDS.map(([field, label, placeholder]) => (
                 <label key={field} className="field">
-                  <span className="field__label">{label}</span>
+                  <span className="field__label">{t(label)}</span>
                   <input
                     type="text"
                     value={sheet?.appearance[field] ?? ""}
@@ -191,11 +191,11 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
             </div>
             {sheet && appearanceText(sheet) && (
               <p className="field__hint">
-                Nelle istruzioni: <em>{appearanceText(sheet)}</em>
+                {t("Nelle istruzioni:")}{" "}<em>{appearanceText(sheet)}</em>
               </p>
             )}
 
-            <span className="field__label">costumi</span>
+            <span className="field__label">{t("costumi")}</span>
             {Object.entries(sheet?.wardrobe ?? {}).map(([variant, text]) => (
               <div key={variant} className="wardrobe-row">
                 <code>{variant}</code>
@@ -210,12 +210,11 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
                   className="link-btn"
                   onClick={() => upsert({ wardrobe: Object.fromEntries(Object.entries(sheet!.wardrobe).filter(([k]) => k !== variant)) }, "wardrobe-remove")}
                 >
-                  togli
-                </button>
+                  {t("togli")}</button>
               </div>
             ))}
             <div className="wardrobe-row">
-              <input type="text" value={newVariant} placeholder={Object.keys(sheet?.wardrobe ?? {}).length === 0 ? "default" : "notte, divisa…"} onChange={(e) => setNewVariant(e.target.value)} />
+              <input type="text" value={newVariant} placeholder={Object.keys(sheet?.wardrobe ?? {}).length === 0 ? "default" : t("notte, divisa…")} onChange={(e) => setNewVariant(e.target.value)} />
               <button
                 type="button"
                 className="btn btn--small"
@@ -227,11 +226,10 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
                   setNewVariant("");
                 }}
               >
-                + costume
-              </button>
+                {t("+ costume")}</button>
             </div>
 
-            <span className="field__label">immagini di riferimento</span>
+            <span className="field__label">{t("immagini di riferimento")}</span>
             <ReferenceImages
               store={store}
               references={sheet?.references ?? []}
@@ -244,25 +242,21 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
                 className="btn btn--small btn--primary"
                 disabled={generating !== null || !describable || !serviceReady(image)}
                 onClick={() => void generateSheet(["front", "three-quarter", "full-body"])}
-                title="Fronte, tre quarti e figura intera, dall'aspetto scritto qui sopra e nello stile dell'opera"
+                title={t("Fronte, tre quarti e figura intera, dall'aspetto scritto qui sopra e nello stile dell'opera")}
               >
-                Genera la scheda (3 viste)
-              </button>
+                {t("Genera la scheda (3 viste)")}</button>
               {(Object.keys(SHEET_VIEWS) as SheetView[]).map((view) => (
                 <button key={view} type="button" className="link-btn" disabled={generating !== null || !describable || !serviceReady(image)} onClick={() => void generateSheet([view])}>
-                  + {SHEET_VIEWS[view].label}
+                  + {t(SHEET_VIEWS[view].label)}
                 </button>
               ))}
             </ReferenceImages>
-            {generating && <p className="muted">Genero {generating}…</p>}
+            {generating && <p className="muted">{t("Genero")}{" "}{generating}…</p>}
             {sheetNote && <p className={`issue issue--${sheetNote.level}`}>{sheetNote.text}</p>}
-            {!describable && <p className="field__hint">Per generare la scheda serve almeno un campo dell'aspetto: è da lì che il modello lo disegna.</p>}
-            {describable && !serviceReady(image) && <p className="field__hint">Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».</p>}
+            {!describable && <p className="field__hint">{t("Per generare la scheda serve almeno un campo dell'aspetto: è da lì che il modello lo disegna.")}</p>}
+            {describable && !serviceReady(image) && <p className="field__hint">{t("Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».")}</p>}
             <p className="field__hint">
-              La scheda generata parte dall'aspetto scritto sopra e dalle tavole di stile dell'opera; ogni vista guarda quelle già spuntate, quindi tieni la prima che ti
-              convince e genera le altre da lì. Quelle spuntate si allegano da sole quando generi una vignetta in cui compare: è ciò che lo tiene uguale da una all'altra.
-              Bastano due o tre buone — fronte, tre quarti, figura intera.
-            </p>
+              {t("La scheda generata parte dall'aspetto scritto sopra e dalle tavole di stile dell'opera; ogni vista guarda quelle già spuntate, quindi tieni la prima che ti convince e genera le altre da lì. Quelle spuntate si allegano da sole quando generi una vignetta in cui compare: è ciò che lo tiene uguale da una all'altra. Bastano due o tre buone — fronte, tre quarti, figura intera.")}</p>
           </div>
         </div>
       )}

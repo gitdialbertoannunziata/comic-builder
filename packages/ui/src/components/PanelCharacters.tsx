@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useState } from "react";
 import type { CharacterSheet, Command, Panel, PanelCharacter } from "@comic-builder/core";
 
@@ -41,8 +42,8 @@ export function PanelCharacters({ pageId, panel, refs, sheets, run, endGesture }
 
   return (
     <div className="card">
-      <p className="card__title">in vignetta</p>
-      {panel.characters.length === 0 && <p className="field__hint">Nessuno: un luogo, un oggetto, un paesaggio.</p>}
+      <p className="card__title">{t("in vignetta")}</p>
+      {panel.characters.length === 0 && <p className="field__hint">{t("Nessuno: un luogo, un oggetto, un paesaggio.")}</p>}
       <div className="stack">
         {panel.characters.map((character, index) => {
           const sheet = sheets[character.ref];
@@ -52,47 +53,46 @@ export function PanelCharacters({ pageId, panel, refs, sheets, run, endGesture }
             <div key={character.ref} className="cast-row">
               <div className="cast-row__head">
                 <strong>{sheet?.name || character.ref}</strong>
-                {!sheet && <span className="field__hint">senza scheda</span>}
+                {!sheet && <span className="field__hint">{t("senza scheda")}</span>}
                 <button
                   type="button"
                   className="link-btn"
                   onClick={() => run({ type: "panel.update", pageId, panelId: panel.id, patch: { characters: panel.characters.filter((_, i) => i !== index) } })}
                 >
-                  togli
-                </button>
+                  {t("togli")}</button>
               </div>
               <div className="grid-2">
                 <label className="field">
-                  <span className="field__label">ruolo</span>
+                  <span className="field__label">{t("ruolo")}</span>
                   <select value={character.role} onChange={(e) => update(index, { role: e.target.value as PanelCharacter["role"] }, "role")}>
                     {ROLES.map(([value, label]) => (
                       <option key={value} value={value}>
-                        {label}
+                        {t(label)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="field">
-                  <span className="field__label">inquadratura</span>
+                  <span className="field__label">{t("inquadratura")}</span>
                   <select value={character.framing} onChange={(e) => update(index, { framing: e.target.value as PanelCharacter["framing"] }, "framing")}>
                     {FRAMINGS.map(([value, label]) => (
                       <option key={value} value={value}>
-                        {label}
+                        {t(label)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="field">
-                  <span className="field__label">espressione</span>
-                  <input type="text" value={character.expression} placeholder="tesa, sollevata…" onChange={(e) => update(index, { expression: e.target.value }, `expr-${character.ref}`)} onBlur={endGesture} />
+                  <span className="field__label">{t("espressione")}</span>
+                  <input type="text" value={character.expression} placeholder={t("tesa, sollevata…")} onChange={(e) => update(index, { expression: e.target.value }, `expr-${character.ref}`)} onBlur={endGesture} />
                 </label>
                 <label className="field">
-                  <span className="field__label">costume</span>
+                  <span className="field__label">{t("costume")}</span>
                   <select value={character.wardrobe} onChange={(e) => update(index, { wardrobe: e.target.value }, "wardrobe")}>
                     {options.map((value) => (
                       <option key={value} value={value}>
                         {value}
-                        {sheet?.wardrobe[value] ? ` — ${sheet.wardrobe[value]}` : value !== "default" && variants.length > 0 && !sheet?.wardrobe[value] ? " (non nella scheda)" : ""}
+                        {sheet?.wardrobe[value] ? ` — ${sheet.wardrobe[value]}` : value !== "default" && variants.length > 0 && !sheet?.wardrobe[value] ? t(" (non nella scheda)") : ""}
                       </option>
                     ))}
                   </select>
@@ -105,7 +105,7 @@ export function PanelCharacters({ pageId, panel, refs, sheets, run, endGesture }
       {absent.length > 0 && (
         <div className="tool-row">
           <select value={adding} onChange={(e) => setAdding(e.target.value)}>
-            <option value="">aggiungi un personaggio…</option>
+            <option value="">{t("aggiungi un personaggio…")}</option>
             {absent.map((r) => (
               <option key={r} value={r}>
                 {sheets[r]?.name || r}
@@ -122,8 +122,7 @@ export function PanelCharacters({ pageId, panel, refs, sheets, run, endGesture }
               setAdding("");
             }}
           >
-            + in vignetta
-          </button>
+            {t("+ in vignetta")}</button>
         </div>
       )}
     </div>

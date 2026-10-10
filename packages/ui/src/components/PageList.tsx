@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { PAGE_TEMPLATES, type Command, type Page, type PageTemplate } from "@comic-builder/core";
 import { listArrows, refocus } from "../keyboard.js";
@@ -105,7 +106,7 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
             tabIndex={p.id === currentPageId ? 0 : -1}
             aria-pressed={p.id === currentPageId}
             onClick={() => onSelectPage(p.id)}
-            title={`Pagina ${p.order}${openRevisions?.has(p.id) ? ` · ${openRevisions.get(p.id)} revisioni aperte` : ""}`}
+            title={t("Pagina {0}{1}", p.order, openRevisions?.has(p.id) ? ` · ${openRevisions.get(p.id)} revisioni aperte` : "")}
           >
             {p.layout.mode === "page" && <TemplateThumb template={{ cols: p.layout.cols, rows: p.layout.rows, areas: p.panels.map((x) => x.area) }} />}
             <span>
@@ -114,14 +115,14 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
             </span>
           </button>
         ))}
-        <button type="button" className="page-chip page-chip--add" aria-expanded={picking} onClick={() => setPicking((v) => !v)} title="Aggiungi una pagina">
+        <button type="button" className="page-chip page-chip--add" aria-expanded={picking} onClick={() => setPicking((v) => !v)} title={t("Aggiungi una pagina")}>
           +
         </button>
       </div>
 
       {picking && (
         <div className="template-picker">
-          <p className="field__hint">Scegli il lay-out della pagina nuova (dopo la {pages[index]?.order ?? "corrente"}):</p>
+          <p className="field__hint">{t("Scegli il lay-out della pagina nuova (dopo la")}{" "}{pages[index]?.order ?? t("corrente")}):</p>
           <div className="template-grid">
             {PAGE_TEMPLATES.map((t) => (
               <button key={t.id} type="button" className="template-choice" onClick={() => add(t.id)} title={t.usage}>
@@ -134,15 +135,12 @@ export function PageList({ chapterId, pages, currentPageId, sceneId, onSelectPag
       )}
 
       <div className="tool-row">
-        <button type="button" className="btn btn--small" disabled={index <= 0} onClick={() => move(-1)} title="Sposta la pagina prima (Alt+← sulla miniatura)">
-          ← prima
-        </button>
-        <button type="button" className="btn btn--small" disabled={index >= pages.length - 1} onClick={() => move(1)} title="Sposta la pagina dopo (Alt+→ sulla miniatura)">
-          dopo →
-        </button>
-        <button type="button" className="btn btn--small" disabled={pages.length <= 1} onClick={remove} title="Elimina la pagina (Canc sulla miniatura)">
-          elimina
-        </button>
+        <button type="button" className="btn btn--small" disabled={index <= 0} onClick={() => move(-1)} title={t("Sposta la pagina prima (Alt+← sulla miniatura)")}>
+          {t("← prima")}</button>
+        <button type="button" className="btn btn--small" disabled={index >= pages.length - 1} onClick={() => move(1)} title={t("Sposta la pagina dopo (Alt+→ sulla miniatura)")}>
+          {t("dopo →")}</button>
+        <button type="button" className="btn btn--small" disabled={pages.length <= 1} onClick={remove} title={t("Elimina la pagina (Canc sulla miniatura)")}>
+          {t("elimina")}</button>
       </div>
     </>
   );

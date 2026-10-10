@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { artMediaType, renderPaths, specHash, type Command, type ImageSize, type Panel, type ProjectStore, type RenderSpec } from "@comic-builder/core";
 import { ImageCancelledError, runRenderQueue, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
 import { imageSize } from "./useArtWatcher.js";
@@ -77,7 +78,7 @@ export async function generatePanels(input: {
   try {
     for (const item of items) {
       if (input.signal?.aborted) throw new ImageCancelledError(service.name);
-      if (input.isValid && !input.isValid(item)) throw new Error("La vignetta e' cambiata dopo il clic. Rilancia la generazione.");
+      if (input.isValid && !input.isValid(item)) throw new Error(t("La vignetta e' cambiata dopo il clic. Rilancia la generazione."));
       const { image } = renderPaths(item.spec);
       const cached = await store.readBytes(image);
       if (cached) {
@@ -90,7 +91,7 @@ export async function generatePanels(input: {
         id: item.panel.id,
         item,
         request: async (): Promise<ImageRequest> => {
-          if (input.isValid && !input.isValid(item)) throw new Error("La vignetta e' cambiata mentre era in coda.");
+          if (input.isValid && !input.isValid(item)) throw new Error(t("La vignetta e' cambiata mentre era in coda."));
           return { spec: item.spec, references: await readReferences(store, item.spec) };
         },
       });
@@ -144,7 +145,7 @@ export async function readReferences(store: ProjectStore, spec: RenderSpec): Pro
   const references: ReferenceImage[] = [];
   for (const reference of spec.references) {
     const data = await store.readBytes(reference.path);
-    if (!data) throw new Error(`Riferimento non trovato: ${reference.path}. Toglilo ${WHERE[reference.kind]}, o rimetti il file.`);
+    if (!data) throw new Error(t("Riferimento non trovato: {0}. Toglilo {1}, o rimetti il file.", reference.path, WHERE[reference.kind]));
     references.push({ path: reference.path, data, mediaType: artMediaType(reference.path) ?? "image/png" });
   }
   return references;
@@ -159,7 +160,7 @@ export async function generateReference(input: { store: ProjectStore; service: I
   const { store, service, spec, path } = input;
   const references = await readReferences(store, spec);
   const [outcome] = await runRenderQueue([{ id: spec.panel, request: () => ({ spec, references }) }], { service, retries: 5, ...(input.signal ? { signal: input.signal } : {}), ...(input.cancelInFlight !== undefined ? { cancelInFlight: input.cancelInFlight } : {}), concurrency: 1 });
-  if (!outcome || outcome.status !== "done") throw new Error(outcome?.status === "failed" ? outcome.error : "Generazione interrotta.");
+  if (!outcome || outcome.status !== "done") throw new Error(outcome?.status === "failed" ? outcome.error : t("Generazione interrotta."));
   await store.writeBytes(path, outcome.result.data);
   return { costUsd: outcome.result.meta.costUsd ?? 0 };
 }

@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   balloonBox,
@@ -76,13 +77,13 @@ function countByLevel(issues: readonly ValidationIssue[]): Record<ValidationIssu
 /** «2 errori · 1 avviso», coi pallini del lint; niente se non c'è niente. */
 function LevelCounts({ counts }: { counts: Record<ValidationIssue["level"], number> }) {
   const shown = LEVELS.filter((level) => counts[level] > 0);
-  if (shown.length === 0) return <span className="level-counts level-counts--ok">nessun problema</span>;
+  if (shown.length === 0) return <span className="level-counts level-counts--ok">{t("nessun problema")}</span>;
   return (
     <span className="level-counts">
       {shown.map((level) => (
         <span key={level} className="level-counts__item">
           <span className={`dot dot--${level}`} />
-          {counts[level]} {LEVEL_LABEL[level][counts[level] === 1 ? 0 : 1]}
+          {counts[level]} {t(LEVEL_LABEL[level][counts[level] === 1 ? 0 : 1])}
         </span>
       ))}
     </span>
@@ -179,7 +180,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       const choices = [...exportChoices].map((key) =>
         key.startsWith("target:") ? { kind: "target" as const, id: key.slice("target:".length) } : { kind: key as "document" | "svg" | "prompts" },
       );
-      if (choices.length === 0) throw new Error("Scegli almeno un formato.");
+      if (choices.length === 0) throw new Error(t("Scegli almeno un formato."));
       const outcome = await exportChapter({
         pages,
         chapter: { id: chapter.id, number: chapter.number, title: chapter.title },
@@ -195,11 +196,11 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
         art: await art.dataUris(doc),
         onProgress: setExportProgress,
       });
-      if (outcome.files.length === 0) throw new Error("Nessun file da esportare.");
-      setExportProgress("scrivo i file…");
+      if (outcome.files.length === 0) throw new Error(t("Nessun file da esportare."));
+      setExportProgress(t("scrivo i file…"));
       const written = await platform.write(outcome.files);
       setExportOutcome(outcome);
-      setExportResult(`${written.written} file in ${written.destination}.`);
+      setExportResult(t("{0} file in {1}.", written.written, written.destination));
     } catch (error) {
       setExportError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -357,7 +358,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
     for (const file of files) {
       const target = single ? { pageId: page.id, panel: single } : panelForFileName(doc, file.name);
       if (!target) {
-        problems.push(`«${file.name}» non ha il nome di un pannello`);
+        problems.push(t("«{0}» non ha il nome di un pannello", file.name));
         continue;
       }
       const problem = await importArt(editor.assets, run, target.pageId, target.panel, file);
@@ -367,9 +368,9 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
     await art.scan();
     if (single) selectPanel(single.id);
     if (problems.length > 0) {
-      setDropNote(`${linked} immagini collegate. ${problems.join("; ")}${files.length > 1 ? ". Con più file insieme, ognuno va al pannello col suo nome." : ""}`);
+      setDropNote(t("{0} immagini collegate. {1}{2}", linked, problems.join("; "), files.length > 1 ? ". Con più file insieme, ognuno va al pannello col suo nome." : ""));
     } else {
-      setDropNote(linked > 1 ? `${linked} immagini collegate ai loro pannelli.` : null);
+      setDropNote(linked > 1 ? t("{0} immagini collegate ai loro pannelli.", linked) : null);
     }
   }
 
@@ -597,29 +598,29 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
 
   // Prima delle altre: mentre si inquadra, frecce e + − sono dell'immagine, non delle vignette né dei balloon.
   useShortcuts(
-    "Inquadratura dell'immagine",
+    t("Inquadratura dell'immagine"),
     15,
     [
       // Come col trascinamento: l'immagine va dove punta la freccia, quindi al centro arriva il punto dall'altra parte.
-      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Sposta l'immagine nella vignetta", run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.02, focus_y: f.focus_y - arrow(e)[2] * 0.02 })) },
-      { keys: arrowKeys("Shift+"), shown: "Shift + frecce", label: "La sposta a passi grandi", run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.1, focus_y: f.focus_y - arrow(e)[2] * 0.1 })) },
-      { keys: ["+", "=", "-"], shown: "+ / −", label: "Ingrandisce / rimpicciolisce", run: (e) => reframeArt((f) => ({ zoom: f.zoom * (e.key === "-" ? 1 / 1.1 : 1.1) })) },
-      { keys: ["0"], label: "Torna centrata, a misura", once: true, run: () => reframeArt(() => ({ zoom: 1, focus_x: 0.5, focus_y: 0.5 })) },
-      { keys: ["Escape", "i"], shown: "Esc / I", label: "Fine inquadratura", once: true, run: () => setFraming(false) },
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: t("Sposta l'immagine nella vignetta"), run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.02, focus_y: f.focus_y - arrow(e)[2] * 0.02 })) },
+      { keys: arrowKeys("Shift+"), shown: t("Shift + frecce"), label: t("La sposta a passi grandi"), run: (e) => reframeArt((f) => ({ focus_x: f.focus_x - arrow(e)[1] * 0.1, focus_y: f.focus_y - arrow(e)[2] * 0.1 })) },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: t("Ingrandisce / rimpicciolisce"), run: (e) => reframeArt((f) => ({ zoom: f.zoom * (e.key === "-" ? 1 / 1.1 : 1.1) })) },
+      { keys: ["0"], label: t("Torna centrata, a misura"), once: true, run: () => reframeArt(() => ({ zoom: 1, focus_x: 0.5, focus_y: 0.5 })) },
+      { keys: ["Escape", "i"], shown: "Esc / I", label: t("Fine inquadratura"), once: true, run: () => setFraming(false) },
     ],
     area === "pagine" && framingKeys,
   );
 
   useShortcuts(
-    "Area Pagine",
+    t("Area Pagine"),
     10,
     [
-      { keys: ["PageUp", "PageDown"], label: "Pagina precedente / successiva", run: (e) => stepPage(pageIndex + (e.key === "PageDown" ? 1 : -1)) },
-      { keys: ["Home", "End"], label: "Prima / ultima pagina", run: (e) => stepPage(e.key === "End" ? pages.length - 1 : 0) },
-      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Vignetta vicina", run: (e) => (activeBalloon ? false : movePanel(arrow(e)[0])) },
+      { keys: ["PageUp", "PageDown"], label: t("Pagina precedente / successiva"), run: (e) => stepPage(pageIndex + (e.key === "PageDown" ? 1 : -1)) },
+      { keys: ["Home", "End"], label: t("Prima / ultima pagina"), run: (e) => stepPage(e.key === "End" ? pages.length - 1 : 0) },
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: t("Vignetta vicina"), run: (e) => (activeBalloon ? false : movePanel(arrow(e)[0])) },
       {
         keys: ["Enter"],
-        label: "Entra nei balloon della vignetta",
+        label: t("Entra nei balloon della vignetta"),
         when: "free",
         once: true,
         run: () => {
@@ -629,22 +630,22 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
           reveal();
         },
       },
-      { keys: ["n"], label: "Nuovo balloon nella vignetta, e lo scrivi subito", once: true, run: addBalloon },
-      { keys: ["+", "=", "-"], shown: "+ / −", label: "Inquadratura più stretta / più larga", run: (e) => (activeBalloon ? false : reframe(e.key === "-" ? -1 : 1)) },
+      { keys: ["n"], label: t("Nuovo balloon nella vignetta, e lo scrivi subito"), once: true, run: addBalloon },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: t("Inquadratura più stretta / più larga"), run: (e) => (activeBalloon ? false : reframe(e.key === "-" ? -1 : 1)) },
       {
         keys: ["v"],
-        label: "Scheda Vignetta: scrivi l'azione",
+        label: t("Scheda Vignetta: scrivi l'azione"),
         once: true,
         run: () => {
           setInspectorTab("vignetta");
           setTypeIn({ field: "action", selectAll: false });
         },
       },
-      { keys: ["b"], label: "Scheda Balloon", once: true, run: () => setInspectorTab("balloon") },
-      { keys: ["a"], label: "Scheda Arte", once: true, run: () => setInspectorTab("arte") },
+      { keys: ["b"], label: t("Scheda Balloon"), once: true, run: () => setInspectorTab("balloon") },
+      { keys: ["a"], label: t("Scheda Arte"), once: true, run: () => setInspectorTab("arte") },
       {
         keys: ["i"],
-        label: "Inquadra l'immagine della vignetta (tua o generata)",
+        label: t("Inquadra l'immagine della vignetta (tua o generata)"),
         once: true,
         run: () => {
           if (!shown?.size) return false;
@@ -655,7 +656,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       },
       {
         keys: ["s"],
-        label: "Pagina ↔ striscia",
+        label: t("Pagina ↔ striscia"),
         once: true,
         run: () => {
           if (!stripTargetId) return false;
@@ -668,18 +669,18 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
   );
 
   useShortcuts(
-    "Con un balloon scelto",
+    t("Con un balloon scelto"),
     20,
     [
-      { keys: arrowKeys(), shown: "← ↑ → ↓", label: "Sposta il balloon", run: (e) => moveBalloon(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
-      { keys: arrowKeys("Shift+"), shown: "Shift + frecce", label: "Lo sposta a passi grandi", run: (e) => moveBalloon(arrow(e)[1] * STEP * 5, arrow(e)[2] * STEP * 5) },
-      { keys: arrowKeys("Alt+"), shown: "Alt + frecce", label: "Sposta la punta della coda", run: (e) => moveTail(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
+      { keys: arrowKeys(), shown: "← ↑ → ↓", label: t("Sposta il balloon"), run: (e) => moveBalloon(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
+      { keys: arrowKeys("Shift+"), shown: t("Shift + frecce"), label: t("Lo sposta a passi grandi"), run: (e) => moveBalloon(arrow(e)[1] * STEP * 5, arrow(e)[2] * STEP * 5) },
+      { keys: arrowKeys("Alt+"), shown: t("Alt + frecce"), label: t("Sposta la punta della coda"), run: (e) => moveTail(arrow(e)[1] * STEP, arrow(e)[2] * STEP) },
       { keys: arrowKeys("Alt+Shift+"), run: (e) => moveTail(arrow(e)[1] * STEP * 5, arrow(e)[2] * STEP * 5) },
-      { keys: ["+", "=", "-"], shown: "+ / −", label: "Corpo del testo più grande / più piccolo", run: (e) => resizeBalloon(e.key === "-" ? -1 : 1) },
-      { keys: ["Enter"], label: "Scrive nel testo del balloon", when: "free", once: true, run: () => (activeBalloon ? setTypeIn({ field: activeBalloon.id, selectAll: false }) : false) },
-      { keys: ["Tab", "Shift+Tab"], label: "Balloon successivo / precedente", when: "free", run: (e) => cycleBalloon(e.shiftKey ? -1 : 1) },
-      { keys: ["Delete", "Backspace"], shown: "Canc", label: "Elimina il balloon", when: "free", once: true, run: removeBalloon },
-      { keys: ["Escape"], label: "Torna alla vignetta", run: () => (activeBalloon ? setSelectedBalloonId(null) : false) },
+      { keys: ["+", "=", "-"], shown: "+ / −", label: t("Corpo del testo più grande / più piccolo"), run: (e) => resizeBalloon(e.key === "-" ? -1 : 1) },
+      { keys: ["Enter"], label: t("Scrive nel testo del balloon"), when: "free", once: true, run: () => (activeBalloon ? setTypeIn({ field: activeBalloon.id, selectAll: false }) : false) },
+      { keys: ["Tab", "Shift+Tab"], label: t("Balloon successivo / precedente"), when: "free", run: (e) => cycleBalloon(e.shiftKey ? -1 : 1) },
+      { keys: ["Delete", "Backspace"], shown: "Canc", label: t("Elimina il balloon"), when: "free", once: true, run: removeBalloon },
+      { keys: ["Escape"], label: t("Torna alla vignetta"), run: () => (activeBalloon ? setSelectedBalloonId(null) : false) },
     ],
     area === "pagine",
   );
@@ -688,14 +689,13 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
     <>
       <div className="area editor" hidden={area !== "pagine"}>
         <aside className="col editor__nav">
-          <p className="eyebrow">Pagine</p>
+          <p className="eyebrow">{t("Pagine")}</p>
           <PageList chapterId={chapter.id} pages={pages} currentPageId={page.id} sceneId={scene.id} onSelectPage={goToPage} run={run} openRevisions={openBy} />
           <NoteButton what="la pagina" onAdd={(text) => annotate({ page: page.id }, text)} open={openBy.get(page.id) ?? 0} onShow={() => showRevisions(page.id)} />
           <p className="page-meta">
-            <strong>{page.layout.mode === "page" ? page.layout.template_id : "strip"}</strong> · {page.panels.length} vignette
-          </p>
+            <strong>{page.layout.mode === "page" ? page.layout.template_id : "strip"}</strong> · {page.panels.length} {" "}{t("vignette")}</p>
 
-          <p className="eyebrow">Vignette</p>
+          <p className="eyebrow">{t("Vignette")}</p>
           <ul className="panel-list" onKeyDown={(e) => void listArrows(e)}>
             {page.panels.map((panel) => {
               const level = badges.get(panel.id);
@@ -705,14 +705,14 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
                     <span className="panel-row__num">{panelNumber(panel.id)}</span>
                     <span className="panel-row__main">
                       <span className="panel-row__shot">
-                        <span className="panel-row__code">{panel.camera.shot}</span> {SHOT_LABELS[panel.camera.shot]}
+                        <span className="panel-row__code">{panel.camera.shot}</span> {t(SHOT_LABELS[panel.camera.shot])}
                       </span>
                       <span className="panel-row__action">{panel.action || "—"}</span>
                     </span>
                     <span className="panel-row__badges">
                       {panel.balloons.length > 0 && <span className="panel-row__count" title={`${panel.balloons.length} balloon`}>{panel.balloons.length}</span>}
-                      {openBy.has(panel.id) && <span className="panel-row__notes" title={`${openBy.get(panel.id)} revisioni aperte`}>✎{openBy.get(panel.id)}</span>}
-                      {level && <span className={`dot dot--${level}`} title={`${level} su questa vignetta`} />}
+                      {openBy.has(panel.id) && <span className="panel-row__notes" title={t("{0} revisioni aperte", openBy.get(panel.id))}>✎{openBy.get(panel.id)}</span>}
+                      {level && <span className={`dot dot--${level}`} title={t("{0} su questa vignetta", level)} />}
                     </span>
                   </button>
                 </li>
@@ -724,23 +724,23 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
         <section className="canvas">
           <div className="canvas__bar">
             <p className="canvas__title">
-              {view === "page" ? `Pagina ${page.order}` : "Striscia dell'episodio"}
-              <span className="muted"> · {pages.length} in tutto</span>
+              {view === "page" ? t("Pagina {0}", page.order) : t("Striscia dell'episodio")}
+              <span className="muted"> · {pages.length} {" "}{t("in tutto")}</span>
             </p>
-            <div className="segmented" role="group" aria-label="Formato mostrato">
-              {pageTargets.map((t) => (
+            <div className="segmented" role="group" aria-label={t("Formato mostrato")}>
+              {pageTargets.map((target) => (
                 <button
-                  key={t.id}
+                  key={target.id}
                   type="button"
                   className="seg"
-                  aria-pressed={view === "page" && pageTargetId === t.id}
+                  aria-pressed={view === "page" && pageTargetId === target.id}
                   onClick={() => {
                     setView("page");
-                    setPageTargetId(t.id);
+                    setPageTargetId(target.id);
                   }}
-                  title={`${t.id} — ${t.primary ? "formato principale: qui si ritocca tutto" : "qui si spostano solo i balloon, per questo formato"}`}
+                  title={`${target.id} — ${target.primary ? t("formato principale: qui si ritocca tutto") : t("qui si spostano solo i balloon, per questo formato")}`}
                 >
-                  {targetLabel(t.id)}
+                  {targetLabel(target.id)}
                 </button>
               ))}
               <button
@@ -749,19 +749,17 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
                 aria-pressed={view === "scroll"}
                 onClick={() => setView("scroll")}
                 disabled={!stripTargetId}
-                title={stripTargetId ? `${stripTargetId} — la striscia come la leggerà il telefono, con i tagli` : "Il progetto non ha un formato a striscia"}
+                title={stripTargetId ? t("{0} — la striscia come la leggerà il telefono, con i tagli", stripTargetId) : t("Il progetto non ha un formato a striscia")}
               >
-                {stripTargetId ? targetLabel(stripTargetId) : "Striscia"}
+                {stripTargetId ? targetLabel(stripTargetId) : t("Striscia")}
               </button>
             </div>
             {view === "page" && (
-              <div className="segmented" role="group" aria-label="Dimensione della pagina">
-                <button type="button" className="seg" aria-pressed={fit === "page"} onClick={() => setFit("page")} title="La pagina intera, sempre in vista">
-                  adatta
-                </button>
-                <button type="button" className="seg" aria-pressed={fit === "width"} onClick={() => setFit("width")} title="Larga quanto la colonna: più grande, si scorre">
-                  larghezza
-                </button>
+              <div className="segmented" role="group" aria-label={t("Dimensione della pagina")}>
+                <button type="button" className="seg" aria-pressed={fit === "page"} onClick={() => setFit("page")} title={t("La pagina intera, sempre in vista")}>
+                  {t("adatta")}</button>
+                <button type="button" className="seg" aria-pressed={fit === "width"} onClick={() => setFit("width")} title={t("Larga quanto la colonna: più grande, si scorre")}>
+                  {t("larghezza")}</button>
               </div>
             )}
           </div>
@@ -772,7 +770,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             tabIndex={0}
             data-keys="canvas"
             role="group"
-            aria-label="Pagina: frecce per le vignette, Invio per i balloon, ? per tutte le scorciatoie"
+            aria-label={t("Pagina: frecce per le vignette, Invio per i balloon, ? per tutte le scorciatoie")}
           >
             {view === "scroll" && stripContext && stripTargetId && (
               <StripView
@@ -818,8 +816,8 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
                 framingPanelId={framing ? selectedPanel.id : null}
               />
             )}
-            {fontError && <p className="preview__note">Font non caricato: {fontError}</p>}
-            {!font && !fontError && <p className="muted">Carico il font…</p>}
+            {fontError && <p className="preview__note">{t("Font non caricato:")}{" "}{fontError}</p>}
+            {!font && !fontError && <p className="muted">{t("Carico il font…")}</p>}
           </div>
 
           <div className="canvas__foot">
@@ -827,10 +825,10 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             {view === "page" && (
               <p className="field__hint">
                 {framing
-                  ? "Inquadratura dell'immagine: trascina o frecce per spostarla, rotella o + − per ingrandirla, 0 la ricentra, Esc per finire."
+                  ? t("Inquadratura dell'immagine: trascina o frecce per spostarla, rotella o + − per ingrandirla, 0 la ricentra, Esc per finire.")
                   : pageTargetId === primaryTarget.id
-                    ? "Trascina balloon, punta della coda e gutter · trascina un'immagine su una vignetta per dargliela · Ctrl+Z annulla · ? per le scorciatoie."
-                    : `In ${targetLabel(pageTargetId)} si spostano solo i balloon, e solo per questo formato. Griglia e vignette si ritoccano sul formato principale.`}
+                    ? t("Trascina balloon, punta della coda e gutter · trascina un'immagine su una vignetta per dargliela · Ctrl+Z annulla · ? per le scorciatoie.")
+                    : t("In {0} si spostano solo i balloon, e solo per questo formato. Griglia e vignette si ritoccano sul formato principale.", targetLabel(pageTargetId))}
               </p>
             )}
             <Section
@@ -838,7 +836,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
               className="drawer"
               title={
                 <>
-                  Validazione <LevelCounts counts={pageCounts} />
+                  {t("Validazione")}{" "}<LevelCounts counts={pageCounts} />
                 </>
               }
             >
@@ -850,19 +848,19 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
         <aside className="col col--work editor__inspector">
           <div className="inspector__head">
             <p className="inspector__title">
-              Vignetta {panelNumber(selectedPanel.id)} <span className="muted">di {page.panels.length}</span>
+              {t("Vignetta")}{" "}{panelNumber(selectedPanel.id)} <span className="muted">{t("di")}{" "}{page.panels.length}</span>
             </p>
             <span className="panel-id">{selectedPanel.id}</span>
           </div>
           <Tabs<InspectorTab>
-            label="Cosa si modifica della vignetta"
+            label={t("Cosa si modifica della vignetta")}
             className="tabs--fill"
             value={inspectorTab}
             onChange={setInspectorTab}
             items={[
-              { id: "vignetta", label: "Vignetta", title: "Azione, inquadratura, griglia, personaggi" },
-              { id: "balloon", label: "Balloon", badge: selectedPanel.balloons.length, title: "Testi, posizione e coda" },
-              { id: "arte", label: "Arte", title: "Immagine della vignetta, generazione e istruzioni per un modello esterno" },
+              { id: "vignetta", label: t("Vignetta"), title: t("Azione, inquadratura, griglia, personaggi") },
+              { id: "balloon", label: t("Balloon"), badge: selectedPanel.balloons.length, title: t("Testi, posizione e coda") },
+              { id: "arte", label: t("Arte"), title: t("Immagine della vignetta, generazione e istruzioni per un modello esterno") },
             ]}
           />
 
@@ -870,13 +868,13 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             <div className="card">
               <div className="stack">
                 <label className="field">
-                  <span className="field__label">azione</span>
+                  <span className="field__label">{t("azione")}</span>
                   <textarea id="panel-action" value={selectedPanel.action} rows={3} onChange={(e) => patchPanel("action", e.target.value)} onBlur={endGesture} />
-                  <span className="field__hint">Per chi disegna è la specifica della vignetta, non una nota.</span>
+                  <span className="field__hint">{t("Per chi disegna è la specifica della vignetta, non una nota.")}</span>
                 </label>
 
                 <label className="field">
-                  <span className="field__label">luogo e ora</span>
+                  <span className="field__label">{t("luogo e ora")}</span>
                   <input type="text" value={selectedPanel.setting} onChange={(e) => patchPanel("setting", e.target.value)} onBlur={endGesture} />
                 </label>
               </div>
@@ -893,13 +891,13 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
 
             <PanelCharacters pageId={page.id} panel={selectedPanel} refs={refs} sheets={doc.characters} run={run} endGesture={endGesture} />
 
-            <Section id="camera" className="card" title="camera completa">
+            <Section id="camera" className="card" title={t("camera completa")}>
               <CameraForm camera={selectedPanel.camera} onChange={(camera) => run({ type: "panel.camera", pageId: page.id, panelId: selectedPanel.id, camera })} />
             </Section>
           </div>
 
           <div className="stack" role="tabpanel" hidden={inspectorTab !== "balloon"}>
-            {selectedPanel.balloons.length === 0 && <p className="empty">Questa vignetta non ha balloon.</p>}
+            {selectedPanel.balloons.length === 0 && <p className="empty">{t("Questa vignetta non ha balloon.")}</p>}
             {selectedPanel.balloons.map((balloon) => (
               <BalloonEditor
                 key={balloon.id}
@@ -919,8 +917,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
               />
             ))}
             <button type="button" className="btn btn--small" onClick={() => run({ type: "balloon.add", pageId: page.id, panelId: selectedPanel.id, text: [{ t: "Nuovo balloon" }] })}>
-              + balloon
-            </button>
+              {t("+ balloon")}</button>
           </div>
 
           <div className="stack" role="tabpanel" hidden={inspectorTab !== "arte"}>
@@ -969,11 +966,9 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
       <div className="area area--scroll" hidden={area !== "revisioni"}>
         <div className="area__inner">
           <header className="area__head">
-            <h2 className="area__title">Revisioni</h2>
+            <h2 className="area__title">{t("Revisioni")}</h2>
             <p className="area__lead">
-              Capitolo {chapter.number} · {openRevisions === 0 ? "nessuna correzione aperta" : openRevisions === 1 ? "1 correzione aperta" : `${openRevisions} correzioni aperte`}. Accettare una
-              correzione riscrive solo i balloon coinvolti.
-            </p>
+              {t("Capitolo")}{" "}{chapter.number} · {openRevisions === 0 ? t("nessuna correzione aperta") : openRevisions === 1 ? t("1 correzione aperta") : t("{0} correzioni aperte", openRevisions)}{t(". Accettare una correzione riscrive solo i balloon coinvolti.")}</p>
           </header>
           <RevisionsPanel doc={doc} chapterId={chapter.id} run={run} endGesture={endGesture} onSelectPanel={revealPanel} write={async (files) => (await platform.write(files)).destination} filter={revisionFilter} onClearFilter={() => setRevisionFilter(null)} />
         </div>
@@ -984,7 +979,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
           <div>
             <header className="area__head">
               <h2 className="area__title">Export</h2>
-              <p className="area__lead">Il capitolo {chapter.number} intero, in tutti i formati scelti, dallo stesso documento.</p>
+              <p className="area__lead">{t("Il capitolo")}{" "}{chapter.number} {" "}{t("intero, in tutti i formati scelti, dallo stesso documento.")}</p>
             </header>
             <ExportPanel
               choices={exportChoices}
@@ -1004,8 +999,8 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
             />
           </div>
           <div className="card">
-            <p className="card__title">prima di esportare</p>
-            <p className="field__hint">Cosa segnala il controllo, pagina per pagina. Un clic porta alla pagina.</p>
+            <p className="card__title">{t("prima di esportare")}</p>
+            <p className="field__hint">{t("Cosa segnala il controllo, pagina per pagina. Un clic porta alla pagina.")}</p>
             <ul className="check-list">
               {chapterCheck?.map(({ page: p, counts }) => (
                 <li key={p.id}>
@@ -1017,7 +1012,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
                       onArea("pagine");
                     }}
                   >
-                    <span className="check-row__page">Pagina {p.order}</span>
+                    <span className="check-row__page">{t("Pagina")}{" "}{p.order}</span>
                     <LevelCounts counts={counts} />
                   </button>
                 </li>

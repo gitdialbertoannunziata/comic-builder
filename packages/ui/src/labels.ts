@@ -1,4 +1,5 @@
 import type { Camera } from "@comic-builder/core";
+import { t } from "./i18n.js";
 
 /**
  * Nomi leggibili dei formati. Gli id restano quelli del progetto (e si
@@ -12,7 +13,7 @@ const TARGET_LABELS: Record<string, string> = {
 };
 
 export function targetLabel(id: string): string {
-  return TARGET_LABELS[id] ?? id;
+  return t(TARGET_LABELS[id] ?? id);
 }
 
 /** Etichette dei campi della camera (§6.1). I valori restano il vocabolario chiuso. */

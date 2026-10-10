@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { anchorFor, balloonBox, prepareStrip, renderStripWindow, type Box, type Command, type ExportContext, type SliceCut } from "@comic-builder/core";
 
@@ -115,19 +116,18 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, onSele
     <div className="strip-view">
       <div className="strip-view__head">
         <span>
-          {plan.slices.length} slice{report.shortSlices > 0 ? ` (${report.shortSlices} corte, per non tagliare l'arte)` : ""} · {gutterCuts}/{plan.cuts.length} tagli nei gutter · pagine da
-          controllare {report.pagesToCheck.length}/{report.pages}{" "}
+          {plan.slices.length} slice{report.shortSlices > 0 ? t(" ({0} corte, per non tagliare l'arte)", report.shortSlices) : ""} · {gutterCuts}/{plan.cuts.length} {" "}{t("tagli nei gutter · pagine da controllare")}{" "}{report.pagesToCheck.length}/{report.pages}{" "}
           <strong className={report.checkRatio < GATE_RATIO ? "gate gate--ok" : "gate gate--ko"}>
-            ({Math.round(report.checkRatio * 100)}%{report.checkRatio < GATE_RATIO ? ", gate superato" : ", sopra il 20%"})
+            ({Math.round(report.checkRatio * 100)}%{report.checkRatio < GATE_RATIO ? t(", gate superato") : t(", sopra il 20%")})
           </strong>
         </span>
         <label className="field field--row">
           <input type="checkbox" checked={bandMode} onChange={(e) => setBandMode(e.target.checked)} />
-          <span>segna zone da non tagliare</span>
+          <span>{t("segna zone da non tagliare")}</span>
         </label>
       </div>
       {bandMode && (
-        <p className="field__hint">Trascina in verticale su un pannello per proteggere una fascia (un volto, un dettaglio). Clic su una zona per toglierla.</p>
+        <p className="field__hint">{t("Trascina in verticale su un pannello per proteggere una fascia (un volto, un dettaglio). Clic su una zona per toglierla.")}</p>
       )}
 
       <div className="strip-view__strip" style={{ width: DISPLAY_WIDTH }}>
@@ -186,7 +186,7 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, onSele
                           bandMode && run({ type: "panel.update", pageId, panelId: panel.id, patch: { slice_avoid: panel.slice_avoid.filter((_, i) => i !== b) } })
                         }
                       >
-                        <title>Zona da non tagliare{bandMode ? ": clic per toglierla" : ""}</title>
+                        <title>{t("Zona da non tagliare")}{bandMode ? t(": clic per toglierla") : ""}</title>
                       </rect>
                     ))}
                   </g>
@@ -223,7 +223,7 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, onSele
                           run({ type: "balloon.move", pageId: p, balloonId, anchor: anchorFor(x, y, pb), target: targetId });
                         }}
                       >
-                        <title>{`${balloon.id}: trascina per spostarlo nella striscia`}</title>
+                        <title>{t("{0}: trascina per spostarlo nella striscia", balloon.id)}</title>
                       </rect>
                     ))}
                 {balloonDrag && (
@@ -234,9 +234,9 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, onSele
                 )}
               </svg>
               {cut && (
-                <div className={`strip-cut strip-cut--${cut.kind}`} title={CUT_LABEL[cut.kind]}>
+                <div className={`strip-cut strip-cut--${cut.kind}`} title={t(CUT_LABEL[cut.kind])}>
                   <span>
-                    taglio {index + 1} · {CUT_LABEL[cut.kind]}
+                    {t("taglio")}{" "}{index + 1} · {t(CUT_LABEL[cut.kind])}
                   </span>
                 </div>
               )}

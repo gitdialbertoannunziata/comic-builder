@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isArtFile, type ProjectStore, type ReferenceImage } from "@comic-builder/core";
 
@@ -71,11 +72,9 @@ export function ReferenceImages({ store, references, onChange, directory, useHin
               <figcaption>
                 {r.note || r.path.split("/").pop()}{" "}
                 <label title={useHint}>
-                  <input type="checkbox" checked={r.use} onChange={(e) => onChange(references.map((x) => (x.path === r.path ? { ...x, use: e.target.checked } : x)))} /> per generare
-                </label>{" "}
+                  <input type="checkbox" checked={r.use} onChange={(e) => onChange(references.map((x) => (x.path === r.path ? { ...x, use: e.target.checked } : x)))} /> {" "}{t("per generare")}</label>{" "}
                 <button type="button" className="link-btn" onClick={() => onChange(references.filter((x) => x.path !== r.path))}>
-                  togli
-                </button>
+                  {t("togli")}</button>
               </figcaption>
             </figure>
           ))}
@@ -83,8 +82,7 @@ export function ReferenceImages({ store, references, onChange, directory, useHin
       )}
       <div className="tool-row">
         <button type="button" className="btn btn--small" onClick={() => input.current?.click()}>
-          + immagine…
-        </button>
+          {t("+ immagine…")}</button>
         {children}
       </div>
       <input

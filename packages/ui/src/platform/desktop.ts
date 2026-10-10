@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef, useState } from "react";
 import type { DirectoryHandle } from "./browserProjectStore.js";
 
@@ -47,14 +48,14 @@ export const desktop: DesktopBridge | null = (globalThis as { comicDesktop?: Des
 // --- Cartelle ---
 
 const join = (dir: string, name: string) => `${dir.replace(/[\\/]+$/, "")}${desktop?.platform === "win32" ? "\\" : "/"}${name}`;
-const notFound = (what: string) => new DOMException(`${what} non trovato`, "NotFoundError");
+const notFound = (what: string) => new DOMException(t("{0} non trovato", what), "NotFoundError");
 
 async function bytesOf(data: unknown): Promise<Uint8Array | string> {
   if (typeof data === "string") return data;
   if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  throw new TypeError("Dati da scrivere di un tipo non gestito");
+  throw new TypeError(t("Dati da scrivere di un tipo non gestito"));
 }
 
 /** Il «file» di File System Access, su un percorso vero. Scrivere bufferizza; chiudere scrive tutto in un colpo, atomicamente. */
@@ -112,7 +113,7 @@ export class DesktopDirectoryHandle {
   async getFileHandle(name: string, options: { create?: boolean } = {}): Promise<DesktopFileHandle> {
     const target = join(this.desktopPath, name);
     const stat = await desktop!.fs.stat(target);
-    if (stat?.kind === "directory") throw new DOMException(`${name} è una cartella`, "TypeMismatchError");
+    if (stat?.kind === "directory") throw new DOMException(t("{0} è una cartella", name), "TypeMismatchError");
     if (!stat && !options.create) throw notFound(name);
     return new DesktopFileHandle(name, target);
   }
@@ -120,7 +121,7 @@ export class DesktopDirectoryHandle {
   async getDirectoryHandle(name: string, options: { create?: boolean } = {}): Promise<DesktopDirectoryHandle> {
     const target = join(this.desktopPath, name);
     const stat = await desktop!.fs.stat(target);
-    if (stat?.kind === "file") throw new DOMException(`${name} è un file`, "TypeMismatchError");
+    if (stat?.kind === "file") throw new DOMException(t("{0} è un file", name), "TypeMismatchError");
     if (!stat) {
       if (!options.create) throw notFound(name);
       await desktop!.fs.mkdir(target);
@@ -166,26 +167,26 @@ let requests = 0;
 
 /** `fetch` che passa dal processo principale: stessa forma, nessun CORS. */
 export const desktopFetch: typeof fetch = async (input, init = {}) => {
-  if (!desktop) throw new Error("desktopFetch fuori dall'app desktop");
+  if (!desktop) throw new Error(t("desktopFetch fuori dall'app desktop"));
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const id = `r${++requests}`;
   const headers = [...new Headers(init.headers ?? {}).entries()];
   let body: string | Uint8Array | undefined;
   if (typeof init.body === "string") body = init.body;
   else if (init.body instanceof Blob || init.body instanceof ArrayBuffer || ArrayBuffer.isView(init.body)) body = (await bytesOf(init.body)) as Uint8Array;
-  else if (init.body != null) throw new TypeError("desktopFetch: corpo della richiesta di un tipo non gestito");
+  else if (init.body != null) throw new TypeError(t("desktopFetch: corpo della richiesta di un tipo non gestito"));
   const signal = init.signal ?? undefined;
-  if (signal?.aborted) throw new DOMException("Richiesta annullata", "AbortError");
+  if (signal?.aborted) throw new DOMException(t("Richiesta annullata"), "AbortError");
   const onAbort = () => desktop!.net.abort(id);
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
     const call = desktop.net.fetch(id, url, { method: init.method ?? "GET", headers, ...(body !== undefined ? { body } : {}) });
-    const aborted = signal ? new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("Richiesta annullata", "AbortError")), { once: true })) : null;
+    const aborted = signal ? new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException(t("Richiesta annullata"), "AbortError")), { once: true })) : null;
     const result = await (aborted ? Promise.race([call, aborted]) : call);
     const empty = result.status === 204 || result.status === 304;
     return new Response(empty ? null : (result.body as BodyInit), { status: result.status, statusText: result.statusText, headers: result.headers });
   } catch (error) {
-    if (signal?.aborted) throw new DOMException("Richiesta annullata", "AbortError");
+    if (signal?.aborted) throw new DOMException(t("Richiesta annullata"), "AbortError");
     // Come il fetch del browser: un errore di rete è un TypeError, e i servizi lo traducono.
     throw new TypeError(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(error));
   } finally {
@@ -203,11 +204,11 @@ const secureStorage = () => (storage ??= desktop ? desktop.secrets.status() : Pr
 
 /** Dove sta una chiave digitata qui, detto all'autore com'è davvero. */
 export function useKeyNote(): string {
-  const [note, setNote] = useState(desktop ? "" : "Resta in questa scheda e non viene salvata. ");
+  const [note, setNote] = useState(desktop ? "" : t("Resta in questa scheda e non viene salvata. "));
   useEffect(() => {
     if (!desktop) return;
     void secureStorage().then((s) =>
-      setNote(s.available ? "Salvata cifrata nel portachiavi del sistema. " : "Su questo sistema non c'è un portachiavi: resta in memoria finché l'app è aperta. "),
+      setNote(s.available ? t("Salvata cifrata nel portachiavi del sistema. ") : t("Su questo sistema non c'è un portachiavi: resta in memoria finché l'app è aperta. ")),
     );
   }, []);
   return note;
@@ -247,7 +248,7 @@ function installDesktopFolders(): void {
   (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker = async () => {
     const folder = await desktop!.folders.pick();
     // Come il browser quando si annulla il dialogo.
-    if (!folder) throw new DOMException("Scelta annullata", "AbortError");
+    if (!folder) throw new DOMException(t("Scelta annullata"), "AbortError");
     return new DesktopDirectoryHandle(folder.name, folder.path);
   };
 }

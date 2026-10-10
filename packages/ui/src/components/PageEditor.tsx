@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   artPlacement,
@@ -96,7 +97,7 @@ export function PageEditor(props: Props) {
     return () => el.removeEventListener("wheel", onWheel);
   }, [props.framingPanelId, page.id, run, svg]);
 
-  if (!svg) return <p className="muted">Nessuna anteprima: il lay-out non è in modalità "page".</p>;
+  if (!svg) return <p className="muted">{t("Nessuna anteprima: il lay-out non è in modalità \"page\".")}</p>;
 
   /** Dal puntatore alle coordinate della pagina, qualunque sia lo zoom dell'anteprima. */
   function toPage(event: { clientX: number; clientY: number }): { x: number; y: number } {
@@ -183,7 +184,7 @@ export function PageEditor(props: Props) {
 
   return (
     <>
-      {props.staleNote && <p className="preview__note">Mostra l'ultima versione valida: le modifiche non valide non sono applicate.</p>}
+      {props.staleNote && <p className="preview__note">{t("Mostra l'ultima versione valida: le modifiche non valide non sono applicate.")}</p>}
       <div
         className={`preview${drag ? " preview--dragging" : ""}${dropPanel !== undefined ? " preview--dropping" : ""}`}
         onDragOver={(e) => {
@@ -240,7 +241,7 @@ export function PageEditor(props: Props) {
               y2={h.y2}
               onPointerDown={(e) => begin(e, { kind: "gutter", handle: h, gesture: `gutter-${++gestureCounter}` })}
             >
-              <title>Trascina per spostare il gutter</title>
+              <title>{t("Trascina per spostare il gutter")}</title>
             </line>
           ))}
 
@@ -268,7 +269,7 @@ export function PageEditor(props: Props) {
                   });
                 }}
               >
-                <title>Trascina (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire</title>
+                <title>{t("Trascina (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire")}</title>
               </rect>
             </>
           )}
@@ -288,7 +289,7 @@ export function PageEditor(props: Props) {
                 begin(e, { kind: "balloon", balloonId: balloon.id, panelBox, dx: p.x - box.x, dy: p.y - box.y, gesture: `balloon-${++gestureCounter}` });
               }}
             >
-              <title>{`${balloon.id}: trascina per spostare${primary ? "" : ` (solo in ${targetId})`}${!primary && tuned.has(balloon.id) ? " — già ritoccato qui" : ""}`}</title>
+              <title>{t("{0}: trascina per spostare{1}{2}", balloon.id, primary ? "" : ` (solo in ${targetId})`, !primary && tuned.has(balloon.id) ? " — già ritoccato qui" : "")}</title>
             </rect>
           ))}
 
@@ -300,7 +301,7 @@ export function PageEditor(props: Props) {
               r={12}
               onPointerDown={(e) => begin(e, { kind: "tail", balloonId: active.balloon.id, panelBox: active.panelBox, gesture: `tail-${++gestureCounter}` })}
             >
-              <title>Trascina la punta della coda verso chi parla</title>
+              <title>{t("Trascina la punta della coda verso chi parla")}</title>
             </circle>
           )}
         </svg>

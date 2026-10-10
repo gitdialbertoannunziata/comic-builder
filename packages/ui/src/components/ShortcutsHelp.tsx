@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef } from "react";
 import { keyCaps, useLegendGroups } from "../keyboard.js";
 
@@ -26,7 +27,7 @@ export function ShortcutsHelp({ open, onClose }: Props) {
     <dialog
       ref={dialog}
       className="shortcuts"
-      aria-label="Scorciatoie da tastiera"
+      aria-label={t("Scorciatoie da tastiera")}
       onClose={onClose}
       // Un clic sullo sfondo (fuori dal contenuto) chiude, come Esc.
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -34,18 +35,16 @@ export function ShortcutsHelp({ open, onClose }: Props) {
     >
       <div className="shortcuts__body">
         <p className="shortcuts__title">
-          <span>Scorciatoie da tastiera</span>
+          <span>{t("Scorciatoie da tastiera")}</span>
           <button type="button" className="link-btn" onClick={onClose}>
-            chiudi
-          </button>
+            {t("chiudi")}</button>
         </p>
         <p className="field__hint">
-          Mentre scrivi in un campo le lettere sono testo: <kbd>Esc</kbd> esce dal campo, e da lì i tasti sono comandi.
-        </p>
+          {t("Mentre scrivi in un campo le lettere sono testo:")}{" "}<kbd>Esc</kbd> {" "}{t("esce dal campo, e da lì i tasti sono comandi.")}</p>
         <div className="shortcuts__groups">
           {groups.map((group) => (
             <section key={group.title} className="shortcuts__group">
-              <h3>{group.title}</h3>
+              <h3>{t(group.title)}</h3>
               <dl>
                 {group.shortcuts
                   .filter((s) => s.label)
@@ -65,7 +64,7 @@ export function ShortcutsHelp({ open, onClose }: Props) {
                           ))
                         )}
                       </dt>
-                      <dd>{s.label}</dd>
+                      <dd>{s.label === undefined ? null : t(s.label)}</dd>
                     </div>
                   ))}
               </dl>

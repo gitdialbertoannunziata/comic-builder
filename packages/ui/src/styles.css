@@ -987,6 +987,13 @@ code {
   min-width: 0;
 }
 
+.bar__language {
+  width: 92px;
+  flex: 0 0 92px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
 .bar__status {
   margin: 0;
   padding: 4px 14px 6px;

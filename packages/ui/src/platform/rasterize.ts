@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 /**
  * Rasterizzazione nel browser, via canvas.
  *
@@ -60,7 +61,7 @@ export async function svgToImageBlob(
     image.decoding = "sync";
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve();
-      image.onerror = () => reject(new Error("L'SVG non è stato caricato come immagine"));
+      image.onerror = () => reject(new Error(t("L'SVG non è stato caricato come immagine")));
       image.src = url;
     });
 
@@ -68,7 +69,7 @@ export async function svgToImageBlob(
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas 2D non disponibile");
+    if (!context) throw new Error(t("Canvas 2D non disponibile"));
 
     // Una pagina di fumetto è carta: senza fondo esplicito il PNG uscirebbe
     // trasparente, e trasparente su nero è illeggibile. Il JPEG non ha alfa:
@@ -82,7 +83,7 @@ export async function svgToImageBlob(
         (blob) => {
           if (blob) resolve(blob);
           // Succede con canvas oltre i limiti del browser: meglio dirlo che scrivere un file vuoto.
-          else reject(new Error(`Conversione in ${type} fallita (${width}×${height} px)`));
+          else reject(new Error(t("Conversione in {0} fallita ({1}×{2} px)", type, width, height)));
         },
         type,
         options.quality,

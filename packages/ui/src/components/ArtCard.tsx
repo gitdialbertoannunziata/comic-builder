@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { useEffect, useRef, useState } from "react";
 import { shownArt, shownArtPatch, type ArtFrame, type Command, type ImageSize, type Panel, type ProjectStore } from "@comic-builder/core";
 import { importArt } from "../editor/importArt.js";
@@ -75,16 +76,15 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
   return (
     <div className="card">
       <p className="card__title card__title--row">
-        <span>arte</span>
+        <span>{t("arte")}</span>
         {panel.art.source && (
           <button
             type="button"
             className="link-btn"
             onClick={() => run({ type: "panel.update", pageId, panelId: panel.id, patch: { art: { source: null, status: "missing", sha: null } } })}
-            title="Il file resta in art/: si scollega solo dal pannello"
+            title={t("Il file resta in art/: si scollega solo dal pannello")}
           >
-            scollega
-          </button>
+            {t("scollega")}</button>
         )}
       </p>
 
@@ -93,23 +93,22 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
             <div className="art-row">
               {url ? <img className="art-thumb" src={url} alt="" /> : <span className="art-thumb art-thumb--missing">?</span>}
               <span className="art-meta">
-                {shown.kind === "render" && <span className="field__label">generata</span>}
+                {shown.kind === "render" && <span className="field__label">{t("generata")}</span>}
                 <code>{shown.file}</code>
-                {!url && <span className="issue issue--warning">file non trovato nella cartella</span>}
+                {!url && <span className="issue issue--warning">{t("file non trovato nella cartella")}</span>}
               </span>
             </div>
           ) : null}
           {!panel.art.source && (
             <p className="field__hint">
-              Carica un'immagine, oppure trascinala sul pannello nella pagina.
-              {inMemory ? " Resta in questa scheda finché non salvi il progetto in una cartella." : <> Se la esporti tu in <code>art/{panel.id}.png</code>, si collega da sola.</>}
-              {shown?.kind === "render" && " La tua vince su quella generata."}
+              {t("Carica un'immagine, oppure trascinala sul pannello nella pagina.")}{inMemory ? t(" Resta in questa scheda finché non salvi il progetto in una cartella.") : <> {" "}{t("Se la esporti tu in")}{" "}<code>art/{panel.id}.png</code>{t(", si collega da sola.")}</>}
+              {shown?.kind === "render" && t(" La tua vince su quella generata.")}
             </p>
           )}
 
           <div className="tool-row">
             <button type="button" className="btn btn--small" onClick={() => input.current?.click()}>
-              {panel.art.source ? "Sostituisci l'immagine…" : "Carica immagine…"}
+              {panel.art.source ? t("Sostituisci l'immagine…") : t("Carica immagine…")}
             </button>
             <input
               ref={input}
@@ -123,7 +122,7 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
               }}
             />
             <label className="field field--inline">
-              <span className="field__label">stato</span>
+              <span className="field__label">{t("stato")}</span>
               <select
                 value={panel.art.status}
                 onChange={(e) =>
@@ -132,7 +131,7 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
+                    {t(STATUS_LABELS[s])}
                   </option>
                 ))}
               </select>
@@ -140,19 +139,17 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
           </div>
           {shown && url && (
             <div className="art-frame">
-              <span className="field__label">inquadratura</span>
+              <span className="field__label">{t("inquadratura")}</span>
               {!size ? (
-                <p className="field__hint">Leggo le dimensioni dell'immagine…</p>
+                <p className="field__hint">{t("Leggo le dimensioni dell'immagine…")}</p>
               ) : (
                 <>
                   <div className="tool-row">
                     <span className="segmented">
-                      <button type="button" className="seg" aria-pressed={frame.fit === "cover"} onClick={() => setFrame({ fit: "cover" })} title="L'immagine riempie il pannello: i bordi in più si tagliano">
-                        riempie
-                      </button>
-                      <button type="button" className="seg" aria-pressed={frame.fit === "contain"} onClick={() => setFrame({ fit: "contain" })} title="L'immagine si vede intera: dove non arriva resta il fondo">
-                        intera
-                      </button>
+                      <button type="button" className="seg" aria-pressed={frame.fit === "cover"} onClick={() => setFrame({ fit: "cover" })} title={t("L'immagine riempie il pannello: i bordi in più si tagliano")}>
+                        {t("riempie")}</button>
+                      <button type="button" className="seg" aria-pressed={frame.fit === "contain"} onClick={() => setFrame({ fit: "contain" })} title={t("L'immagine si vede intera: dove non arriva resta il fondo")}>
+                        {t("intera")}</button>
                     </span>
                     <button
                       type="button"
@@ -163,13 +160,12 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
                         if (!framing && needsSize) setFrame({});
                         onToggleFraming();
                       }}
-                      title="Sulla pagina: trascina o frecce per spostare, rotella o + − per ingrandire (I)"
+                      title={t("Sulla pagina: trascina o frecce per spostare, rotella o + − per ingrandire (I)")}
                     >
-                      {framing ? "Fine inquadratura" : "Inquadra sulla pagina"}
+                      {framing ? t("Fine inquadratura") : t("Inquadra sulla pagina")}
                     </button>
                     <button type="button" className="link-btn" onClick={() => setFrame(DEFAULT_FRAME)}>
-                      reimposta
-                    </button>
+                      {t("reimposta")}</button>
                   </div>
                   <label className="field field--inline">
                     <span className="field__label">zoom</span>
@@ -185,8 +181,8 @@ export function ArtCard({ pageId, panel, target, store, inMemory, url, run, endG
                     />
                     <span className="muted">{Math.round(frame.zoom * 100)}%</span>
                   </label>
-                  {framing && <p className="field__hint">Sulla pagina: trascina dentro il pannello (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire.</p>}
-                  {shown.kind === "render" && <p className="field__hint">L'inquadratura è di questa immagine: una rigenerata riparte centrata, e Ctrl+Z riporta quella di prima con la sua.</p>}
+                  {framing && <p className="field__hint">{t("Sulla pagina: trascina dentro il pannello (o frecce) per spostare l'immagine, rotella (o + −) per ingrandire, Esc per finire.")}</p>}
+                  {shown.kind === "render" && <p className="field__hint">{t("L'inquadratura è di questa immagine: una rigenerata riparte centrata, e Ctrl+Z riporta quella di prima con la sua.")}</p>}
                 </>
               )}
             </div>

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { usePreference } from "../usePreference.js";
+import { t } from "../i18n.js";
 
 interface Props {
   /** Chiave con cui si ricorda se è aperta. */
@@ -15,7 +16,7 @@ export function Section({ id, title, defaultOpen = false, className, children }:
   const [open, setOpen] = usePreference(`section:${id}`, defaultOpen);
   return (
     <details className={`section${className ? ` ${className}` : ""}`} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="section__title">{title}</summary>
+      <summary className="section__title">{typeof title === "string" ? t(title) : title}</summary>
       <div className="section__body">{open && children}</div>
     </details>
   );

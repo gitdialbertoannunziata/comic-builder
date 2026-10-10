@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { useEffect, useState } from "react";
 import { parseFont, type LoadedFont } from "@comic-builder/lettering";
 
@@ -20,7 +21,7 @@ export function useFont(url: string): FontState {
     let cancelled = false;
     fetch(url)
       .then((res) => {
-        if (!res.ok) throw new Error(`Font non trovato (${res.status}): ${url}`);
+        if (!res.ok) throw new Error(t("Font non trovato ({0}): {1}", res.status, url));
         return res.arrayBuffer();
       })
       .then((buffer) => {

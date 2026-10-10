@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { imageSize } from "./useArtWatcher.js";
 import { artPathFor, extensionOf, isArtFile, type Command, type Panel, type ProjectDoc, type ProjectStore } from "@comic-builder/core";
 
@@ -14,7 +15,7 @@ export async function importArt(
   panel: Panel,
   file: File,
 ): Promise<string | null> {
-  if (!isArtFile(file.name)) return `«${file.name}»: formati accettati PNG, JPEG, WebP. Esporta da lì il file sorgente (PSD, CLIP, KRA).`;
+  if (!isArtFile(file.name)) return t("«{0}»: formati accettati PNG, JPEG, WebP. Esporta da lì il file sorgente (PSD, CLIP, KRA).", file.name);
   const path = artPathFor(panel.id, extensionOf(file.name));
   await store.writeBytes(path, new Uint8Array(await file.arrayBuffer()));
   const size = await imageSize(file);

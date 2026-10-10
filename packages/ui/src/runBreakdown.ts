@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { buildPagesFromScene, type Page, type Scene, type ValidationIssue } from "@comic-builder/core";
 import {
   MockLlmService,
@@ -55,7 +56,7 @@ export function llmServiceFor(input: LlmChoice): LlmService {
   const choice = input.service;
   // Il modello installato dalla procedura guidata: l'app lo avvia alla prima richiesta, e ferma quello delle immagini.
   if (choice === "local") {
-    if (!local) throw new Error("I modelli locali si installano dall'app desktop: nel browser scegli Ollama.");
+    if (!local) throw new Error(t("I modelli locali si installano dall'app desktop: nel browser scegli Ollama."));
     return new LlamaServerLlmService({ resolveBaseUrl: () => local!.start("text"), ...networkFetch });
   }
   // Nell'app desktop le chiamate passano dal processo principale (`networkFetch`): niente CORS.

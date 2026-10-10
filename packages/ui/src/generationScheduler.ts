@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 export type GenerationLane = "local" | "online-text" | "online-image";
 export type GenerationKind = "text" | "image";
 
@@ -45,7 +46,7 @@ export class GenerationScheduler {
   }
 
   enqueue<Result>(lane: GenerationLane, label: string, run: (signal: AbortSignal) => Promise<Result>, options: GenerationOptions = {}): Promise<Result> {
-    if (options.signal?.aborted) return Promise.reject(new DOMException("Generazione annullata.", "AbortError"));
+    if (options.signal?.aborted) return Promise.reject(new DOMException(t("Generazione annullata."), "AbortError"));
     return new Promise<Result>((resolve, reject) => {
       const controller = new AbortController();
       const cleanup = () => options.signal?.removeEventListener("abort", job.cancel);
@@ -57,12 +58,12 @@ export class GenerationScheduler {
           if (job.info.state === "running") return;
           this.jobs = this.jobs.filter((pending) => pending !== job);
           cleanup();
-          reject(new DOMException("Generazione annullata.", "AbortError"));
+          reject(new DOMException(t("Generazione annullata."), "AbortError"));
           this.publish();
         },
         execute: async () => {
           try {
-            if (options.isValid && !options.isValid()) throw new Error("Il progetto o il contenuto del lavoro in coda e' cambiato. Rilancia la generazione.");
+            if (options.isValid && !options.isValid()) throw new Error(t("Il progetto o il contenuto del lavoro in coda e' cambiato. Rilancia la generazione."));
             resolve(await run(controller.signal));
           } catch (error) {
             reject(error);
@@ -103,7 +104,7 @@ export const generationScheduler = new GenerationScheduler();
 export function scheduleGeneration<Result>(service: string, kind: GenerationKind, label: string, run: (signal: AbortSignal) => Promise<Result>, options: GenerationOptions = {}): Promise<Result> {
   const lane = generationLane(service, kind);
   if (lane) return generationScheduler.enqueue(lane, label, run, options);
-  if (options.signal?.aborted) return Promise.reject(new DOMException("Generazione annullata.", "AbortError"));
-  if (options.isValid && !options.isValid()) return Promise.reject(new Error("Il progetto e' cambiato."));
+  if (options.signal?.aborted) return Promise.reject(new DOMException(t("Generazione annullata."), "AbortError"));
+  if (options.isValid && !options.isValid()) return Promise.reject(new Error(t("Il progetto e' cambiato.")));
   return run(options.signal ?? new AbortController().signal);
 }

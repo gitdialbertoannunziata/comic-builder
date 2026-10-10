@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import { createZip, utf8, type ExportFile, type PlatformService, type WriteOutcome } from "@comic-builder/core";
 
 /**
@@ -31,7 +32,7 @@ function directoryPicker(): DirectoryPicker | null {
 async function fileHandleFor(root: DirectoryHandle, path: string): Promise<FileHandle> {
   const parts = path.split("/").filter((p) => p.length > 0);
   const fileName = parts.pop();
-  if (!fileName) throw new Error(`Nome di file vuoto: "${path}"`);
+  if (!fileName) throw new Error(t("Nome di file vuoto: \"{0}\"", path));
   let directory = root;
   for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
   return directory.getFileHandle(fileName, { create: true });
@@ -94,7 +95,7 @@ export class BrowserPlatformService implements PlatformService {
       const file = files[0]!;
       // Un download non può creare cartelle: la "/" diventa un trattino.
       download(blobFor(file), file.name.replace(/\//g, "-"));
-      return { written: 1, destination: "cartella dei download del browser" };
+      return { written: 1, destination: t("cartella dei download del browser") };
     }
 
     const archive = createZip(
@@ -103,7 +104,7 @@ export class BrowserPlatformService implements PlatformService {
     );
     const name = `comic-builder-export-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.zip`;
     download(new Blob([archive as BlobPart], { type: "application/zip" }), name);
-    return { written: files.length, destination: `${name}, nei download del browser` };
+    return { written: files.length, destination: t("{0}, nei download del browser", name) };
   }
 }
 

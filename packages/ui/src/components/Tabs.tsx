@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { t } from "../i18n.js";
 
 export interface TabItem<T extends string> {
   id: T;
@@ -29,7 +30,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, classNam
   }
 
   return (
-    <div className={`tabs${className ? ` ${className}` : ""}`} role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+    <div className={`tabs${className ? ` ${className}` : ""}`} role="tablist" aria-label={t(label)} onKeyDown={onKeyDown}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -39,10 +40,10 @@ export function Tabs<T extends string>({ label, items, value, onChange, classNam
           data-tab={item.id}
           aria-selected={item.id === value}
           tabIndex={item.id === value ? 0 : -1}
-          title={item.title}
+          title={item.title === undefined ? undefined : t(item.title)}
           onClick={() => onChange(item.id)}
         >
-          {item.label}
+          {t(item.label)}
           {item.badge !== undefined && item.badge > 0 && <span className="tab__badge">{item.badge}</span>}
         </button>
       ))}

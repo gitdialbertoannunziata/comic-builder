@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { ValidationIssue } from "@comic-builder/core";
 import type { BreakdownProgress } from "@comic-builder/llm";
 import { useKeyNote } from "../platform/desktop.js";
@@ -94,7 +95,7 @@ export function ScriptPanel({
     <section className="script">
       <div className="script__body">
           <label className="field">
-            <span className="field__label">testo del capitolo</span>
+            <span className="field__label">{t("testo del capitolo")}</span>
             <textarea
               className="script__text"
               value={script}
@@ -104,40 +105,37 @@ export function ScriptPanel({
               placeholder={"# Titolo della scena\n\nDescrizione di cosa si vede.\n\nNOME: Una battuta."}
             />
             <span className="field__hint">
-              Titoli markdown o righe <code>INT./EST.</code> dividono le scene; i paragrafi diventano beat; le
-              battute si scrivono <code>NOME: testo</code>.
+              {t("Titoli markdown o righe")}{" "}<code>INT./EST.</code> {" "}{t("dividono le scene; i paragrafi diventano beat; le battute si scrivono")}{" "}<code>{t("NOME: testo")}</code>.
             </span>
           </label>
 
           <div className="field">
-            <span className="field__label">chi fa lo spoglio</span>
+            <span className="field__label">{t("chi fa lo spoglio")}</span>
             <div className="segmented">
               <button
                 type="button"
                 className="seg"
                 aria-pressed={service === "mock"}
                 onClick={() => onServiceChange("mock")}
-                title="Euristica deterministica, nessun modello: è il livello di riferimento da battere"
+                title={t("Euristica deterministica, nessun modello: è il livello di riferimento da battere")}
               >
-                euristico
-              </button>
+                {t("euristico")}</button>
               {local && (
                 <button
                   type="button"
                   className="seg"
                   aria-pressed={service === "local"}
                   onClick={() => onServiceChange("local")}
-                  title="Il modello installato dalla procedura guidata dei modelli locali: il copione non esce dal computer"
+                  title={t("Il modello installato dalla procedura guidata dei modelli locali: il copione non esce dal computer")}
                 >
-                  locale
-                </button>
+                  {t("locale")}</button>
               )}
               <button
                 type="button"
                 className="seg"
                 aria-pressed={service === "ollama"}
                 onClick={() => onServiceChange("ollama")}
-                title="Un Ollama che hai già installato: il copione non esce dalla macchina"
+                title={t("Un Ollama che hai già installato: il copione non esce dalla macchina")}
               >
                 ollama
               </button>
@@ -146,7 +144,7 @@ export function ScriptPanel({
                 className="seg"
                 aria-pressed={service === "anthropic"}
                 onClick={() => onServiceChange("anthropic")}
-                title="API di Anthropic: il modello più capace, ma il copione esce verso terzi"
+                title={t("API di Anthropic: il modello più capace, ma il copione esce verso terzi")}
               >
                 claude
               </button>
@@ -155,7 +153,7 @@ export function ScriptPanel({
                 className="seg"
                 aria-pressed={service === "deepseek"}
                 onClick={() => onServiceChange("deepseek")}
-                title="API di DeepSeek: JSON garantito ma non lo schema — lo controlla la validazione a valle"
+                title={t("API di DeepSeek: JSON garantito ma non lo schema — lo controlla la validazione a valle")}
               >
                 deepseek
               </button>
@@ -164,7 +162,7 @@ export function ScriptPanel({
                 className="seg"
                 aria-pressed={service === "openai"}
                 onClick={() => onServiceChange("openai")}
-                title="API di OpenAI: risposta vincolata allo schema, ma il copione esce verso terzi"
+                title={t("API di OpenAI: risposta vincolata allo schema, ma il copione esce verso terzi")}
               >
                 openai
               </button>
@@ -175,17 +173,15 @@ export function ScriptPanel({
             <div className="field">
               {localText ? (
                 <span className="field__hint">
-                  <strong>{localText.label}</strong>, sul tuo computer con llama.cpp: parte da solo al primo spoglio (la prima volta qualche secondo per caricarlo), e il copione non esce dalla macchina.{" "}
+                  <strong>{localText.label}</strong>{t(", sul tuo computer con llama.cpp: parte da solo al primo spoglio (la prima volta qualche secondo per caricarlo), e il copione non esce dalla macchina.")}{" "}
                   <button type="button" className="link-btn" onClick={() => openLocalModels("text")}>
-                    modelli locali…
-                  </button>
+                    {t("modelli locali…")}</button>
                 </span>
               ) : (
                 <span className="field__hint">
-                  Il modello per lo spoglio non è ancora installato.{" "}
+                  {t("Il modello per lo spoglio non è ancora installato.")}{" "}
                   <button type="button" className="link-btn" onClick={() => openLocalModels("text")}>
-                    Configura i modelli locali
-                  </button>
+                    {t("Configura i modelli locali")}</button>
                 </span>
               )}
             </div>
@@ -194,7 +190,7 @@ export function ScriptPanel({
           {service === "ollama" && (
             <>
               <label className="field">
-                <span className="field__label">modello</span>
+                <span className="field__label">{t("modello")}</span>
                 <input
                   type="text"
                   value={ollamaModel}
@@ -203,7 +199,7 @@ export function ScriptPanel({
                 />
               </label>
               <label className="field">
-                <span className="field__label">host</span>
+                <span className="field__label">{t("host")}</span>
                 <input
                   type="text"
                   value={ollamaHost}
@@ -211,8 +207,7 @@ export function ScriptPanel({
                   placeholder="http://localhost:11434"
                 />
                 <span className="field__hint">
-                  La richiesta parte dal <strong>browser</strong>, non dal server che serve questa pagina: vale
-                  quindi il <code>localhost</code> della tua macchina. Se Ollama rifiuta, riavvialo con{" "}
+                  {t("La richiesta parte dal")}{" "}<strong>browser</strong>{t(", non dal server che serve questa pagina: vale quindi il")}{" "}<code>localhost</code> {" "}{t("della tua macchina. Se Ollama rifiuta, riavvialo con")}{" "}
                   <code>OLLAMA_ORIGINS=*</code>.
                 </span>
               </label>
@@ -222,7 +217,7 @@ export function ScriptPanel({
           {service === "anthropic" && (
             <>
               <label className="field">
-                <span className="field__label">chiave API</span>
+                <span className="field__label">{t("chiave API")}</span>
                 <input
                   type="password"
                   value={anthropicKey}
@@ -231,14 +226,12 @@ export function ScriptPanel({
                 />
                 <span className="field__hint">
                   {anthropicKeyFromEnv
-                    ? "Letta da .env.local (solo in sviluppo). "
+                    ? t("Letta da .env.local (solo in sviluppo). ")
                     : keyNote}
-                  <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
-                  vuoi — lo spoglio locale non lo fa.
-                </span>
+                  <strong>{t("Il copione esce verso terzi")}</strong>{t(": per una serie inedita, valuta se è quello che vuoi — lo spoglio locale non lo fa.")}</span>
               </label>
               <label className="field">
-                <span className="field__label">modello</span>
+                <span className="field__label">{t("modello")}</span>
                 <input
                   type="text"
                   value={anthropicModel}
@@ -252,7 +245,7 @@ export function ScriptPanel({
           {service === "deepseek" && (
             <>
               <label className="field">
-                <span className="field__label">chiave API</span>
+                <span className="field__label">{t("chiave API")}</span>
                 <input
                   type="password"
                   value={deepseekKey}
@@ -261,14 +254,12 @@ export function ScriptPanel({
                 />
                 <span className="field__hint">
                   {deepseekKeyFromEnv
-                    ? "Letta da .env.local (solo in sviluppo). "
+                    ? t("Letta da .env.local (solo in sviluppo). ")
                     : keyNote}
-                  <strong>Il copione esce verso terzi.</strong> DeepSeek garantisce JSON valido ma non la forma
-                  richiesta: gli scostamenti li intercetta la validazione, e compaiono qui sotto.
-                </span>
+                  <strong>{t("Il copione esce verso terzi.")}</strong> {" "}{t("DeepSeek garantisce JSON valido ma non la forma richiesta: gli scostamenti li intercetta la validazione, e compaiono qui sotto.")}</span>
               </label>
               <label className="field">
-                <span className="field__label">modello</span>
+                <span className="field__label">{t("modello")}</span>
                 <input
                   type="text"
                   value={deepseekModel}
@@ -282,7 +273,7 @@ export function ScriptPanel({
           {service === "openai" && (
             <>
               <label className="field">
-                <span className="field__label">chiave API</span>
+                <span className="field__label">{t("chiave API")}</span>
                 <input
                   type="password"
                   value={openaiKey}
@@ -291,14 +282,12 @@ export function ScriptPanel({
                 />
                 <span className="field__hint">
                   {openaiKeyFromEnv
-                    ? "Letta da .env.local (solo in sviluppo). "
+                    ? t("Letta da .env.local (solo in sviluppo). ")
                     : keyNote}
-                  <strong>Il copione esce verso terzi</strong>: per una serie inedita, valuta se è quello che
-                  vuoi — lo spoglio locale non lo fa.
-                </span>
+                  <strong>{t("Il copione esce verso terzi")}</strong>{t(": per una serie inedita, valuta se è quello che vuoi — lo spoglio locale non lo fa.")}</span>
               </label>
               <label className="field">
-                <span className="field__label">modello</span>
+                <span className="field__label">{t("modello")}</span>
                 <input
                   type="text"
                   value={openaiModel}
@@ -315,23 +304,21 @@ export function ScriptPanel({
                   placeholder="https://api.openai.com/v1"
                 />
                 <span className="field__hint">
-                  Da cambiare per un proxy o un servizio compatibile: deve esporre <code>/responses</code> (la
-                  Responses API), non solo <code>/chat/completions</code>. Vuoto, vale quello di OpenAI.
-                </span>
+                  {t("Da cambiare per un proxy o un servizio compatibile: deve esporre")}{" "}<code>/responses</code> {" "}{t("(la Responses API), non solo")}{" "}<code>/chat/completions</code>{t(". Vuoto, vale quello di OpenAI.")}</span>
               </label>
             </>
           )}
 
           <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
-            {queued ? "Spoglio in coda…" : running
+            {queued ? t("Spoglio in coda…") : running
               ? progress?.phase === "planning"
-                ? "Individuo le scene…"
+                ? t("Individuo le scene…")
                 : progress?.phase === "scenes"
-                  ? `Spoglio… scena ${progress.scene} di ${progress.scenes}`
+                  ? t("Spoglio… scena {0} di {1}", progress.scene, progress.scenes)
                   : progress && progress.total > 1
-                    ? `Spoglio… parte ${Math.min(progress.done + 1, progress.total)} di ${progress.total}`
-                    : "Spoglio in corso…"
-              : "Spoglia il capitolo"}
+                    ? t("Spoglio… parte {0} di {1}", Math.min(progress.done + 1, progress.total), progress.total)
+                    : t("Spoglio in corso…")
+              : t("Spoglia il capitolo")}
           </button>
 
           {error && <p className="issue issue--error script__result">{error}</p>}
@@ -339,7 +326,7 @@ export function ScriptPanel({
           {summary && !error && (
             <div className="script__result">
               <p className="muted" style={{ margin: 0 }}>
-                {summary.scenes} scene · {summary.beats} beat · {summary.pages} pagine — {summary.service}/
+                {summary.scenes} {" "}{t("scene ·")}{" "}{summary.beats} {" "}{t("beat ·")}{" "}{summary.pages} {" "}{t("pagine —")}{" "}{summary.service}/
                 {summary.model}, {summary.durationMs}ms
               </p>
               {summary.issues.length > 0 && (

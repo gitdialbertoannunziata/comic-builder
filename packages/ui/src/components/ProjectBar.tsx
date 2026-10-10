@@ -3,19 +3,21 @@ import type { Chapter } from "@comic-builder/core";
 import type { ProjectEditor, SaveStatus } from "../editor/useProjectEditor.js";
 import type { Area } from "./Workspace.js";
 import { Tabs } from "./Tabs.js";
+import { useLanguage } from "../useLanguage.js";
+import { t } from "../i18n.js";
 
 function statusText(status: SaveStatus, folder: string | null): string {
   switch (status.kind) {
     case "memory":
-      return "Non salvato: il progetto vive solo in questa scheda.";
+      return t("Non salvato: il progetto vive solo in questa scheda.");
     case "pending":
-      return "Modifiche in attesa di salvataggio…";
+      return t("Modifiche in attesa di salvataggio…");
     case "saving":
-      return "Salvo…";
+      return t("Salvo…");
     case "saved":
-      return `Salvato in «${folder ?? "?"}» alle ${status.at.toLocaleTimeString()}.`;
+      return t("Salvato in «{0}» alle {1}.", folder ?? "?", status.at.toLocaleTimeString());
     case "error":
-      return `Salvataggio non riuscito: ${status.message}`;
+      return t("Salvataggio non riuscito: {0}", status.message);
     case "locked-out":
       return status.message;
   }
@@ -25,17 +27,17 @@ function statusText(status: SaveStatus, folder: string | null): string {
 function statusShort(status: SaveStatus): string {
   switch (status.kind) {
     case "memory":
-      return "non salvato";
+      return t("non salvato");
     case "pending":
-      return "da salvare…";
+      return t("da salvare…");
     case "saving":
-      return "salvo…";
+      return t("salvo…");
     case "saved":
-      return `salvato ${status.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      return t("salvato {0}", status.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     case "error":
-      return "salvataggio fallito";
+      return t("salvataggio fallito");
     case "locked-out":
-      return "sola lettura";
+      return t("sola lettura");
   }
 }
 
@@ -62,6 +64,7 @@ interface Props {
  * sicuro. Una riga; avvisi ed errori ne aggiungono una solo quando ci sono.
  */
 export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp, onConfiguration, onLocalModels }: Props) {
+  const [language, onLanguage] = useLanguage();
   const { status, folder } = editor;
   const tone = status.kind === "error" || status.kind === "locked-out" ? "error" : status.kind === "memory" ? "warn" : status.kind === "saved" ? "ok" : "busy";
   const menu = useRef<HTMLDetailsElement>(null);
@@ -70,7 +73,7 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
   function newProject() {
     const unsaved = !folder && editor.canUndo;
     const title = window.prompt(
-      unsaved ? "Nome del nuovo progetto?\n\nAttenzione: il progetto aperto non è salvato in una cartella e andrà perso." : "Nome del nuovo progetto?",
+      unsaved ? t("Nome del nuovo progetto?\n\nAttenzione: il progetto aperto non è salvato in una cartella e andrà perso.") : t("Nome del nuovo progetto?"),
       "",
     );
     if (title !== null) void editor.newProject(title);
@@ -83,8 +86,8 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
           <input
             className="bar__name"
             value={editor.doc.project.title}
-            aria-label="Nome del progetto"
-            title="Clicca per rinominare il progetto"
+            aria-label={t("Nome del progetto")}
+            title={t("Clicca per rinominare il progetto")}
             size={Math.max(8, editor.doc.project.title.length)}
             onChange={(e) => editor.run({ type: "project.rename", title: e.target.value }, { gesture: "project-rename" })}
             onBlur={(e) => {
@@ -93,34 +96,38 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
             }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           />
-          <select className="bar__chapter" value={chapterId} onChange={(e) => onSelectChapter(e.target.value)} aria-label="Capitolo aperto" title="Capitolo aperto">
+          <select className="bar__chapter" value={chapterId} onChange={(e) => onSelectChapter(e.target.value)} aria-label={t("Capitolo aperto")} title={t("Capitolo aperto")}>
             {ordered.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.number}. {c.title || "senza titolo"}
+                {c.number}. {c.title || t("senza titolo")}
               </option>
             ))}
           </select>
         </div>
 
         <Tabs<Area>
-          label="Area di lavoro"
+          label={t("Area di lavoro")}
           className="tabs--areas"
           value={area}
           onChange={onArea}
           items={[
-            { id: "copione", label: "Copione", title: "Capitoli, testo e spoglio" },
-            { id: "pagine", label: "Pagine", title: "Pagine, vignette, balloon, arte" },
-            { id: "personaggi", label: "Riferimenti", title: "Stile, personaggi e luoghi dell'opera: ciò che tiene uguali le vignette" },
-            { id: "revisioni", label: "Revisioni", badge: openRevisions, title: "Correzioni dello sceneggiatore, trova e sostituisci" },
-            { id: "export", label: "Export", title: "Il capitolo nei formati del progetto" },
+            { id: "copione", label: t("Copione"), title: t("Capitoli, testo e spoglio") },
+            { id: "pagine", label: t("Pagine"), title: t("Pagine, vignette, balloon, arte") },
+            { id: "personaggi", label: t("Riferimenti"), title: t("Stile, personaggi e luoghi dell'opera: ciò che tiene uguali le vignette") },
+            { id: "revisioni", label: t("Revisioni"), badge: openRevisions, title: t("Correzioni dello sceneggiatore, trova e sostituisci") },
+            { id: "export", label: "Export", title: t("Il capitolo nei formati del progetto") },
           ]}
         />
 
         <div className="bar__tools">
-          <button type="button" className="btn btn--small btn--icon" onClick={editor.undo} disabled={!editor.canUndo} title={`${editor.undoLabel ? `Annulla «${editor.undoLabel}»` : "Annulla"} (${mod}Z)`} aria-label="Annulla">
+          <select className="bar__language" value={language} onChange={(event) => onLanguage(event.target.value === "en" ? "en" : "it")} aria-label={t("Lingua dell'interfaccia")} title={t("Lingua dell'interfaccia")}>
+            <option value="it" lang="it">Italiano</option>
+            <option value="en" lang="en">English</option>
+          </select>
+          <button type="button" className="btn btn--small btn--icon" onClick={editor.undo} disabled={!editor.canUndo} title={`${editor.undoLabel ? t("Annulla «{0}»", editor.undoLabel) : t("Annulla")} (${mod}Z)`} aria-label={t("Annulla")}>
             ↶
           </button>
-          <button type="button" className="btn btn--small btn--icon" onClick={editor.redo} disabled={!editor.canRedo} title={`Ripeti (${mod}Shift+Z)`} aria-label="Ripeti">
+          <button type="button" className="btn btn--small btn--icon" onClick={editor.redo} disabled={!editor.canRedo} title={t("Ripeti ({0}Shift+Z)", mod)} aria-label={t("Ripeti")}>
             ↷
           </button>
           <button
@@ -128,48 +135,44 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
             className={`btn btn--small${status.kind === "memory" ? " btn--primary" : ""}`}
             onClick={() => void editor.save()}
             disabled={status.kind === "saved" || status.kind === "saving" || status.kind === "locked-out"}
-            title={`${folder ? `Salva in «${folder}»` : "Salva il progetto in una cartella"} (${mod}S)`}
+            title={`${folder ? t("Salva in «{0}»", folder) : t("Salva il progetto in una cartella")} (${mod}S)`}
           >
-            {folder ? "Salva" : "Salva…"}
+            {folder ? t("Salva") : t("Salva…")}
           </button>
           <span className={`pill pill--${tone}`} role="status" title={statusText(status, folder)}>
             {statusShort(status)}
           </span>
           {editor.reopenable && (
-            <button type="button" className="btn btn--small btn--primary" onClick={() => void editor.reopen()} title="Il browser chiede di nuovo il permesso per la cartella">
-              Riapri «{editor.reopenable}»
+            <button type="button" className="btn btn--small btn--primary" onClick={() => void editor.reopen()} title={t("Il browser chiede di nuovo il permesso per la cartella")}>
+              {t("Riapri «")}{editor.reopenable}»
             </button>
           )}
-          <button type="button" className="btn btn--small btn--icon" onClick={onHelp} title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
+          <button type="button" className="btn btn--small btn--icon" onClick={onHelp} title={t("Scorciatoie da tastiera (?)")} aria-label={t("Scorciatoie da tastiera")}>
             ?
           </button>
           <details className="menu" ref={menu}>
-            <summary className="btn btn--small">Progetto</summary>
+            <summary className="btn btn--small">{t("Progetto")}</summary>
             {/* Scelta una voce, il menu si richiude. */}
             <div className="menu__list" onClick={() => menu.current?.removeAttribute("open")}>
-              <p className="menu__note">{folder ? `cartella: ${folder}` : "nessuna cartella"}</p>
+              <p className="menu__note">{folder ? t("cartella: {0}", folder) : t("nessuna cartella")}</p>
               <button type="button" className="menu__item" onClick={newProject}>
-                Nuovo progetto…
-              </button>
+                {t("Nuovo progetto…")}</button>
               {editor.canOpenFolders ? (
                 <>
                   <button type="button" className="menu__item" onClick={() => void editor.openFolder()}>
-                    Apri progetto…
-                  </button>
+                    {t("Apri progetto…")}</button>
                   <button type="button" className="menu__item" onClick={() => void editor.saveToFolder()}>
-                    {folder ? "Salva in un'altra cartella…" : "Salva in una cartella…"}
+                    {folder ? t("Salva in un'altra cartella…") : t("Salva in una cartella…")}
                   </button>
                 </>
               ) : (
-                <p className="menu__note">Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.</p>
+                <p className="menu__note">{t("Questo browser non apre cartelle: per salvare il progetto serve Chrome o Edge.")}</p>
               )}
               <button type="button" className="menu__item" onClick={onConfiguration}>
-                Configurazione…
-              </button>
+                {t("Configurazione…")}</button>
               {onLocalModels && (
                 <button type="button" className="menu__item" onClick={onLocalModels}>
-                  Modelli locali…
-                </button>
+                  {t("Modelli locali…")}</button>
               )}
             </div>
           </details>
@@ -182,10 +185,9 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
           {editor.recoveredAt && !folder && (
             <>
               {" "}
-              Ripristinato il lavoro di questa scheda ({editor.recoveredAt.toLocaleString()}).{" "}
+              {t("Ripristinato il lavoro di questa scheda (")}{editor.recoveredAt.toLocaleString()}).{" "}
               <button type="button" className="link-btn" onClick={() => void editor.startOver()}>
-                ricomincia da capo
-              </button>
+                {t("ricomincia da capo")}</button>
             </>
           )}
         </p>
@@ -194,7 +196,7 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
       {editor.notice && (
         <p className="bar__notice" role="alert">
           {editor.notice}
-          <button type="button" className="bar__dismiss" onClick={editor.dismissNotice} aria-label="Chiudi">
+          <button type="button" className="bar__dismiss" onClick={editor.dismissNotice} aria-label={t("Chiudi")}>
             ×
           </button>
         </p>

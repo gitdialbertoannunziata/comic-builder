@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { useEffect, useRef, useState } from "react";
 import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
 import { describeLocations, type PlaceToDescribe, type BreakdownProgress } from "@comic-builder/llm";
@@ -26,6 +27,7 @@ import { ConfigurationDialog } from "./components/ConfigurationDialog.js";
 import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
 import { useGeneration } from "./useGeneration.js";
 import { GenerationQueues } from "./components/GenerationQueues.js";
+import { useLanguage } from "./useLanguage.js";
 
 /** Un solo servizio per tutta la sessione: la cartella scelta dall'utente dev'essere ricordata. */
 const platform = new BrowserPlatformService();
@@ -55,6 +57,7 @@ const initialDoc = projectDocFrom({
  * esiste solo se il capitolo ha pagine e riparte da capo cambiando capitolo.
  */
 export function App() {
+  useLanguage();
   const editor = useProjectEditor(initialDoc);
   const { doc, run, endGesture } = editor;
   const watched = useArtWatcher(editor.assets, doc, run, endGesture);
@@ -134,7 +137,7 @@ export function App() {
     localModel: installedModel(localModels, "image")?.label ?? null,
   };
   const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
-  const textModel = service === "local" ? installedModel(localModels, "text")?.label ?? "locale" : service === "mock" ? "euristico" : service === "ollama" ? ollamaModel : service === "anthropic" ? anthropicModel : service === "deepseek" ? deepseekModel : openaiModel;
+  const textModel = service === "local" ? installedModel(localModels, "text")?.label ?? t("locale") : service === "mock" ? t("euristico") : service === "ollama" ? ollamaModel : service === "anthropic" ? anthropicModel : service === "deepseek" ? deepseekModel : openaiModel;
   const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });
 
   // L'area Riferimenti: quale scheda, e cosa aprire quando ci si arriva da una vignetta.
@@ -165,7 +168,7 @@ export function App() {
         && chapter.pages.every((id) => now.doc.pages[id] === doc.pages[id]);
     };
     try {
-      const result = await breakdown.schedule(llm.service, "text", `Spoglio ${chapter.title} · ${llm.service}/${textModel}`, (_signal, isCurrent) => runBreakdown({
+      const result = await breakdown.schedule(llm.service, "text", t("Spoglio {0} · {1}/{2}", chapter.title, llm.service, textModel), (_signal, isCurrent) => runBreakdown({
         script,
         ...llm,
         chapterId: chapter.id,
@@ -173,8 +176,8 @@ export function App() {
         context: chapterContext(doc, chapter.id),
         onProgress: (progress) => { if (isCurrent()) setBreakdownProgress(progress); },
       }), unchanged);
-      if (!unchanged()) throw new Error("Il copione o le pagine sono cambiati durante lo spoglio. I risultati non sono stati applicati: rilancia il lavoro.");
-      if (result.pages.length === 0) throw new Error("Lo spoglio non ha prodotto pagine.");
+      if (!unchanged()) throw new Error(t("Il copione o le pagine sono cambiati durante lo spoglio. I risultati non sono stati applicati: rilancia il lavoro."));
+      if (result.pages.length === 0) throw new Error(t("Lo spoglio non ha prodotto pagine."));
       // Lo spoglio riempie il capitolo aperto e basta: gli altri restano come
       // sono. È un passo della cronologia: Ctrl+Z riporta il capitolo di prima.
       const gesture = `breakdown-${chapter.id}-${Date.now()}`;
@@ -213,8 +216,8 @@ export function App() {
         ...result.summary,
         issues: [
           ...result.summary.issues,
-          ...(filled.length > 0 ? [issue("info", "breakdown.cast-added", `Schede personaggio riempite dallo spoglio (dove il testo tace è una proposta), da rivedere: ${filled.join(", ")}`, "characters")] : []),
-          ...(places.length > 0 ? [issue("info", "breakdown.locations-added", `Luoghi descritti dallo spoglio, da rivedere in Riferimenti → Luoghi: ${places.join(", ")}`, "locations")] : []),
+          ...(filled.length > 0 ? [issue("info", "breakdown.cast-added", t("Schede personaggio riempite dallo spoglio (dove il testo tace è una proposta), da rivedere: {0}", filled.join(", ")), "characters")] : []),
+          ...(places.length > 0 ? [issue("info", "breakdown.locations-added", t("Luoghi descritti dallo spoglio, da rivedere in Riferimenti → Luoghi: {0}", places.join(", ")), "locations")] : []),
         ],
       });
       // Le pagine sono nate: si va a vederle. L'esito resta nell'area Copione.
@@ -243,13 +246,13 @@ export function App() {
     const next = ordered[ordered.findIndex((c) => c.id === chapter.id) + step];
     if (next) selectChapter(next.id);
   }
-  useShortcuts("Ovunque", 0, [
-    { keys: ["?"], label: "Questa legenda", once: true, run: () => setHelp((open) => !open) },
-    { keys: ["1", "2", "3", "4", "5"], shown: "1 … 5", label: "Aree: Copione, Pagine, Riferimenti, Revisioni, Export", once: true, run: (e) => setArea(AREAS[Number(e.key) - 1]!) },
-    { keys: ["Shift+PageUp", "Shift+PageDown"], shown: "Shift + Pag↑ / Pag↓", label: "Capitolo precedente / successivo", once: true, run: (e) => stepChapter(e.key === "PageDown" ? 1 : -1) },
+  useShortcuts(t("Ovunque"), 0, [
+    { keys: ["?"], label: t("Questa legenda"), once: true, run: () => setHelp((open) => !open) },
+    { keys: ["1", "2", "3", "4", "5"], shown: "1 … 5", label: t("Aree: Copione, Pagine, Riferimenti, Revisioni, Export"), once: true, run: (e) => setArea(AREAS[Number(e.key) - 1]!) },
+    { keys: ["Shift+PageUp", "Shift+PageDown"], shown: t("Shift + Pag↑ / Pag↓"), label: t("Capitolo precedente / successivo"), once: true, run: (e) => stepChapter(e.key === "PageDown" ? 1 : -1) },
     {
       keys: ["Escape"],
-      label: "Esce dal campo in cui scrivi: da lì i tasti sono comandi",
+      label: t("Esce dal campo in cui scrivi: da lì i tasti sono comandi"),
       when: "always",
       run: (e) => {
         if (!isTyping(e.target)) return false;
@@ -258,14 +261,14 @@ export function App() {
       },
     },
     // Annulla, ripeti e salva li gestisce l'editor (useProjectEditor), anche dentro i campi: qui solo la voce.
-    { keys: ["Mod+z"], label: "Annulla" },
-    { keys: ["Mod+Shift+z"], label: "Ripeti" },
-    { keys: ["Mod+s"], label: "Salva" },
+    { keys: ["Mod+z"], label: t("Annulla") },
+    { keys: ["Mod+Shift+z"], label: t("Ripeti") },
+    { keys: ["Mod+s"], label: t("Salva") },
     // Alt+← nel browser è «indietro»: qui Alt+frecce sposta code, pagine e capitoli, e un colpo
     // a vuoto non deve portare fuori dallo strumento. Dentro un campo resta del sistema.
     { keys: ["Alt+ArrowLeft", "Alt+ArrowRight"], run: () => {} },
   ]);
-  useLegend("In un elenco", 30, LIST_LEGEND);
+  useLegend(t("In un elenco"), 30, LIST_LEGEND);
 
   return (
     <div className="shell">
@@ -324,9 +327,9 @@ export function App() {
         <div className="area__inner area__inner--script">
           <div>
             <header className="area__head">
-              <h2 className="area__title">Copione</h2>
+              <h2 className="area__title">{t("Copione")}</h2>
               <p className="area__lead">
-                Il testo del capitolo {chapter.number}. Lo spoglio lo divide in scene, pagine e vignette{pages.length > 0 ? "; rifarlo sostituisce le pagine del capitolo (Ctrl+Z le riporta)" : ""}.
+                {t("Il testo del capitolo")}{" "}{chapter.number}{t(". Lo spoglio lo divide in scene, pagine e vignette")}{pages.length > 0 ? t("; rifarlo sostituisce le pagine del capitolo (Ctrl+Z le riporta)") : ""}.
               </p>
             </header>
             <ScriptPanel
@@ -365,7 +368,7 @@ export function App() {
           </div>
           <div className="stack">
             <div className="card">
-              <p className="card__title">capitoli dell'opera</p>
+              <p className="card__title">{t("capitoli dell'opera")}</p>
               <ChapterBar
                 chapters={chapters}
                 currentId={chapter.id}
@@ -377,7 +380,7 @@ export function App() {
               />
             </div>
             <div className="card">
-              <p className="card__title">cosa sa lo spoglio</p>
+              <p className="card__title">{t("cosa sa lo spoglio")}</p>
               <BreakdownContext doc={doc} chapterId={chapter.id} script={script} run={run} endGesture={endGesture} />
             </div>
           </div>
@@ -421,11 +424,10 @@ export function App() {
       ) : (
         <div className="area area--empty" hidden={area === "copione" || area === "personaggi"}>
           <div className="empty-chapter">
-            <p className="eyebrow">Capitolo {chapter.number} — vuoto</p>
-            <p>Questo capitolo non ha ancora pagine: nascono dallo spoglio del copione.</p>
+            <p className="eyebrow">{t("Capitolo")}{" "}{chapter.number} {" "}{t("— vuoto")}</p>
+            <p>{t("Questo capitolo non ha ancora pagine: nascono dallo spoglio del copione.")}</p>
             <button type="button" className="btn btn--primary" onClick={() => setArea("copione")}>
-              Vai al copione
-            </button>
+              {t("Vai al copione")}</button>
           </div>
         </div>
       )}

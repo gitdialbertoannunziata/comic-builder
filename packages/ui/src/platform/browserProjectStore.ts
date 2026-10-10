@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { ProjectStore, StoreEntry } from "@comic-builder/core";
 
 /**
@@ -76,7 +77,7 @@ export class BrowserProjectStore implements ProjectStore {
   private split(path: string): { dirs: string[]; name: string } {
     const parts = path.split("/").filter((p) => p.length > 0);
     const name = parts.pop();
-    if (!name) throw new Error(`Percorso vuoto: "${path}"`);
+    if (!name) throw new Error(t("Percorso vuoto: \"{0}\"", path));
     return { dirs: parts, name };
   }
 

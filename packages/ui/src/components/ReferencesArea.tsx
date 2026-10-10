@@ -1,3 +1,4 @@
+import { t } from "../i18n.js";
 import type { Command, ProjectDoc, ProjectStore } from "@comic-builder/core";
 import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
 import type { ImageConfig } from "./GenerateCard.js";
@@ -39,18 +40,18 @@ export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab,
   return (
     <>
       <header className="area__head">
-        <h2 className="area__title">Riferimenti</h2>
-        <p className="area__lead">{LEAD[tab]}</p>
+        <h2 className="area__title">{t("Riferimenti")}</h2>
+        <p className="area__lead">{t(LEAD[tab])}</p>
       </header>
       <Tabs<ReferencesTab>
-        label="Riferimenti dell'opera"
+        label={t("Riferimenti dell'opera")}
         className="tabs--references"
         value={tab}
         onChange={onTab}
         items={[
-          { id: "stile", label: "Stile", title: "Come è disegnata l'opera: il testo e le tavole di stile" },
-          { id: "personaggi", label: "Personaggi", badge: Object.keys(doc.characters).length, title: "Le schede dei personaggi" },
-          { id: "luoghi", label: "Luoghi", title: "Le schede dei luoghi: com'è fatto ogni posto in cui si svolge una scena" },
+          { id: "stile", label: t("Stile"), title: t("Come è disegnata l'opera: il testo e le tavole di stile") },
+          { id: "personaggi", label: t("Personaggi"), badge: Object.keys(doc.characters).length, title: t("Le schede dei personaggi") },
+          { id: "luoghi", label: t("Luoghi"), title: t("Le schede dei luoghi: com'è fatto ogni posto in cui si svolge una scena") },
         ]}
       />
       <div role="tabpanel" hidden={tab !== "stile"}>

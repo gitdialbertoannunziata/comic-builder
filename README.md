@@ -1,5 +1,12 @@
 # comic-builder
 
+## Lingua dell'interfaccia
+
+Il selettore nella barra principale permette di scegliere **Italiano** o
+**English**. La scelta si applica subito e viene ricordata sul dispositivo.
+La lingua dell'interfaccia non cambia copioni, dialoghi, nomi o altri contenuti
+del progetto, e non modifica la lingua delle richieste ai modelli.
+
 ## Configurazione
 
 Dal menu **Progetto > Configurazione** si impostano i servizi di testo e
