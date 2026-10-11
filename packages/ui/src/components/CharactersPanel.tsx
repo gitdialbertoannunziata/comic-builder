@@ -81,9 +81,8 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
    * che fa della scheda una persona sola invece di tre sosia.
    */
   async function generateSheet(views: readonly SheetView[]) {
-    if (!ref || !sheet || generating) return;
+    if (!ref || !sheet) return;
     setSheetNote(null);
-    setGenerating(t("In coda"));
     let current = sheet;
     let cost = 0;
     let made = 0;
@@ -108,7 +107,10 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
           run({ type: "character.upsert", ref, patch: { references: current.references } });
           made++;
         }
-      }, () => latest.current.characters[ref] === sheet);
+      }, () => {
+        const now = latest.current.characters[ref];
+        return Boolean(now && appearanceText(now) === appearanceText(sheet) && JSON.stringify(now.wardrobe) === JSON.stringify(sheet.wardrobe));
+      });
       setSheetNote({
         level: "info",
         text: t("{0} {1} ai riferimenti{2}. Togli la spunta a quelle che non gli somigliano.", made, made === 1 ? "immagine aggiunta" : "immagini aggiunte", cost > 0 ? ` · addebitati ${cost.toFixed(2).replace(".", ",")} $` : ""),
@@ -116,8 +118,6 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
     } catch (cause) {
       if (!generation.isCurrent()) return;
       setSheetNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${cause instanceof Error ? cause.message : String(cause)}` });
-    } finally {
-      if (generation.isCurrent()) setGenerating(null);
     }
   }
 
@@ -125,7 +125,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
 
   return (
     <div className="stack">
-      {generation.phase === "queued" && <p className="field__hint" role="status">{t("Riferimenti personaggio in coda")}</p>}
+      {generation.queued > 0 && <p className="field__hint" role="status">{t("Riferimenti personaggio in coda")} · {generation.queued}</p>}
       <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
         {refs.length === 0 && <p className="field__hint">{t("Nessun personaggio: arrivano dallo spoglio del copione.")}</p>}
         {refs.map((r, i) => {
@@ -240,18 +240,18 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
               <button
                 type="button"
                 className="btn btn--small btn--primary"
-                disabled={generating !== null || !describable || !serviceReady(image)}
+                disabled={!describable || !serviceReady(image)}
                 onClick={() => void generateSheet(["front", "three-quarter", "full-body"])}
                 title={t("Fronte, tre quarti e figura intera, dall'aspetto scritto qui sopra e nello stile dell'opera")}
               >
                 {t("Genera la scheda (3 viste)")}</button>
               {(Object.keys(SHEET_VIEWS) as SheetView[]).map((view) => (
-                <button key={view} type="button" className="link-btn" disabled={generating !== null || !describable || !serviceReady(image)} onClick={() => void generateSheet([view])}>
+                <button key={view} type="button" className="link-btn" disabled={!describable || !serviceReady(image)} onClick={() => void generateSheet([view])}>
                   + {t(SHEET_VIEWS[view].label)}
                 </button>
               ))}
             </ReferenceImages>
-            {generating && <p className="muted">{t("Genero")}{" "}{generating}…</p>}
+            {generation.running > 0 && generating && <p className="muted">{t("Genero")}{" "}{generating}…</p>}
             {sheetNote && <p className={`issue issue--${sheetNote.level}`}>{sheetNote.text}</p>}
             {!describable && <p className="field__hint">{t("Per generare la scheda serve almeno un campo dell'aspetto: è da lì che il modello lo disegna.")}</p>}
             {describable && !serviceReady(image) && <p className="field__hint">{t("Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».")}</p>}

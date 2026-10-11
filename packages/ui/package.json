@@ -12,19 +12,21 @@
   },
   "dependencies": {
     "@comic-builder/core": "workspace:*",
+    "@comic-builder/image": "workspace:*",
     "@comic-builder/lettering": "workspace:*",
+    "@comic-builder/llm": "workspace:*",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zod": "^3.23.8",
-    "@comic-builder/llm": "workspace:*",
-    "@comic-builder/image": "workspace:*",
-    "pdf-lib": "^1.17.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "vitest": "^2.1.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-test-renderer": "18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
-    "vite": "^5.4.11"
+    "react-test-renderer": "18.3.1",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5"
   }
 }

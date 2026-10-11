@@ -67,7 +67,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
     location && run({ type: "location.upsert", ref: location.ref, patch: sheet ? patch : { name: location.name, ...patch } }, field ? { gesture: `${location.ref}:${field}` } : {});
 
   async function propose(targets: readonly ProjectLocation[]) {
-    if (targets.length === 0 || busy) return;
+    if (targets.length === 0) return;
     setNote(null);
     setBusy(targets.length === 1 ? t("propongo la descrizione…") : t("propongo {0} descrizioni…", targets.length));
     try {
@@ -92,21 +92,22 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
     } catch (cause) {
       if (!descriptionScope.isCurrent()) return;
       setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      if (descriptionScope.isCurrent()) setBusy(null);
     }
   }
 
   /** Una tavola del luogo vuoto, nello stile dell'opera: diventa il riferimento delle vignette ambientate lì. */
   async function plate() {
-    if (!location || busy) return;
+    if (!location) return;
     setNote(null);
     setBusy(t("genero la tavola del luogo…"));
     try {
       const current = sheet ?? LocationSheetSchema.parse({ schema: 1, id: location.ref, name: location.name });
       const spec = compileLocationSpec({ project: doc.project, location: current, model: specModel(image) });
       const path = locationSheetPath(spec);
-      const { costUsd } = await generation.schedule(image.service, "image", t("Luogo {0} · {1}", location.name, image.service === "local" ? image.localModel ?? "locale" : specModel(image)), (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => latest.current.locations[location.ref] === (sheet ?? undefined));
+      const { costUsd } = await generation.schedule(image.service, "image", t("Luogo {0} · {1}", location.name, image.service === "local" ? image.localModel ?? "locale" : specModel(image)), (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => {
+        const now = latest.current.locations[location.ref];
+        return now?.description === sheet?.description && now?.palette === sheet?.palette && now?.name === sheet?.name;
+      });
       const now = latest.current.locations[location.ref];
       if (now?.description !== sheet?.description) throw new Error(t("La descrizione del luogo e' cambiata durante la generazione."));
       run({ type: "location.upsert", ref: location.ref, patch: { ...(now ? {} : { name: location.name }), references: [...(now?.references ?? current.references), { path, note: "tavola", use: true }] } });
@@ -117,8 +118,6 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
     } catch (cause) {
       if (!generation.isCurrent()) return;
       setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      if (generation.isCurrent()) setBusy(null);
     }
   }
 
@@ -129,8 +128,8 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
 
   return (
     <div className="stack">
-      {generation.phase === "queued" && <p className="field__hint" role="status">{t("Tavola del luogo in coda")}</p>}
-      {descriptionScope.phase === "queued" && <p className="field__hint" role="status">{t("Descrizioni dei luoghi in coda")}</p>}
+      {generation.queued > 0 && <p className="field__hint" role="status">{t("Tavola del luogo in coda")} · {generation.queued}</p>}
+      {descriptionScope.queued > 0 && <p className="field__hint" role="status">{t("Descrizioni dei luoghi in coda")} · {descriptionScope.queued}</p>}
       <div className="character-list" onKeyDown={(e) => void listArrows(e)}>
         {locations.map((l) => {
           const level = completeness(l);
@@ -153,7 +152,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
       </div>
       {undescribed.length > 1 && (
         <div className="tool-row">
-          <button type="button" className="btn btn--small" disabled={busy !== null} onClick={() => void propose(undescribed)} title={t("Dalle scene ambientate lì e dalle regole della serie")}>
+          <button type="button" className="btn btn--small" onClick={() => void propose(undescribed)} title={t("Dalle scene ambientate lì e dalle regole della serie")}>
             {t("Proponi le descrizioni che mancano (")}{undescribed.length}) · {describer}
           </button>
         </div>
@@ -201,7 +200,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
               </label>
             </div>
             <div className="tool-row">
-              <button type="button" className="btn btn--small" disabled={busy !== null} onClick={() => void propose([location])} title={t("Dalle scene ambientate qui e dalle regole della serie; solo se la descrizione è vuota")}>
+              <button type="button" className="btn btn--small" onClick={() => void propose([location])} title={t("Dalle scene ambientate qui e dalle regole della serie; solo se la descrizione è vuota")}>
                 {t("Proponi una descrizione ·")}{" "}{describer}
               </button>
             </div>
@@ -217,13 +216,13 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
               <button
                 type="button"
                 className="btn btn--small btn--primary"
-                disabled={busy !== null || !describable || !ready}
+                disabled={!describable || !ready}
                 onClick={() => void plate()}
                 title={t("Il luogo vuoto, visto largo, nello stile dell'opera; le immagini già spuntate qui lo tengono lo stesso posto")}
               >
                 {t("Genera una tavola del luogo")}</button>
             </ReferenceImages>
-            {busy && <p className="muted">{busy}</p>}
+            {(generation.running > 0 || descriptionScope.running > 0) && busy && <p className="muted">{busy}</p>}
             {note && <p className={`issue issue--${note.level}`}>{note.text}</p>}
             {!describable && <p className="field__hint">{t("Per generare la tavola serve la descrizione: è da lì che il modello disegna il posto.")}</p>}
             {describable && !ready && <p className="field__hint">{t("Per generare serve il servizio di immagini configurato: Pagine → Arte → «servizio e spesa».")}</p>}

@@ -1,0 +1,28 @@
+Copyright © 2026 Alberto Annunziata. Tutti i diritti riservati.
+
+comic-builder è software proprietario. Il codice sorgente e i binari sono resi
+disponibili per l'uso dell'applicazione; non sono concessi, senza autorizzazione
+scritta del titolare, la ridistribuzione, la modifica, la vendita o l'uso in
+prodotti derivati.
+
+Le componenti di terze parti incluse o scaricate dall'applicazione restano sotto
+le rispettive licenze: l'elenco completo è in `packages/desktop/NOTICE.md`.
+
+---
+
+Copyright © 2026 Alberto Annunziata. All rights reserved.
+
+comic-builder is proprietary software. The source code and the binaries are made
+available for use of the application; redistribution, modification, sale, or use
+in derivative products are not granted without the written permission of the
+copyright holder.
+
+Third-party components included in or downloaded by the application remain under
+their own licenses: the full list is in `packages/desktop/NOTICE.md`.
+
+---
+
+NOTA — SEGNAPOSTO: questo è il testo scelto in assenza di una decisione
+esplicita sulla licenza del progetto. Se si vuole pubblicare comic-builder come
+software libero (per esempio MIT o Apache-2.0), sostituire l'intero file e
+aggiornare il campo `license` in `packages/desktop/package.json`.

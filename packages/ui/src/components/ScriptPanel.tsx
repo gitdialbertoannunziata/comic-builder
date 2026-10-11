@@ -309,7 +309,10 @@ export function ScriptPanel({
             </>
           )}
 
-          <button type="button" className="btn btn--primary" onClick={onRun} disabled={running}>
+          <button type="button" className="btn btn--primary" onClick={onRun}>
+            {t("Spoglia il capitolo")}
+          </button>
+          {running && <p className="field__hint" role="status">
             {queued ? t("Spoglio in coda…") : running
               ? progress?.phase === "planning"
                 ? t("Individuo le scene…")
@@ -319,7 +322,7 @@ export function ScriptPanel({
                     ? t("Spoglio… parte {0} di {1}", Math.min(progress.done + 1, progress.total), progress.total)
                     : t("Spoglio in corso…")
               : t("Spoglia il capitolo")}
-          </button>
+          </p>}
 
           {error && <p className="issue issue--error script__result">{error}</p>}
 

@@ -166,7 +166,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
   const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec), config.service === "local" ? 1 : 2);
 
   async function generate(list: readonly GenerationItem[]) {
-    if (list.length === 0 || busy) return;
+    if (list.length === 0) return;
     setError(null);
     setReport(null);
     setNote(null);
@@ -175,10 +175,8 @@ export function GenerateCard({ config, store, project, characters, locations, sc
       setError(t("La stima ({0}) supera il tetto di spesa ({1}): alzalo qui sotto, o genera meno vignette.", usd(expected.usd), usd(cap)));
       return;
     }
-    setProgress(null);
-    setReportPage(pageNumber);
     try {
-      setReport(await generation.schedule(config.service, "image", t("Pagina {0} · {1} vignette · {2}", pageNumber, list.length, config.service === "local" ? config.localModel ?? "locale" : specModel(config)), async (signal, isCurrent) => {
+      const result = await generation.schedule(config.service, "image", t("Pagina {0} · {1} vignette · {2}", pageNumber, list.length, config.service === "local" ? config.localModel ?? "locale" : specModel(config)), async (signal, isCurrent) => {
         setProgress({ done: 0, total: list.length });
         const targetValid = (entry: GenerationItem) => isCurrent() && isItemCurrent(entry);
         return generatePanels({
@@ -190,12 +188,12 @@ export function GenerateCard({ config, store, project, characters, locations, sc
           isValid: targetValid,
           onProgress: (progress) => { if (isCurrent()) setProgress(progress); },
         });
-      }));
+      });
+      setReportPage(pageNumber);
+      setReport(result);
     } catch (cause) {
       if (!generation.isCurrent()) return;
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      if (generation.isCurrent()) setProgress(null);
     }
   }
 
@@ -310,24 +308,24 @@ export function GenerateCard({ config, store, project, characters, locations, sc
             </ul>
 
             <div className="tool-row">
-              <button type="button" className="btn btn--small btn--primary" disabled={busy || !ready} onClick={() => void generate([item])}>
+              <button type="button" className="btn btn--small btn--primary" disabled={!ready} onClick={() => void generate([item])}>
                 {state === "none" ? t("Genera la vignetta") : "Rigenera"} · ~{usd(estimate([item]).usd)}
               </button>
               {record && (
-                <button type="button" className="btn btn--small" disabled={busy || !ready} onClick={variant} title={t("Stessa vignetta con un altro seed; quella di prima resta in renders/")}>
+                <button type="button" className="btn btn--small" disabled={!ready} onClick={variant} title={t("Stessa vignetta con un altro seed; quella di prima resta in renders/")}>
                   {t("Altra variante")}</button>
               )}
               {pending.length > 0 && (
-                <button type="button" className="btn btn--small" disabled={busy || !ready} onClick={() => void generate(pending)} title={t("Le vignette della pagina senza arte tua e senza un render aggiornato")}>
+                <button type="button" className="btn btn--small" disabled={!ready} onClick={() => void generate(pending)} title={t("Le vignette della pagina senza arte tua e senza un render aggiornato")}>
                   {t("Pagina:")}{" "}{pending.length} {" "}{t("da generare · ~")}{usd(estimate(pending).usd)}, ~{estimate(pending).seconds} s
                 </button>
               )}
-              {busy && (
+              {generation.running > 0 && (
                 <button type="button" className="link-btn" onClick={generation.cancel}>
                   {t("ferma")}</button>
               )}
             </div>
-            {generation.phase === "queued" && <p className="field__hint" role="status">{t("Immagini in coda")}</p>}
+            {generation.queued > 0 && <p className="field__hint" role="status">{t("Immagini in coda")} · {generation.queued}</p>}
             {!ready && (
               <p className="field__hint">
                 {config.service === "azure"
@@ -342,7 +340,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
           </>
         )}
 
-        {progress && (
+        {progress && generation.running > 0 && (
           <p className="muted">
             {t("Genero…")}{" "}{progress.done}/{progress.total}
           </p>
@@ -472,7 +470,6 @@ function LocalEngineFields({ config }: { config: ImageConfig }) {
   const checking = generation.phase !== null;
 
   async function check() {
-    if (checking) return;
     setStatus(null);
     try {
       const info = await generation.schedule("local", "image", t("Verifica {0}", config.localModel ?? "motore immagini locale"), () => localService(config).check());
@@ -513,9 +510,10 @@ function LocalEngineFields({ config }: { config: ImageConfig }) {
         </label>
       )}
       <div className="tool-row">
-        <button type="button" className="btn btn--small" disabled={checking || (config.localManaged && !config.localModel)} onClick={() => void check()}>
-          {generation.phase === "queued" ? t("Verifica in coda…") : checking ? "Verifico…" : t("Verifica il motore")}
+        <button type="button" className="btn btn--small" disabled={config.localManaged && !config.localModel} onClick={() => void check()}>
+          {t("Verifica il motore")}
         </button>
+        {checking && <span role="status">{generation.phase === "queued" ? t("Verifica in coda…") : t("Verifico…")}</span>}
       </div>
       {status && <p className={`issue issue--${status.level}`}>{status.text}</p>}
       <p className="field__hint">

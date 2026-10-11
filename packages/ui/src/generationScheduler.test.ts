@@ -1,16 +1,125 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { MemoryProjectStore, renderPaths, type Panel, type RenderSpec } from "@comic-builder/core";
 import { MockImageService } from "@comic-builder/image";
-import { GenerationScheduler, generationLane } from "./generationScheduler.js";
+import { GenerationScheduler, generationLane, generationScheduler } from "./generationScheduler.js";
+import { useGeneration } from "./useGeneration.js";
 import { generatePanels, generationContentMatches } from "./editor/generateArt.js";
 
 vi.mock("./editor/useArtWatcher.js", () => ({ imageSize: async () => null }));
+vi.mock("./platform/localModels.js", () => ({ localModelIdentity: () => "installed-model" }));
 
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+function mountGeneration() {
+  let generation!: ReturnType<typeof useGeneration>;
+  let renderer!: ReactTestRenderer;
+  function Probe({ identity }: { identity: string }) {
+    generation = useGeneration(identity, "project");
+    return null;
+  }
+  act(() => { renderer = create(createElement(Probe, { identity: "original" })); });
+  return {
+    get generation() { return generation; },
+    unmount: () => act(() => renderer.unmount()),
+    replace: () => act(() => renderer.update(createElement(Probe, { identity: "replacement" }))),
+  };
+}
+
+describe("multiple submissions from the same generation hook", () => {
+  it("accepts multiple jobs of the same type and keeps counts until each finishes", async () => {
+    const probe = mountGeneration();
+    const firstGate = deferred();
+    const secondGate = deferred();
+    const started: string[] = [];
+    let first!: Promise<string>;
+    let second!: Promise<string>;
+    let third!: Promise<string>;
+    act(() => {
+      first = probe.generation.schedule("local", "image", "panel one", async () => { started.push("one"); await firstGate.promise; return "one"; });
+      second = probe.generation.schedule("local", "image", "panel two", async () => { started.push("two"); await secondGate.promise; return "two"; });
+      third = probe.generation.schedule("local", "image", "panel three", async () => { started.push("three"); return "three"; });
+    });
+    expect(started).toEqual(["one"]);
+    expect(probe.generation).toMatchObject({ running: 1, queued: 2, phase: "running" });
+    expect(generationScheduler.getSnapshot().map((job) => job.label)).toEqual(["panel one", "panel two", "panel three"]);
+    await act(async () => { firstGate.resolve(); expect(await first).toBe("one"); });
+    expect(started).toEqual(["one", "two"]);
+    expect(probe.generation).toMatchObject({ running: 1, queued: 1, phase: "running" });
+    await act(async () => { secondGate.resolve(); expect(await Promise.all([second, third])).toEqual(["two", "three"]); });
+    expect(probe.generation).toMatchObject({ running: 0, queued: 0, phase: null });
+    expect(generationScheduler.getSnapshot()).toEqual([]);
+    probe.unmount();
+  });
+
+  it("stops only active jobs and preserves queued jobs and individual cancellation", async () => {
+    const probe = mountGeneration();
+    const gate = deferred();
+    let first!: Promise<string>;
+    let second!: Promise<string>;
+    let third!: Promise<string>;
+    let activeSignal!: AbortSignal;
+    const cancelled: string[] = [];
+    act(() => {
+      first = probe.generation.schedule("local", "image", "active", async (signal) => { activeSignal = signal; await gate.promise; return "first"; }).catch((error: Error) => error.name);
+      second = probe.generation.schedule("local", "image", "keep", async () => "second");
+      third = probe.generation.schedule("local", "image", "remove", async () => { cancelled.push("unexpected start"); return "third"; }).catch((error: Error) => error.name);
+    });
+    await act(async () => { generationScheduler.cancel(generationScheduler.getSnapshot().find((job) => job.label === "remove")!.id); expect(await third).toBe("AbortError"); });
+    act(() => probe.generation.cancel());
+    expect(activeSignal.aborted).toBe(true);
+    expect(probe.generation).toMatchObject({ running: 1, queued: 1 });
+    await act(async () => { gate.resolve(); expect(await first).toBe("AbortError"); expect(await second).toBe("second"); });
+    expect(cancelled).toEqual([]);
+    expect(probe.generation.phase).toBeNull();
+    probe.unmount();
+  });
+
+  it("tracks independent lanes in the same panel without overwriting controllers", async () => {
+    const probe = mountGeneration();
+    const gate = deferred();
+    let promises!: Promise<void>[];
+    act(() => {
+      promises = [
+        probe.generation.schedule("local", "image", "local", () => gate.promise),
+        probe.generation.schedule("openai", "text", "text", () => gate.promise),
+        probe.generation.schedule("flux", "image", "images", () => gate.promise),
+      ];
+    });
+    expect(probe.generation).toMatchObject({ running: 3, queued: 0 });
+    await act(async () => { gate.resolve(); await Promise.all(promises); });
+    expect(probe.generation.phase).toBeNull();
+    probe.unmount();
+  });
+
+  it("cancels all pending jobs on scope change without clearing newer work", async () => {
+    const probe = mountGeneration();
+    const gate = deferred();
+    const newerGate = deferred();
+    let first!: Promise<string>;
+    let second!: Promise<string>;
+    let newer!: Promise<string>;
+    const pendingRun = vi.fn(async () => "second");
+    act(() => {
+      first = probe.generation.schedule("local", "image", "old active", async () => { await gate.promise; return "first"; }).catch((error: Error) => error.name);
+      second = probe.generation.schedule("local", "image", "old queued", pendingRun).catch((error: Error) => error.name);
+    });
+    await act(async () => { probe.replace(); expect(await second).toBe("AbortError"); });
+    act(() => { newer = probe.generation.schedule("local", "image", "new", async () => { await newerGate.promise; return "new"; }); });
+    expect(probe.generation).toMatchObject({ running: 0, queued: 1 });
+    await act(async () => { gate.resolve(); expect(await first).toBe("AbortError"); });
+    expect(probe.generation).toMatchObject({ running: 1, queued: 0 });
+    expect(pendingRun).not.toHaveBeenCalled();
+    await act(async () => { newerGate.resolve(); expect(await newer).toBe("new"); });
+    expect(probe.generation.phase).toBeNull();
+    probe.unmount();
+  });
+});
 
 describe("generation scheduler", () => {
   it("serializes entire local jobs and preserves FIFO", async () => {

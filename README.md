@@ -31,9 +31,17 @@ fornitore. Le tre code possono avanzare contemporaneamente. Un lavoro mantiene
 il turno fino alla fine; il motore locale si attiva soltanto quando serve.
 I lotti di immagini locali generano una vignetta alla volta.
 
+Puoi inviare piu' lavori dallo stesso pannello, anche dello stesso tipo:
+i pulsanti di generazione restano disponibili mentre gli altri lavori
+aspettano o sono in esecuzione. Ogni clic aggiunge un lavoro con i parametri
+e la destinazione scelti in quel momento; la coda limita l'esecuzione,
+non il numero di lavori che puoi accodare.
+
 La barra dei lavori mostra modello, stato e posizione. Un lavoro in attesa
-si puo' annullare; il comando `ferma` sulle immagini locali lascia terminare
-il render attivo e non avvia i successivi. Lo spoglio gia' avviato non e'
+si puo' annullare singolarmente; il comando `ferma` interrompe solo i lavori
+immagini attivi del pannello, non quelli in attesa. In locale lascia terminare
+il render attivo e non avvia i successivi pannelli di quel lotto; gli altri
+lavori accodati conservano il proprio turno. Lo spoglio gia' avviato non e'
 interrompibile. Installazione e rimozione dei modelli richiedono la coda locale
 libera e la riservano durante l'operazione.
 

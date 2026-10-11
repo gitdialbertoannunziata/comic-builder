@@ -7,40 +7,56 @@ export function useGeneration(identity: unknown, projectId = "") {
   const current = useRef({ identity, projectId });
   if (current.current.identity !== identity || current.current.projectId !== projectId) current.current = { identity, projectId };
   const mounted = useRef(true);
-  const controller = useRef<AbortController | null>(null);
-  const [phase, setPhase] = useState<"queued" | "running" | null>(null);
+  const jobs = useRef(new Map<AbortController, { token: typeof current.current; phase: "queued" | "running" }>());
+  const [counts, setCounts] = useState({ queued: 0, running: 0 });
   const renderToken = current.current;
+  function publish() {
+    if (!mounted.current) return;
+    const pending = [...jobs.current.values()].filter((job) => job.token === current.current);
+    setCounts({ queued: pending.filter((job) => job.phase === "queued").length, running: pending.filter((job) => job.phase === "running").length });
+  }
   useEffect(() => {
+    const token = current.current;
     mounted.current = true;
-    controller.current = null;
-    setPhase(null);
+    publish();
     return () => {
       mounted.current = false;
-      controller.current?.abort();
+      for (const [controller, job] of jobs.current) {
+        if (job.token === token) controller.abort();
+      }
     };
   }, [identity, projectId]);
 
   async function schedule<Result>(service: string, kind: GenerationKind, label: string, task: (signal: AbortSignal, isCurrent: () => boolean) => Promise<Result>, valid: () => boolean = () => true): Promise<Result> {
-    if (controller.current) throw new Error(t("Questo lavoro e' gia' in coda."));
     const token = current.current;
     const model = service === "local" ? localModelIdentity(kind) : null;
     const abort = new AbortController();
-    controller.current = abort;
+    jobs.current.set(abort, { token, phase: "queued" });
     const isCurrent = () => mounted.current && current.current === token && !abort.signal.aborted;
-    setPhase("queued");
+    publish();
     try {
       const result = await scheduleGeneration(service, kind, label, async (signal) => {
-        setPhase("running");
+        jobs.current.set(abort, { token, phase: "running" });
+        publish();
         const result = await task(signal, () => isCurrent() && !signal.aborted);
         if (!isCurrent() || signal.aborted) throw new DOMException(t("Generazione annullata."), "AbortError");
         return result;
       }, { signal: abort.signal, isValid: () => isCurrent() && valid() && (model === null || model === localModelIdentity(kind)) });
       return result;
     } finally {
-      if (controller.current === abort) controller.current = null;
-      if (mounted.current && current.current === token) setPhase(null);
+      jobs.current.delete(abort);
+      publish();
     }
   }
 
-  return { schedule, phase, cancel: () => controller.current?.abort(), isCurrent: () => mounted.current && current.current === renderToken };
+  const phase = counts.running > 0 ? "running" : counts.queued > 0 ? "queued" : null;
+  return {
+    schedule, phase, ...counts,
+    cancel: () => {
+      for (const [controller, job] of jobs.current) {
+        if (job.token === renderToken && job.phase === "running") controller.abort();
+      }
+    },
+    isCurrent: () => mounted.current && current.current === renderToken,
+  };
 }

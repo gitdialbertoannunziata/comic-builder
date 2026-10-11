@@ -158,7 +158,6 @@ export function App() {
   const { font, bytes: fontBytes, error: fontError } = useFont("/fonts/ComicNeue-Regular.ttf");
 
   async function onRunBreakdown() {
-    if (running) return;
     setBreakdownError(null);
     const unchanged = () => {
       const now = latest.current;
@@ -226,8 +225,6 @@ export function App() {
       if (!breakdown.isCurrent()) return;
       setBreakdownError(error instanceof Error ? error.message : String(error));
       setSummary(null);
-    } finally {
-      if (breakdown.isCurrent()) setBreakdownProgress(null);
     }
   }
 

@@ -287,12 +287,9 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
 function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview; onBack: () => void; onUse: Props["onUse"]; onClose: () => void }) {
   const has = { text: Boolean(overview.state.models.text), image: Boolean(overview.state.models.image) };
   const [results, setResults] = useState<Partial<Record<EngineKind, { ok: boolean; text: string; image?: string }>>>({});
-  const [busy, setBusy] = useState<EngineKind | null>(null);
   const generation = useGeneration(local);
 
   async function tryText() {
-    if (busy) return;
-    setBusy("text");
     const started = Date.now();
     try {
       const llm = new LlamaServerLlmService({ resolveBaseUrl: () => local!.start("text"), fetchImpl: desktopFetch, maxTokens: 200 });
@@ -307,14 +304,10 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
     } catch (cause) {
       if (!generation.isCurrent()) return;
       setResults((r) => ({ ...r, text: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
-    } finally {
-      if (generation.isCurrent()) setBusy(null);
     }
   }
 
   async function tryImage() {
-    if (busy) return;
-    setBusy("image");
     const started = Date.now();
     try {
       const service = new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), fetchImpl: desktopFetch });
@@ -339,28 +332,26 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
     } catch (cause) {
       if (!generation.isCurrent()) return;
       setResults((r) => ({ ...r, image: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
-    } finally {
-      if (generation.isCurrent()) setBusy(null);
     }
   }
 
   return (
     <div className="stack">
       <p className="local-models__step">{t("4 di 4 · prova")}</p>
-      {generation.phase === "queued" && <p className="field__hint" role="status">{t("Prova in coda")}</p>}
+      {generation.queued > 0 && <p className="field__hint" role="status">{t("Prova in coda")} · {generation.queued}</p>}
       <p className="field__hint">{t("Ogni motore parte quando serve e si ferma quando parte l'altro: spoglio e immagini vanno a turno, così non si contendono la memoria.")}</p>
       {has.text && (
         <div className="local-models__try">
-          <button type="button" className="btn btn--small" disabled={busy !== null} onClick={() => void tryText()}>
-            {busy === "text" ? t("Avvio e provo lo spoglio…") : t("Prova lo spoglio")}
+          <button type="button" className="btn btn--small" onClick={() => void tryText()}>
+            {t("Prova lo spoglio")}
           </button>
           {results.text && <p className={`issue issue--${results.text.ok ? "info" : "error"}`}>{results.text.text}</p>}
         </div>
       )}
       {has.image && (
         <div className="local-models__try">
-          <button type="button" className="btn btn--small" disabled={busy !== null} onClick={() => void tryImage()}>
-            {busy === "image" ? t("Avvio e genero un'immagine…") : t("Prova le immagini")}
+          <button type="button" className="btn btn--small" onClick={() => void tryImage()}>
+            {t("Prova le immagini")}
           </button>
           {results.image && <p className={`issue issue--${results.image.ok ? "info" : "error"}`}>{results.image.text}</p>}
           {results.image?.image && <img className="local-models__sample" src={results.image.image} alt={t("Immagine di prova del motore locale")} />}
