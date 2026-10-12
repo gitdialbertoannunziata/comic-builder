@@ -1,6 +1,6 @@
 import { t } from "./i18n.js";
 import { useEffect, useRef, useState } from "react";
-import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, type Page } from "@comic-builder/core";
+import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, sceneLocation, type Page } from "@comic-builder/core";
 import { describeLocations, type PlaceToDescribe, type BreakdownProgress } from "@comic-builder/llm";
 import { useFont } from "./useFont.js";
 import { llmServiceFor, runBreakdown, type LlmChoice } from "./runBreakdown.js";
@@ -26,6 +26,7 @@ import { LocalModelsDialog } from "./components/LocalModelsDialog.js";
 import { ConfigurationDialog } from "./components/ConfigurationDialog.js";
 import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
 import { useGeneration } from "./useGeneration.js";
+import { generationContentMatches, type GenerationItem } from "./editor/generateArt.js";
 import { GenerationQueues } from "./components/GenerationQueues.js";
 import { useLanguage } from "./useLanguage.js";
 
@@ -80,6 +81,22 @@ export function App() {
   const latest = useRef({ doc, drafts, assets: editor.assets, chapterId: chapter.id });
   latest.current = { doc, drafts, assets: editor.assets, chapterId: chapter.id };
   const breakdown = useGeneration(editor.assets, doc.project.id);
+  const imageGeneration = useGeneration(editor.assets, doc.project.id);
+  const isItemCurrent = (item: GenerationItem) => {
+    const current = latest.current.doc;
+    const originalPage = doc.pages[item.pageId];
+    const currentPage = current.pages[item.pageId];
+    const original = originalPage?.panels.find((panel) => panel.id === item.panel.id);
+    const now = currentPage?.panels.find((panel) => panel.id === item.panel.id);
+    if (!original || !now || currentPage?.layout !== originalPage?.layout) return false;
+    const own = doc.scenes.scenes.find((scene) => scene.id === item.panel.scene_id);
+    if (!own || current.scenes.scenes.find((scene) => scene.id === own.id) !== own) return false;
+    const samePanel = generationContentMatches({ ...item, panel: now }, item);
+    const pendingVariant = now === original && item.panel.seed.epoch === original.seed.epoch + 1;
+    return (samePanel || pendingVariant) && current.project.style === doc.project.style
+      && item.panel.characters.every((character) => current.characters[character.ref] === doc.characters[character.ref])
+      && sceneLocation(current, own)?.sheet === sceneLocation(doc, own)?.sheet;
+  };
 
   // Il nome del progetto anche nella scheda del browser.
   useEffect(() => {
@@ -410,6 +427,8 @@ export function App() {
           platform={platform}
           image={image}
           chapter={chapter}
+          imageGeneration={imageGeneration}
+          isItemCurrent={isItemCurrent}
           pages={pages}
           font={font}
           fontBytes={fontBytes}

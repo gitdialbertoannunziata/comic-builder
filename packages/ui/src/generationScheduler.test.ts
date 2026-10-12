@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { MemoryProjectStore, renderPaths, type Panel, type RenderSpec } from "@comic-builder/core";
+import { MemoryProjectStore, renderPaths, type Command, type Panel, type RenderSpec } from "@comic-builder/core";
 import { MockImageService } from "@comic-builder/image";
 import { GenerationScheduler, generationLane, generationScheduler } from "./generationScheduler.js";
-import { useGeneration } from "./useGeneration.js";
+import { useGeneration, type GenerationScope } from "./useGeneration.js";
 import { generatePanels, generationContentMatches } from "./editor/generateArt.js";
 
 vi.mock("./editor/useArtWatcher.js", () => ({ imageSize: async () => null }));
@@ -32,6 +32,47 @@ function mountGeneration() {
 }
 
 describe("multiple submissions from the same generation hook", () => {
+  it("keeps project-owned image jobs through chapter panel remounts and links their original targets", async () => {
+    const input = panelInput(3);
+    const gate = deferred();
+    const items = input.items.map((item, index) => ({ ...item, pageId: index < 2 ? "chapter-a-page" : "chapter-b-page" }));
+    input.service.before = () => gate.promise;
+    let generation!: GenerationScope;
+    let submit!: (item: typeof items[number]) => Promise<unknown>;
+    let renderer!: ReactTestRenderer;
+    let remounts = 0;
+    function ChapterPanel({ scope, chapter }: { scope: GenerationScope; chapter: string }) {
+      const [mountedChapter] = useState(() => { remounts++; return chapter; });
+      submit = (item) => scope.schedule("local", "image", `${mountedChapter}/${item.panel.id}`, (signal, isCurrent) => generatePanels({
+        ...input, items: [item], signal, cancelInFlight: false,
+        run: (command) => isCurrent() && input.run(command),
+        isValid: () => isCurrent(),
+      }));
+      return null;
+    }
+    function ProjectOwner({ chapter }: { chapter: string | null }) {
+      generation = useGeneration(input.store, "project");
+      return chapter ? createElement(ChapterPanel, { key: chapter, chapter, scope: generation }) : null;
+    }
+    act(() => { renderer = create(createElement(ProjectOwner, { chapter: "a" })); });
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    let third!: Promise<unknown>;
+    act(() => { first = submit(items[0]!); second = submit(items[1]!); });
+    act(() => renderer.update(createElement(ProjectOwner, { chapter: null })));
+    expect(generation).toMatchObject({ running: 1, queued: 1 });
+    act(() => renderer.update(createElement(ProjectOwner, { chapter: "b" })));
+    act(() => { third = submit(items[2]!); });
+    expect(remounts).toBe(2);
+    expect(generation).toMatchObject({ running: 1, queued: 2 });
+    expect(generationScheduler.getSnapshot().map((job) => job.label)).toEqual(["a/p0", "a/p1", "b/p2"]);
+    await act(async () => { gate.resolve(); await Promise.all([first, second, third]); });
+    expect(input.run.mock.calls.map(([command]) => command)).toEqual(items.map((item) => expect.objectContaining({ type: "panel.update", pageId: item.pageId, panelId: item.panel.id })));
+    expect(input.service.requests.map((request) => request.spec.panel)).toEqual(["p0", "p1", "p2"]);
+    expect(generation.phase).toBeNull();
+    act(() => renderer.unmount());
+  });
+
   it("accepts multiple jobs of the same type and keeps counts until each finishes", async () => {
     const probe = mountGeneration();
     const firstGate = deferred();
@@ -229,7 +270,7 @@ function panelInput(count = 1) {
     };
     return { pageId: "page", panel: { id, render: {} } as Panel, spec };
   });
-  return { service, store, items, run: vi.fn(() => true), endGesture: vi.fn(), concurrency: 1 };
+  return { service, store, items, run: vi.fn<(command: Command) => boolean>(() => true), endGesture: vi.fn(), concurrency: 1 };
 }
 
 describe("queued image pipeline", () => {

@@ -37,6 +37,13 @@ export interface LocalSdOptions {
   /** Oltre questo tempo senza risultato il lavoro si considera perso: una GPU lenta con molti riferimenti ci mette minuti. */
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Le ultime righe che il motore ha scritto. Servono a un guasto: il server
+   * dice «generate_image returned no results», cioè *che* non è uscito niente,
+   * e la ragione sta nel log del motore — che l'app ha, perché è l'app ad
+   * averlo avviato e a raccoglierne l'uscita.
+   */
+  engineLog?: () => Promise<string> | string;
 }
 
 /** Il lavoro come lo descrive `/sdcpp/v1/jobs/{id}`: solo i campi che servono qui. */
@@ -68,6 +75,56 @@ function fromBase64(text: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+/** Una riga di solo avanzamento: barre, passi, «2.10s/it». Il campionamento le riscrive sulla stessa riga. */
+const PROGRESS_ONLY = /^[\s|=>#.\\/()\-]*\d+(\s*\/\s*\d+)?[\s\-]*[\d.,]*\s*(s\/it|it\/s|ms\/it|%)?[\s\-]*$/;
+
+/**
+ * Le righe utili che il motore ha scritto: quelle che spiegano un guasto.
+ *
+ * L'avanzamento del campionamento torna sulla stessa riga con `\r` e ne fa una
+ * riga sola, lunghissima: si spezza anche lì, si tolgono i colori e le righe che
+ * sono solo avanzamento, e restano le ultime che dicono qualcosa.
+ */
+export function engineTrouble(log: string, lines = 4): string[] {
+  return log
+    .split(/[\r\n]+/)
+    .map((line) => line.replace(ANSI, "").trim())
+    .filter((line) => line.length > 0 && !PROGRESS_ONLY.test(line))
+    .slice(-lines);
+}
+
+/** Il log non deve mai diventare il secondo errore. */
+async function readLog(engineLog: () => Promise<string> | string): Promise<string> {
+  try {
+    return await engineLog();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Il messaggio di un guasto con le ultime righe che il motore ha scritto.
+ *
+ * Il messaggio del motore da solo non è un messaggio per chi disegna:
+ * «generate_image returned no results» dice che non è uscito niente e non
+ * perché. Le sue ultime righe, invece, dicono di solito quale passo è caduto —
+ * e sono nostre, perché è l'app ad aver avviato il motore e a raccoglierne
+ * l'uscita. Senza log da leggere, il messaggio resta quello di prima.
+ */
+async function withEngineLog(message: string, engineLog: (() => Promise<string> | string) | undefined): Promise<string> {
+  const written = engineLog ? engineTrouble(await readLog(engineLog)) : [];
+  return written.length > 0 ? `${message} Il motore ha scritto: ${written.map((line) => `«${line}»`).join(" ")}` : message;
+}
+
+/** Un guasto del motore, spiegato: cosa ha detto, cosa ha scritto lui, e — quando è la memoria — il rimedio che l'app conosce. */
+async function describeFailure(said: string, engineLog: (() => Promise<string> | string) | undefined): Promise<string> {
+  const message = await withEngineLog(`Il motore locale non è riuscito a generare: ${said}.`, engineLog);
+  return /out of memory|oom|failed to allocate|allocat/i.test(message)
+    ? `${message} Il modello non ci sta nella memoria della GPU: in Progetto → Modelli locali… c'è la variante compatta, o si passa al servizio cloud per le immagini.`
+    : message;
 }
 
 export class LocalSdImageService implements ImageService {
@@ -105,7 +162,8 @@ export class LocalSdImageService implements ImageService {
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
       // Non si riprova: se il motore non è avviato, cinque tentativi sono solo cinque attese.
-      throw new ImageError(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.name, false, cause);
+      // Un motore spento a metà lavoro, però, ha scritto perché: le sue ultime righe vanno dette.
+      throw new ImageError(await withEngineLog(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.options.engineLog), this.name, false, cause);
     }
   }
 
@@ -167,7 +225,11 @@ export class LocalSdImageService implements ImageService {
       }
       if (Date.now() > deadline) {
         await cancel();
-        throw new ImageError("Il motore locale non ha finito in tempo: la GPU è occupata da altro, o il modello non ci sta in memoria.", this.name, false);
+        throw new ImageError(
+          await withEngineLog("Il motore locale non ha finito in tempo: la GPU è occupata da altro, o il modello non ci sta in memoria.", this.options.engineLog),
+          this.name,
+          false,
+        );
       }
       let job: Job;
       try {
@@ -187,7 +249,11 @@ export class LocalSdImageService implements ImageService {
           meta: { model: this.model, durationMs: Date.now() - started, costUsd: 0, remoteId: submitted.id },
         };
       }
-      if (job.status === "failed") throw new ImageError(`Il motore locale non è riuscito a generare: ${job.error?.message ?? job.error?.code ?? "errore sconosciuto"}.`, this.name, false);
+      if (job.status === "failed") {
+        // Il messaggio del motore dice che non è uscito niente, non perché: le
+        // sue ultime righe sono l'unica cosa che lo spieghi.
+        throw new ImageError(await describeFailure(job.error?.message ?? job.error?.code ?? "errore sconosciuto", this.options.engineLog), this.name, false);
+      }
       if (job.status === "cancelled") throw new ImageCancelledError(this.name);
       await sleep(this.options.pollMs ?? 500);
     }

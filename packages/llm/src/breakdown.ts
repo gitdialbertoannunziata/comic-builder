@@ -1,5 +1,5 @@
 import { SceneSchema, beatId, issue, locationRef, type Appearance, type Scene, type ValidationIssue } from "@comic-builder/core";
-import { BreakdownSchema, breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME, ScenePlanSchema, scenePlanJsonSchema, type BreakdownCast, type BreakdownScene } from "./breakdownSchema.js";
+import { BreakdownSchema, breakdownJsonSchemaForLines, BREAKDOWN_SCHEMA_NAME, ScenePlanSchema, scenePlanJsonSchema, type BreakdownCast, type BreakdownScene } from "./breakdownSchema.js";
 import type { BreakdownPlace } from "./locations.js";
 import { breakdownSystemPrompt, breakdownUserPrompt, type CharacterContext } from "./prompt.js";
 import { LlmError, LlmTruncatedError, type LlmService } from "./service.js";
@@ -215,6 +215,11 @@ const SCENE_HEADING = /^\s*(#{1,3}\s+\S|(INT|EST|INT\.\/EST)[.\s])/i;
 
 function linesToChunk(lines: readonly string[], start: number, end: number, continuation: boolean): ScriptChunk {
   return { text: lines.slice(start, end).join("\n"), firstLine: start + 1, continuation };
+}
+
+/** L'ultima riga della parte, nel copione intero: le righe assegnate sono `firstLine`–`lastLineOf(chunk)`. */
+function lastLineOf(chunk: ScriptChunk): number {
+  return chunk.firstLine + chunk.text.split("\n").length - 1;
 }
 
 /**
@@ -436,14 +441,16 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
           previously: input.context?.previously ?? null,
           part: { index: done, total: done + queue.length + 1, continuation: chunk.continuation },
         }),
-        schema: breakdownJsonSchema(),
+        // Il contratto dice al motore a grammatica in quali righe il modello
+        // deve restare: sono quelle della parte che riceve.
+        schema: breakdownJsonSchemaForLines(chunk.firstLine, lastLineOf(chunk)),
         schemaName: BREAKDOWN_SCHEMA_NAME,
       });
     } catch (error) {
       if (error instanceof LlmTruncatedError) {
         const halves = halveChunk(chunk);
         if (halves) {
-          issues.push(issue("info", "breakdown.split", `Righe ${chunk.firstLine}–${chunk.firstLine + chunk.text.split("\n").length - 1}: risposta troncata, divise in due richieste`, "breakdown"));
+          issues.push(issue("info", "breakdown.split", `Righe ${chunk.firstLine}–${lastLineOf(chunk)}: risposta troncata, divise in due richieste`, "breakdown"));
           queue.unshift(...halves);
           continue;
         }
@@ -475,8 +482,12 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
       );
     }
     for (const scene of parsed.data.scenes) {
-      if (plan && scene.beats.some((beat) => beat.from_line < chunk.firstLine || beat.to_line < beat.from_line || beat.to_line >= chunk.firstLine + chunk.text.split("\n").length)) {
-        throw new LlmError(`Lo spoglio della scena contiene riferimenti fuori dalle righe assegnate (${chunk.firstLine}): riprova.`, input.llm.name);
+      // Rete di sicurezza per i fornitori che non fanno rispettare lo schema
+      // (o per una grammatica che non è bastata): le righe assegnate sono
+      // quelle della parte, e un beat che ne cita altre vuol dire che il
+      // modello ha spogliato un testo che non gli era stato chiesto.
+      if (plan && scene.beats.some((beat) => beat.from_line < chunk.firstLine || beat.to_line < beat.from_line || beat.to_line > lastLineOf(chunk))) {
+        throw new LlmError(`Lo spoglio della scena contiene riferimenti fuori dalle righe assegnate (${chunk.firstLine}–${lastLineOf(chunk)}): riprova.`, input.llm.name);
       }
       scene.characters.forEach((c) => known.add(c));
       scene.beats.forEach((b) => b.lines.forEach((l) => l.speaker && known.add(l.speaker)));

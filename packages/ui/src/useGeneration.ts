@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { scheduleGeneration, type GenerationKind } from "./generationScheduler.js";
 import { localModelIdentity } from "./platform/localModels.js";
 
+export type GenerationScope = ReturnType<typeof useGeneration>;
+
 export function useGeneration(identity: unknown, projectId = "") {
   const current = useRef({ identity, projectId });
   if (current.current.identity !== identity || current.current.projectId !== projectId) current.current = { identity, projectId };

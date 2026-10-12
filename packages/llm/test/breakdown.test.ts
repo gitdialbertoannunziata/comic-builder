@@ -9,7 +9,7 @@ import {
 import { MockLlmService, heuristicBreakdown } from "../src/mockService.js";
 import { OllamaLlmService } from "../src/ollamaService.js";
 import { breakdownScript } from "../src/breakdown.js";
-import { BreakdownSchema, breakdownJsonSchema } from "../src/breakdownSchema.js";
+import { BreakdownSchema, breakdownJsonSchema, breakdownJsonSchemaForLines } from "../src/breakdownSchema.js";
 import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest } from "../src/service.js";
 
 const SCRIPT = `# Il faro di Capo Vento
@@ -30,6 +30,18 @@ La lente della lanterna è stata smontata e portata via.
 SARA: Nessun segno di scasso.
 ELIO: Aveva le chiavi.
 `;
+
+/**
+ * I campi `from_line`/`to_line` dello schema derivato: gli unici che lo spoglio
+ * chiude sulle righe della parte che manda al modello. Navigare lo schema è
+ * verboso, e serve in più di un test: sta qui una volta sola.
+ */
+function lineLimits(schema: Record<string, unknown>): { from_line: Record<string, unknown>; to_line: Record<string, unknown> } {
+  const beats = (schema as {
+    properties: { scenes: { items: { properties: { beats: { items: { properties: Record<string, Record<string, unknown>> } } } } } };
+  }).properties.scenes.items.properties.beats;
+  return { from_line: beats.items.properties.from_line!, to_line: beats.items.properties.to_line! };
+}
 
 describe("MockLlmService — spoglio euristico, offline e deterministico (§11.1)", () => {
   it("divide lo script in scene sui titoli", () => {
@@ -109,6 +121,22 @@ describe("breakdownScript — dal capitolo alle scene del progetto", () => {
     expect(source?.file).toBe("script/cap-001.md");
     expect(source!.from_line).toBeGreaterThan(0);
     expect(source!.to_line).toBeLessThanOrEqual(SCRIPT.split("\n").length);
+  });
+
+  it("chiude i riferimenti di riga sulla parte che manda al modello", async () => {
+    const schemas: Array<Record<string, unknown>> = [];
+    const llm: LlmService = {
+      name: "spia",
+      constraint: "none",
+      complete: async (request) => {
+        schemas.push(request.schema);
+        return { data: heuristicBreakdown(request.user), meta: { model: "spia", durationMs: 1 } };
+      },
+    };
+    await breakdownScript({ llm, script: SCRIPT, scriptFile: "f.md" });
+    // Anche senza piano — i fornitori a token — il modello sa in quali righe
+    // deve restare: qui sono quelle del capitolo, che è una parte sola.
+    expect(lineLimits(schemas[0]!).from_line).toEqual({ type: "integer", minimum: 1, maximum: SCRIPT.split("\n").length });
   });
 
   it("scarta una provenienza che punta fuori dallo script, invece di fidarsene", async () => {
@@ -207,6 +235,13 @@ describe("Spoglio sequenziale per scene", () => {
     expect(calls[1]!.user).toContain("1\t# Cucina\n2\tSARA: Torno presto.");
     expect(calls[1]!.user).not.toContain("4\tSARA: Eccomi.");
     expect(calls[2]!.user).toContain("3\t# Giardino\n4\tSARA: Eccomi.");
+    // Le righe assegnate viaggiano nello schema, non solo nel prompt: è da lì
+    // che il motore locale costruisce la grammatica.
+    expect(lineLimits(calls[1]!.schema)).toEqual({
+      from_line: { type: "integer", minimum: 1, maximum: 2 },
+      to_line: { type: "integer", minimum: 1, maximum: 2 },
+    });
+    expect(lineLimits(calls[2]!.schema).to_line).toEqual({ type: "integer", minimum: 3, maximum: 4 });
     expect(calls[2]!.user).toContain("sara «Sara»");
     expect(calls[2]!.user).toContain("Luoghi già visti");
     expect(result.scenes.map((scene) => scene.id)).toEqual(["s001", "s002"]);
@@ -434,6 +469,18 @@ describe("Schema JSON per il decoding vincolato", () => {
 
   it("non contiene $ref: molti motori di grammatica non li risolvono", () => {
     expect(JSON.stringify(breakdownJsonSchema())).not.toContain("$ref");
+  });
+
+  it("sa chiudere i riferimenti di riga sulla parte richiesta, e solo su quella", () => {
+    const bounded = breakdownJsonSchemaForLines(11, 40);
+    expect(lineLimits(bounded)).toEqual({
+      from_line: { type: "integer", minimum: 11, maximum: 40 },
+      to_line: { type: "integer", minimum: 11, maximum: 40 },
+    });
+    // Il vincolo non introduce $ref — e non tocca lo schema di partenza: una
+    // richiesta non deve cambiare il contratto delle altre.
+    expect(JSON.stringify(bounded)).not.toContain("$ref");
+    expect(lineLimits(breakdownJsonSchema()).from_line).toEqual({ type: "integer", exclusiveMinimum: 0 });
   });
 
   it("enumera le sette funzioni di beat, così il modello non può inventarne altre", () => {

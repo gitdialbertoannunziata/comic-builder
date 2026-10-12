@@ -198,6 +198,9 @@ interface Running {
 }
 
 const running = new Map<EngineKind, Running>();
+// L'ultimo log di ogni motore, anche dopo che è stato fermato: un motore spento
+// non deve portarsi via la spiegazione di quello che ha sbagliato.
+const lastLog = new Map<EngineKind, string[]>();
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -263,6 +266,7 @@ export async function start(kind: EngineKind): Promise<string> {
     env: { ...process.env, ...(process.platform === "linux" ? { LD_LIBRARY_PATH: [dir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") } : {}) },
   });
   const log: string[] = [];
+  lastLog.set(kind, log);
   const collect = (chunk: Buffer) => {
     logFile.write(chunk);
     log.push(...chunk.toString("utf8").split("\n").filter(Boolean));
@@ -309,5 +313,5 @@ export function stopAll(): void {
 }
 
 export function recentLog(kind: EngineKind): string {
-  return (running.get(kind)?.log ?? []).join("\n");
+  return (running.get(kind)?.log ?? lastLog.get(kind) ?? []).join("\n");
 }

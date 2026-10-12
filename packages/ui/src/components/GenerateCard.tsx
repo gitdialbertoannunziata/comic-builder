@@ -1,5 +1,5 @@
 import { formatUsd as usd, t } from "../i18n.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FLUX2_FLEX,
   FLUX2_KLEIN_4B,
@@ -34,7 +34,7 @@ import { usePreference } from "../usePreference.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
 import { desktop, networkFetch, useKeyNote } from "../platform/desktop.js";
 import { local, openLocalModels } from "../platform/localModels.js";
-import { useGeneration } from "../useGeneration.js";
+import type { GenerationScope } from "../useGeneration.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
@@ -86,7 +86,10 @@ const viaLocalProxy = desktop ? {} : { rewriteUrl: (url: string) => `/local-imag
 
 export function localService(config: ImageConfig): LocalSdImageService {
   // Nell'app desktop l'indirizzo lo dà il motore quando parte (e ferma quello dello spoglio): lo si chiede alla prima richiesta.
-  if (config.localManaged && local) return new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), model: specModel(config), ...networkFetch });
+  // Il log del motore va con la richiesta: se un lavoro fallisce, «generate_image returned no results» senza le sue righe non dice niente.
+  if (config.localManaged && local) {
+    return new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), engineLog: () => local!.log("image"), model: specModel(config), ...networkFetch });
+  }
   return new LocalSdImageService({ baseUrl: config.localUrl, model: specModel(config), ...viaLocalProxy, ...networkFetch });
 }
 
@@ -114,6 +117,7 @@ export function serviceReady(config: ImageConfig): boolean {
 
 interface Props {
   config: ImageConfig;
+  generation: GenerationScope;
   store: ProjectStore;
   project: Project;
   characters: Readonly<Record<string, CharacterSheet>>;
@@ -142,7 +146,7 @@ const STATE_LABEL = { none: "mai generata", fresh: "aggiornata", stale: "da rige
  * coerenza dei personaggi (F5) sta nei riferimenti delle schede: un render
  * riuscito si può tenere come riferimento, ed è così che la scheda cresce.
  */
-export function GenerateCard({ config, store, project, characters, locations, scene, pageId, pageNumber, panel, items, isItemCurrent, primaryLabel, run, endGesture, onReferences }: Props) {
+export function GenerateCard({ config, generation, store, project, characters, locations, scene, pageId, pageNumber, panel, items, isItemCurrent, primaryLabel, run, endGesture, onReferences }: Props) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<GenerationReport | null>(null);
   const [reportPage, setReportPage] = useState(pageNumber);
@@ -150,7 +154,11 @@ export function GenerateCard({ config, store, project, characters, locations, sc
   const [note, setNote] = useState<string | null>(null);
   const [cap, setCap] = usePreference("imageCapUsd", 2);
   const keyNote = useKeyNote();
-  const generation = useGeneration(store, project.id);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const busy = generation.phase !== null;
   useEffect(() => { setReport(null); setError(null); setProgress(null); setNote(null); }, [store, project.id]);
 
@@ -177,7 +185,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
     }
     try {
       const result = await generation.schedule(config.service, "image", t("Pagina {0} · {1} vignette · {2}", pageNumber, list.length, config.service === "local" ? config.localModel ?? "locale" : specModel(config)), async (signal, isCurrent) => {
-        setProgress({ done: 0, total: list.length });
+        if (mounted.current) setProgress({ done: 0, total: list.length });
         const targetValid = (entry: GenerationItem) => isCurrent() && isItemCurrent(entry);
         return generatePanels({
           store, service: makeService(config), items: list,
@@ -186,13 +194,15 @@ export function GenerateCard({ config, store, project, characters, locations, sc
           signal, concurrency: config.service === "local" ? 1 : 2,
           cancelInFlight: config.service !== "local",
           isValid: targetValid,
-          onProgress: (progress) => { if (isCurrent()) setProgress(progress); },
+          onProgress: (progress) => { if (mounted.current && isCurrent()) setProgress(progress); },
         });
       });
-      setReportPage(pageNumber);
-      setReport(result);
+      if (mounted.current) {
+        setReportPage(pageNumber);
+        setReport(result);
+      }
     } catch (cause) {
-      if (!generation.isCurrent()) return;
+      if (!mounted.current || !generation.isCurrent()) return;
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
@@ -426,7 +436,7 @@ export function GenerateCard({ config, store, project, characters, locations, sc
               </label>
             </>
           )}
-          {config.service === "local" && <LocalEngineFields config={config} />}
+          {config.service === "local" && <LocalEngineFields config={config} generation={generation} />}
           {config.service === "flux" && (
             <>
               <label className="field">
@@ -464,9 +474,8 @@ export function GenerateCard({ config, store, project, characters, locations, sc
  * Il motore locale: dove ascolta, e una verifica di cosa ha caricato. Finché
  * non c'è l'app desktop (§14.4) sd-server si avvia a mano; poi lo avvierà lei.
  */
-function LocalEngineFields({ config }: { config: ImageConfig }) {
+function LocalEngineFields({ config, generation }: { config: ImageConfig; generation: GenerationScope }) {
   const [status, setStatus] = useState<{ level: "info" | "error"; text: string } | null>(null);
-  const generation = useGeneration(config.localManaged ? local : config.localUrl);
   const checking = generation.phase !== null;
 
   async function check() {

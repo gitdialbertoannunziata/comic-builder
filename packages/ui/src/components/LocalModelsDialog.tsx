@@ -310,7 +310,7 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
   async function tryImage() {
     const started = Date.now();
     try {
-      const service = new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), fetchImpl: desktopFetch });
+      const service = new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), engineLog: () => local!.log("image"), fetchImpl: desktopFetch });
       const spec: RenderSpec = {
         panel: "prova",
         target: "prova",

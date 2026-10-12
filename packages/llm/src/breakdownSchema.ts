@@ -127,6 +127,46 @@ export function breakdownJsonSchema(): Record<string, unknown> {
 
 export const BREAKDOWN_SCHEMA_NAME = "Breakdown";
 
+/** Scende nello schema derivato senza dare per scontata la sua forma: se il percorso non c'è, `null`. */
+function at(node: unknown, ...keys: readonly string[]): Record<string, unknown> | null {
+  let current: unknown = node;
+  for (const key of keys) {
+    if (typeof current !== "object" || current === null) return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "object" && current !== null ? (current as Record<string, unknown>) : null;
+}
+
+/**
+ * Lo stesso contratto, con i riferimenti di riga chiusi nella parte richiesta.
+ *
+ * `from_line` e `to_line` sono l'unica cosa dello spoglio che il modello può
+ * sbagliare senza che lo schema se ne accorga, ed è l'errore che pesa di più:
+ * un beat che cita righe di un'altra scena è la prova che il modello ha
+ * risposto su un testo che non gli era stato chiesto (§10.1). Le righe
+ * assegnate però si sanno *prima* della richiesta: dichiararle qui, nello
+ * schema che i motori a grammatica trasformano in un vincolo (§11.1), vale più
+ * di qualunque istruzione nel prompt — un modello piccolo non *può* più
+ * sbagliare, invece di dover essere ripreso a valle.
+ *
+ * Lo schema di partenza è ricostruito a ogni chiamata, quindi il vincolo vale
+ * per questa richiesta e non per le altre.
+ */
+export function breakdownJsonSchemaForLines(firstLine: number, lastLine: number): Record<string, unknown> {
+  const schema = breakdownJsonSchema();
+  const beat = at(schema, "properties", "scenes", "items", "properties", "beats", "items", "properties");
+  for (const key of ["from_line", "to_line"]) {
+    const field = at(beat, key);
+    // Forma inattesa (una versione futura dello schema): meglio uno schema
+    // largo, che lo spoglio ripara a valle, che nessuno schema.
+    if (!field) continue;
+    delete field.exclusiveMinimum;
+    field.minimum = firstLine;
+    field.maximum = lastLine;
+  }
+  return schema;
+}
+
 export const ScenePlanSchema = z.object({
   scenes: z.array(z.object({
     title: z.string().trim().min(1),

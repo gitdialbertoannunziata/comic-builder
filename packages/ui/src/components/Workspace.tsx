@@ -13,7 +13,6 @@ import {
   PageSchema,
   shownArt,
   shownArtPatch,
-  sceneLocation,
   pageForTarget,
   tailPoint,
   validateDocument,
@@ -54,7 +53,8 @@ import { ExportPanel } from "./ExportPanel.js";
 import { Tabs } from "./Tabs.js";
 import { Section } from "./Section.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
-import { generationContentMatches, type GenerationItem } from "../editor/generateArt.js";
+import type { GenerationItem } from "../editor/generateArt.js";
+import type { GenerationScope } from "../useGeneration.js";
 
 /** Le aree di lavoro: una alla volta, scelte dalla barra. */
 export type Area = "copione" | "pagine" | "personaggi" | "revisioni" | "export";
@@ -111,6 +111,8 @@ interface WorkspaceProps {
   platform: BrowserPlatformService;
   image: ImageConfig;
   chapter: Chapter;
+  imageGeneration: GenerationScope;
+  isItemCurrent: (item: GenerationItem) => boolean;
   pages: Page[];
   font: ReturnType<typeof useFont>["font"];
   fontBytes: ReturnType<typeof useFont>["bytes"];
@@ -126,26 +128,8 @@ interface WorkspaceProps {
  * Revisioni e l'Export. Le tre aree restano montate e si nascondono: ciò
  * che si è incollato o scelto in una non si perde passando a un'altra.
  */
-export function Workspace({ editor, art, platform, image, chapter, pages, font, fontBytes, fontError, area, onArea, onReferences }: WorkspaceProps) {
+export function Workspace({ editor, art, platform, image, chapter, imageGeneration, isItemCurrent, pages, font, fontBytes, fontError, area, onArea, onReferences }: WorkspaceProps) {
   const { doc, run, endGesture } = editor;
-  const latestDocument = useRef(doc);
-  latestDocument.current = doc;
-
-  const isItemCurrent = (item: GenerationItem) => {
-    const current = latestDocument.current;
-    const originalPage = doc.pages[item.pageId];
-    const currentPage = current.pages[item.pageId];
-    const original = originalPage?.panels.find((panel) => panel.id === item.panel.id);
-    const now = currentPage?.panels.find((panel) => panel.id === item.panel.id);
-    if (!original || !now || currentPage?.layout !== originalPage?.layout) return false;
-    const own = doc.scenes.scenes.find((scene) => scene.id === item.panel.scene_id);
-    if (!own || current.scenes.scenes.find((scene) => scene.id === own.id) !== own) return false;
-    const samePanel = generationContentMatches({ ...item, panel: now }, item);
-    const pendingVariant = now === original && item.panel.seed.epoch === original.seed.epoch + 1;
-    return (samePanel || pendingVariant) && current.project.style === doc.project.style
-      && item.panel.characters.every((character) => current.characters[character.ref] === doc.characters[character.ref])
-      && sceneLocation(current, own)?.sheet === sceneLocation(doc, own)?.sheet;
-  };
   // La selezione non è documento: non entra nella cronologia né nel file.
   // Se l'undo toglie la pagina o il pannello selezionato, si ripiega sul primo.
   const [pageId, setPageId] = useState<string>(pages[0]!.id);
@@ -940,6 +924,7 @@ export function Workspace({ editor, art, platform, image, chapter, pages, font, 
 
             <GenerateCard
               config={image}
+              generation={imageGeneration}
               store={editor.assets}
               project={doc.project}
               characters={doc.characters}

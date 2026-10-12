@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FLUX2_KLEIN_4B, type RenderSpec } from "@comic-builder/core";
-import { LocalSdImageService } from "../src/localService.js";
+import { LocalSdImageService, engineTrouble } from "../src/localService.js";
 import { ImageCancelledError, ImageError } from "../src/service.js";
 import { runRenderQueue } from "../src/renderQueue.js";
 
@@ -70,6 +70,25 @@ describe("Motore locale (stable-diffusion.cpp, sd-server)", () => {
     expect((error as ImageError).retryable).toBe(false);
   });
 
+  it("un guasto porta con sé le righe del motore, non l'avanzamento del campionamento", async () => {
+    const server = fakeServer([{ status: "failed", error: { code: "generation_failed", message: "generate_image returned no results" } }]);
+    const engineLog = ["\u001b[32m[INFO ] loading model\u001b[0m", "  |==================> | 3/4 - 2.10s/it", "[ERROR] failed to allocate compute buffer for vae decode"].join("\r");
+    const service = new LocalSdImageService({ ...options(server.fetchImpl), engineLog: () => engineLog });
+    const error = await service.generate({ spec, references }).catch((e: unknown) => e as ImageError);
+    expect(error.message).toContain("generate_image returned no results");
+    expect(error.message).toContain("failed to allocate compute buffer for vae decode");
+    expect(error.message).not.toContain("s/it");
+    // La memoria è l'unico guasto di cui l'app conosce il rimedio: lo dice.
+    expect(error.message).toMatch(/variante compatta/);
+  });
+
+  it("un log che non si lascia leggere non diventa il secondo errore", async () => {
+    const server = fakeServer([{ status: "failed", error: { code: "generation_failed", message: "generate_image returned no results" } }]);
+    const service = new LocalSdImageService({ ...options(server.fetchImpl), engineLog: () => Promise.reject(new Error("motore spento")) });
+    const error = await service.generate({ spec, references }).catch((e: unknown) => e as ImageError);
+    expect(error.message).toBe("Il motore locale non è riuscito a generare: generate_image returned no results.");
+  });
+
   it("coda piena: si riprova dopo un attimo; motore spento: si dice, senza riprovare", async () => {
     const full = fakeServer([], { status: 429, body: {} });
     const busy = await new LocalSdImageService(options(full.fetchImpl)).generate({ spec, references }).catch((e: unknown) => e as ImageError);
@@ -80,6 +99,15 @@ describe("Motore locale (stable-diffusion.cpp, sd-server)", () => {
     expect(off.retryable).toBe(false);
     const proxied = new LocalSdImageService(options((async () => new Response("connect ECONNREFUSED", { status: 502 })) as typeof fetch));
     expect((await proxied.check().catch((e: unknown) => e as ImageError)).message).toBe("Il motore locale non risponde su http://127.0.0.1:1234: è avviato?");
+  });
+
+  it("un motore spento a metà lavoro porta con sé quello che aveva scritto", async () => {
+    const down = (async () => Promise.reject(new TypeError("fetch failed"))) as typeof fetch;
+    const service = new LocalSdImageService({ ...options(down), engineLog: async () => "[ERROR] out of memory allocating VAE buffer" });
+    const error = await service.generate({ spec, references }).catch((e: unknown) => e as ImageError);
+    expect(error.message).toBe(
+      "Il motore locale non risponde su http://127.0.0.1:1234: è avviato? Il motore ha scritto: «[ERROR] out of memory allocating VAE buffer»",
+    );
   });
 
   it("al massimo quattro riferimenti, gratis, e dice quale modello ha caricato", async () => {
@@ -114,5 +142,19 @@ describe("Motore locale (stable-diffusion.cpp, sd-server)", () => {
     const server = fakeServer([{ status: "completed", result: { images: [{ b64_json: PNG }] } }]);
     const outcomes = await runRenderQueue([{ id: "a", request: () => ({ spec, references }) }], { service: new LocalSdImageService(options(server.fetchImpl)) });
     expect(outcomes[0]?.status).toBe("done");
+  });
+});
+
+describe("engineTrouble — le righe del motore che spiegano un guasto", () => {
+  it("spezza anche l'avanzamento riscritto con \\r, toglie i colori e tiene le ultime righe vere", () => {
+    const log = [
+      "\u001b[32m[INFO ] loading model from flux-2-klein-4b-Q8_0.gguf\u001b[0m",
+      "  |====> | 1/4 - 1.90s/it",
+      "  |=======> | 2/4 - 2.00s/it",
+      "[ERROR] vae decode failed",
+    ].join("\r");
+    expect(engineTrouble(log)).toEqual(["[INFO ] loading model from flux-2-klein-4b-Q8_0.gguf", "[ERROR] vae decode failed"]);
+    expect(engineTrouble(log, 1)).toEqual(["[ERROR] vae decode failed"]);
+    expect(engineTrouble("")).toEqual([]);
   });
 });

@@ -39,14 +39,15 @@ non il numero di lavori che puoi accodare.
 
 La barra dei lavori mostra modello, stato e posizione. Un lavoro in attesa
 si puo' annullare singolarmente; il comando `ferma` interrompe solo i lavori
-immagini attivi del pannello, non quelli in attesa. In locale lascia terminare
+immagini attivi del progetto, non quelli in attesa. In locale lascia terminare
 il render attivo e non avvia i successivi pannelli di quel lotto; gli altri
 lavori accodati conservano il proprio turno. Lo spoglio gia' avviato non e'
 interrompibile. Installazione e rimozione dei modelli richiedono la coda locale
 libera e la riservano durante l'operazione.
 
 I parametri sono quelli scelti al clic. I risultati non sostituiscono pagine
-o schede modificate nel frattempo. Cambiare progetto o chiudere il pannello
-rimuove i relativi lavori in attesa. Le code sono in memoria nella singola
+o schede modificate nel frattempo. Cambiare capitolo, anche passando a uno
+vuoto, non annulla i lavori immagini: conservano la pagina di destinazione
+originale. Cambiare progetto rimuove i relativi lavori in attesa. Le code sono in memoria nella singola
 istanza dell'app: ricaricare o chiudere l'app le svuota, senza ripristino
 automatico dei lavori. Le code non sostituiscono i limiti e i retry dei provider.
