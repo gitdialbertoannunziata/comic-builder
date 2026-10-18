@@ -1,5 +1,6 @@
 import { defineConfig, type Connect, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { fromOurPage, loopbackHost } from "./src/devProxyGuard";
 
 const IMAGE_PROXY = "/image-proxy/";
 /** Solo gli host dei fornitori: un proxy aperto su localhost sarebbe un regalo a qualunque pagina aperta nel browser. */
@@ -11,7 +12,6 @@ const IMAGE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(bfl\.ai|services\.ai\.azure\.co
  * non servirà.
  */
 const LOCAL_PROXY = "/local-image/";
-const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/;
 
 /**
  * Passaggio verso i servizi di immagini (FLUX.2 su Azure AI Foundry o da
@@ -26,11 +26,21 @@ function imageProxy(): Plugin {
     const rest = req.url!.slice((local ? LOCAL_PROXY : IMAGE_PROXY).length);
     const slash = rest.indexOf("/");
     const host = slash < 0 ? rest : rest.slice(0, slash);
-    if (!(local ? LOCAL_HOST : IMAGE_HOST).test(host)) {
+    if (!fromOurPage(req.headers)) {
+      res.statusCode = 403;
+      res.end("richiesta da un'altra pagina");
+      return;
+    }
+    if (!(local ? loopbackHost(host) : IMAGE_HOST.test(host))) {
       res.statusCode = 403;
       res.end("host non consentito");
       return;
     }
+    // Chi chiama annulla (la coda fermata): la richiesta a valle si ferma con lui.
+    const upstreamAbort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableEnded) upstreamAbort.abort();
+    });
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
@@ -40,7 +50,7 @@ function imageProxy(): Plugin {
         if (typeof value === "string") headers[name] = value;
       }
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
-      fetch(`${local ? "http" : "https"}://${rest}`, { method: req.method ?? "GET", headers, ...(hasBody ? { body: Buffer.concat(chunks) } : {}) })
+      fetch(`${local ? "http" : "https"}://${rest}`, { method: req.method ?? "GET", headers, signal: upstreamAbort.signal, ...(hasBody ? { body: Buffer.concat(chunks) } : {}) })
         .then(async (upstream) => {
           res.statusCode = upstream.status;
           const type = upstream.headers.get("content-type");
@@ -48,6 +58,7 @@ function imageProxy(): Plugin {
           res.end(Buffer.from(await upstream.arrayBuffer()));
         })
         .catch((error: unknown) => {
+          if (upstreamAbort.signal.aborted) return;
           res.statusCode = 502;
           res.end(String(error));
         });

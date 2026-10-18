@@ -229,3 +229,25 @@ describe("AzureFluxImageService — FLUX.2 su Azure AI Foundry", () => {
     expect(() => new AzureFluxImageService({ apiKey: "k", endpoint: "risorsa" })).toThrow(/endpoint valido/);
   });
 });
+
+describe("FluxImageService — dopo l'invio non si paga due volte", () => {
+  it("un 503 nell'interrogazione e un download fallito si riprovano sulla stessa richiesta", async () => {
+    const { calls, fetchImpl } = scripted([
+      json({ id: "abc", polling_url: POLL, cost: 6 }),
+      json({}, 503),
+      json({ status: "Ready", result: { sample: SAMPLE } }),
+      new Response("", { status: 500 }),
+      new Response(new Uint8Array([9])),
+    ]);
+    const result = await service(fetchImpl).generate({ spec, references });
+    expect([...result.data]).toEqual([9]);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("il tempo limite con la richiesta ancora viva non si riprova: la coda la rimanderebbe, e pagherebbe", async () => {
+    const { fetchImpl } = scripted([json({ id: "abc", polling_url: POLL }), () => json({ status: "Pending" })]);
+    const error = await service(fetchImpl, { timeoutMs: -1 }).generate({ spec, references }).catch((e: unknown) => e as ImageError);
+    expect(error.message).toMatch(/tempo limite/);
+    expect(error.retryable).toBe(false);
+  });
+});

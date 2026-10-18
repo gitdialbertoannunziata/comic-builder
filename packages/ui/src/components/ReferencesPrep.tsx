@@ -147,7 +147,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
             failed.push(`${before.name}: ${cause instanceof Error ? cause.message : String(cause)}`);
           }
         }
-      });
+      }, undefined, estimate ? { usd: estimate.usd, capUsd: cap } : undefined);
       setNote({
         level: failed.length > 0 ? "warning" : "info",
         text: [

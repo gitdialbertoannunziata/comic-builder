@@ -161,7 +161,7 @@ export function App() {
   };
   const llm: LlmChoice = { service, ollamaModel, ollamaHost, anthropicKey, anthropicModel, deepseekKey, deepseekModel, openaiKey, openaiModel, openaiBaseUrl };
   const textModel = service === "local" ? installedModel(localModels, "text")?.label ?? t("locale") : service === "mock" ? t("euristico") : service === "ollama" ? ollamaModel : service === "anthropic" ? anthropicModel : service === "deepseek" ? deepseekModel : openaiModel;
-  const describe = (places: readonly PlaceToDescribe[]) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes });
+  const describe = (places: readonly PlaceToDescribe[], signal?: AbortSignal) => describeLocations({ llm: llmServiceFor(llm), places, notes: doc.project.series_notes, ...(signal ? { signal } : {}) });
 
   // L'area Riferimenti: quale scheda, e cosa aprire quando ci si arriva da una vignetta.
   const [referencesTab, setReferencesTab] = usePreference<ReferencesTab>("referencesTab", "stile");
@@ -190,7 +190,8 @@ export function App() {
         && chapter.pages.every((id) => now.doc.pages[id] === doc.pages[id]);
     };
     try {
-      const result = await breakdown.schedule(llm.service, "text", t("Spoglio {0} · {1}/{2}", chapter.title, llm.service, textModel), (_signal, isCurrent) => runBreakdown({
+      const result = await breakdown.schedule(llm.service, "text", t("Spoglio {0} · {1}/{2}", chapter.title, llm.service, textModel), (signal, isCurrent) => runBreakdown({
+        signal,
         script,
         ...llm,
         chapterId: chapter.id,

@@ -1,12 +1,13 @@
 import { formatUsd as usd, t } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { compileLocationSpec, LocationSheetSchema, locationSheetPath, projectLocations, type Command, type LocationPatch, type ProjectDoc, type ProjectLocation, type ProjectStore } from "@comic-builder/core";
+import { compileLocationSpec, LocationSheetSchema, locationSheetPath, projectLocations, type Command, type LocationPatch, type ProjectDoc, type ProjectLocation, type ProjectStore, type RenderSpec } from "@comic-builder/core";
 import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
 import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
 import { useGeneration } from "../useGeneration.js";
+import { usePreference } from "../usePreference.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -15,7 +16,7 @@ interface Props {
   run: (command: Command, options?: { gesture?: string }) => boolean;
   endGesture: () => void;
   /** Il modello linguistico scelto nel Copione, per proporre le descrizioni che mancano. */
-  describe: (places: readonly PlaceToDescribe[]) => Promise<BreakdownPlace[]>;
+  describe: (places: readonly PlaceToDescribe[], signal?: AbortSignal) => Promise<BreakdownPlace[]>;
   /** Chi lo farebbe, per l'etichetta del bottone: «claude», «euristico»… */
   describer: string;
   describeService: string;
@@ -56,6 +57,14 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
   const latest = useRef(doc);
   latest.current = doc;
   const generation = useGeneration(store, doc.project.id);
+  const [cap] = usePreference("imageCapUsd", 2);
+  const estimateUsd = (spec: RenderSpec) => {
+    try {
+      return makeService(image).estimate(spec).usd;
+    } catch {
+      return 0;
+    }
+  };
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ level: "info" | "error"; text: string } | null>(null);
   const undescribed = locations.filter((l) => !l.sheet?.description.trim());
@@ -72,7 +81,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
     setBusy(targets.length === 1 ? t("propongo la descrizione…") : t("propongo {0} descrizioni…", targets.length));
     try {
       const input = targets.map(toDescribe);
-      const answers = await descriptionScope.schedule(describeService, "text", t("{0} descrizioni · {1}", targets.length, describer), () => describe(input));
+      const answers = await descriptionScope.schedule(describeService, "text", t("{0} descrizioni · {1}", targets.length, describer), (signal) => describe(input, signal));
       if (!descriptionScope.isCurrent()) return;
       const filled: string[] = [];
       targets.forEach((target, i) => {
@@ -107,7 +116,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
       const { costUsd } = await generation.schedule(image.service, "image", t("Luogo {0} · {1}", location.name, jobModel(image)), (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => {
         const now = latest.current.locations[location.ref];
         return now?.description === sheet?.description && now?.palette === sheet?.palette && now?.name === sheet?.name;
-      });
+      }, { usd: estimateUsd(spec), capUsd: cap });
       const now = latest.current.locations[location.ref];
       if (now?.description !== sheet?.description) throw new Error(t("La descrizione del luogo e' cambiata durante la generazione."));
       run({ type: "location.upsert", ref: location.ref, patch: { ...(now ? {} : { name: location.name }), references: [...(now?.references ?? current.references), { path, note: "tavola", use: true }] } });

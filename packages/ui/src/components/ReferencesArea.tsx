@@ -20,7 +20,7 @@ interface Props {
   onTab: (tab: ReferencesTab) => void;
   /** Il personaggio o il luogo da aprire, quando ci si arriva da una vignetta. */
   focus: { ref: string; at: number } | null;
-  describe: (places: readonly PlaceToDescribe[]) => Promise<BreakdownPlace[]>;
+  describe: (places: readonly PlaceToDescribe[], signal?: AbortSignal) => Promise<BreakdownPlace[]>;
   describer: string;
   describeService: string;
 }

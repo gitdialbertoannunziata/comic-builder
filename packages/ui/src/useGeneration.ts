@@ -1,6 +1,6 @@
 import { t } from "./i18n.js";
 import { useEffect, useRef, useState } from "react";
-import { scheduleGeneration, type GenerationKind } from "./generationScheduler.js";
+import { scheduleGeneration, type GenerationKind, type GenerationOptions } from "./generationScheduler.js";
 import { localModelIdentity } from "./platform/localModels.js";
 
 export type GenerationScope = ReturnType<typeof useGeneration>;
@@ -29,7 +29,14 @@ export function useGeneration(identity: unknown, projectId = "") {
     };
   }, [identity, projectId]);
 
-  async function schedule<Result>(service: string, kind: GenerationKind, label: string, task: (signal: AbortSignal, isCurrent: () => boolean) => Promise<Result>, valid: () => boolean = () => true): Promise<Result> {
+  async function schedule<Result>(
+    service: string,
+    kind: GenerationKind,
+    label: string,
+    task: (signal: AbortSignal, isCurrent: () => boolean) => Promise<Result>,
+    valid: () => boolean = () => true,
+    spend?: GenerationOptions["spend"],
+  ): Promise<Result> {
     const token = current.current;
     const model = service === "local" ? localModelIdentity(kind) : null;
     const abort = new AbortController();
@@ -40,10 +47,18 @@ export function useGeneration(identity: unknown, projectId = "") {
       const result = await scheduleGeneration(service, kind, label, async (signal) => {
         jobs.current.set(abort, { token, phase: "running" });
         publish();
-        const result = await task(signal, () => isCurrent() && !signal.aborted);
-        if (!isCurrent() || signal.aborted) throw new DOMException(t("Generazione annullata."), "AbortError");
+        const cancelled = () => new DOMException(t("Generazione annullata."), "AbortError");
+        let result: Result;
+        try {
+          result = await task(signal, () => isCurrent() && !signal.aborted);
+        } catch (error) {
+          // Il servizio fermato risponde col suo errore di annullamento: per chi guarda è sempre lo stesso.
+          if (!isCurrent() || signal.aborted) throw cancelled();
+          throw error;
+        }
+        if (!isCurrent() || signal.aborted) throw cancelled();
         return result;
-      }, { signal: abort.signal, isValid: () => isCurrent() && valid() && (model === null || model === localModelIdentity(kind)) });
+      }, { signal: abort.signal, isValid: () => isCurrent() && valid() && (model === null || model === localModelIdentity(kind)), ...(spend ? { spend } : {}) });
       return result;
     } finally {
       jobs.current.delete(abort);

@@ -1,5 +1,16 @@
 import { FLUX2_KLEIN_4B, maxReferencesFor, type RenderSpec } from "@comic-builder/core";
-import { ImageCancelledError, ImageError, type ImageEstimate, type ImageRequest, type ImageResult, type ImageService } from "./service.js";
+import {
+  ImageCancelledError,
+  ImageError,
+  followUp,
+  readBody,
+  requestSignal,
+  settled,
+  type ImageEstimate,
+  type ImageRequest,
+  type ImageResult,
+  type ImageService,
+} from "./service.js";
 
 /**
  * `ImageService` su un modello locale, servito da `sd-server` di
@@ -36,6 +47,8 @@ export interface LocalSdOptions {
   pollMs?: number;
   /** Oltre questo tempo senza risultato il lavoro si considera perso: una GPU lenta con molti riferimenti ci mette minuti. */
   timeoutMs?: number;
+  /** Il tempo massimo di una singola chiamata, risposta compresa. */
+  requestTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   /**
    * Le ultime righe che il motore ha scritto. Servono a un guasto: il server
@@ -157,17 +170,19 @@ export class LocalSdImageService implements ImageService {
   private async call(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const url = `${await this.base()}${path}`;
+    const limited = requestSignal(signal, this.options.requestTimeoutMs);
     try {
-      return await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, { ...init, ...(signal ? { signal } : {}) });
+      return await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, { ...init, signal: limited.signal });
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
+      if (limited.timedOut()) throw new ImageError(`Il motore locale non ha risposto in tempo su ${this.resolved ?? this.baseUrl}.`, this.name, true, cause);
       // Non si riprova: se il motore non è avviato, cinque tentativi sono solo cinque attese.
       // Un motore spento a metà lavoro, però, ha scritto perché: le sue ultime righe vanno dette.
       throw new ImageError(await withEngineLog(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.options.engineLog), this.name, false, cause);
     }
   }
 
-  private async json<T>(response: Response, what: string): Promise<T> {
+  private async json<T>(response: Response, what: string, signal?: AbortSignal): Promise<T> {
     if (response.status === 429) throw new ImageError("Il motore locale ha la coda piena: riprovo fra poco.", this.name, true, undefined, 2000);
     // Un proxy davanti al motore (il server di sviluppo) risponde 502 quando dietro non c'è nessuno.
     if (response.status === 502 || response.status === 504) throw new ImageError(`Il motore locale non risponde su ${this.resolved ?? this.baseUrl}: è avviato?`, this.name, false);
@@ -175,7 +190,7 @@ export class LocalSdImageService implements ImageService {
       const text = await response.text().catch(() => "");
       throw new ImageError(`Il motore locale ha rifiutato ${what} (HTTP ${response.status})${text ? `: ${text.slice(0, 200)}` : ""}`, this.name, response.status >= 500);
     }
-    return (await response.json()) as T;
+    return readBody(() => response.json() as Promise<T>, this.name, signal);
   }
 
   /** Cosa ha caricato il server: per dire all'autore se è il modello giusto, prima di generare. */
@@ -216,37 +231,44 @@ export class LocalSdImageService implements ImageService {
     if (!submitted.id) throw new ImageError("Il motore locale non ha restituito l'id del lavoro.", this.name, true);
     const pollPath = submitted.poll_url ?? `/sdcpp/v1/jobs/${submitted.id}`;
 
-    const cancel = () => this.call(`/sdcpp/v1/jobs/${submitted.id}/cancel`, { method: "POST", headers }).catch(() => undefined);
+    // Da qui il lavoro esiste sul motore: qualunque uscita che non sia
+    // l'immagine lo annulla, o la GPU continua per nessuno.
+    const jobId = submitted.id;
+    let finished = false;
+    try {
+      const result = await this.follow(jobId, pollPath, started, sleep, signal);
+      finished = true;
+      return result;
+    } catch (error) {
+      throw settled(error);
+    } finally {
+      if (!finished) await this.call(`/sdcpp/v1/jobs/${jobId}/cancel`, { method: "POST", headers }).catch(() => undefined);
+    }
+  }
+
+  /** Segue il lavoro inviato fino all'immagine. */
+  private async follow(jobId: string, pollPath: string, started: number, sleep: (ms: number) => Promise<void>, signal: AbortSignal | undefined): Promise<ImageResult> {
     const deadline = started + (this.options.timeoutMs ?? 15 * 60_000);
     for (;;) {
-      if (signal?.aborted) {
-        await cancel();
-        throw new ImageCancelledError(this.name);
-      }
+      if (signal?.aborted) throw new ImageCancelledError(this.name);
       if (Date.now() > deadline) {
-        await cancel();
         throw new ImageError(
           await withEngineLog("Il motore locale non ha finito in tempo: la GPU è occupata da altro, o il modello non ci sta in memoria.", this.options.engineLog),
           this.name,
           false,
         );
       }
-      let job: Job;
-      try {
-        job = await this.json<Job>(await this.call(pollPath, { method: "GET", headers: { accept: "application/json" } }, signal), "lo stato del lavoro");
-      } catch (error) {
-        if (error instanceof ImageCancelledError) {
-          await cancel();
-        }
-        throw error;
-      }
+      const job = await followUp(
+        async () => this.json<Job>(await this.call(pollPath, { method: "GET", headers: { accept: "application/json" } }, signal), "lo stato del lavoro", signal),
+        { signal, sleep },
+      );
       if (job.status === "completed") {
         const image = job.result?.images?.[0]?.b64_json;
         if (!image) throw new ImageError("Il motore locale ha finito senza restituire un'immagine.", this.name, true);
         return {
           data: fromBase64(image.replace(/^data:[^,]*,/, "")),
           mediaType: `image/${job.result?.output_format ?? "png"}`,
-          meta: { model: this.model, durationMs: Date.now() - started, costUsd: 0, remoteId: submitted.id },
+          meta: { model: this.model, durationMs: Date.now() - started, costUsd: 0, remoteId: jobId },
         };
       }
       if (job.status === "failed") {

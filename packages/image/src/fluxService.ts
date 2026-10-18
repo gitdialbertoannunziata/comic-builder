@@ -1,5 +1,15 @@
 import { FLUX2_FLEX, FLUX2_MAX_REFERENCES, FLUX2_PRO, type RenderSpec } from "@comic-builder/core";
-import { ImageCancelledError, ImageError, type ImageEstimate, type ImageRequest, type ImageResult, type ImageService } from "./service.js";
+import {
+  ImageCancelledError,
+  ImageError,
+  followUp,
+  readBody,
+  requestSignal,
+  type ImageEstimate,
+  type ImageRequest,
+  type ImageResult,
+  type ImageService,
+} from "./service.js";
 
 /**
  * `ImageService` su FLUX.2 [pro] via l'API di Black Forest Labs (F3).
@@ -28,6 +38,8 @@ export interface FluxOptions {
   pollMs?: number;
   /** Oltre questo tempo senza risultato la richiesta si considera persa. */
   timeoutMs?: number;
+  /** Il tempo massimo di una singola chiamata, risposta compresa. */
+  requestTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -107,10 +119,12 @@ export class FluxImageService implements ImageService {
   private async call(url: string, init: RequestInit, signal: AbortSignal | undefined): Promise<Response> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const target = this.options.rewriteUrl ? this.options.rewriteUrl(url) : url;
+    const limited = requestSignal(signal, this.options.requestTimeoutMs);
     try {
-      return await fetchImpl(target, { ...init, ...(signal ? { signal } : {}) });
+      return await fetchImpl(target, { ...init, signal: limited.signal });
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
+      if (limited.timedOut()) throw new ImageError("Black Forest Labs non ha risposto in tempo.", this.name, true, cause);
       throw new ImageError("Black Forest Labs non raggiungibile: controlla la connessione.", this.name, true, cause);
     }
   }
@@ -132,26 +146,37 @@ export class FluxImageService implements ImageService {
       signal,
     );
     if (!submitted.ok) throw describeStatus(submitted.status, await submitted.text().catch(() => ""), this.name);
-    const task = (await submitted.json()) as Submitted;
+    const task = await readBody(() => submitted.json() as Promise<Submitted>, this.name, signal);
     if (!task.polling_url) throw new ImageError("Black Forest Labs ha accettato la richiesta senza dire dove seguirla.", this.name);
+    const pollingUrl = task.polling_url;
 
+    // Da qui la richiesta è accettata, e pagata se riesce: i guasti passeggeri
+    // si riprovano sulla stessa richiesta, e alla coda non arriva niente che
+    // la faccia rimandare (vedi `followUp`). Il fornitore non ha un modo per
+    // annullarla.
+    const retry = { signal, sleep };
     const deadline = started + (this.options.timeoutMs ?? 180_000);
     for (;;) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
       await sleep(this.options.pollMs ?? 1000);
       if (signal?.aborted) throw new ImageCancelledError(this.name);
-      const response = await this.call(task.polling_url, { method: "GET", headers }, signal);
-      if (!response.ok) throw describeStatus(response.status, await response.text().catch(() => ""), this.name);
-      const polled = (await response.json()) as Polled;
+      const polled = await followUp(async () => {
+        const response = await this.call(pollingUrl, { method: "GET", headers }, signal);
+        if (!response.ok) throw describeStatus(response.status, await response.text().catch(() => ""), this.name);
+        return readBody(() => response.json() as Promise<Polled>, this.name, signal);
+      }, retry);
 
       if (polled.status === "Ready") {
         const sample = polled.result?.sample;
-        if (!sample) throw new ImageError("Black Forest Labs dice che l'immagine è pronta, ma non dà l'indirizzo.", this.name, true);
+        if (!sample) throw new ImageError("Black Forest Labs dice che l'immagine è pronta, ma non dà l'indirizzo.", this.name);
         // Senza chiave: l'URL è firmato, e la chiave non va mandata all'host di consegna.
-        const image = await this.call(sample, { method: "GET" }, signal);
-        if (!image.ok) throw new ImageError(`Download dell'immagine fallito (${image.status}).`, this.name, true);
+        const data = await followUp(async () => {
+          const image = await this.call(sample, { method: "GET" }, signal);
+          if (!image.ok) throw new ImageError(`Download dell'immagine fallito (${image.status}).`, this.name, true);
+          return new Uint8Array(await readBody(() => image.arrayBuffer(), this.name, signal));
+        }, retry);
         return {
-          data: new Uint8Array(await image.arrayBuffer()),
+          data,
           mediaType: `image/${spec.output_format}`,
           meta: {
             model: spec.model,
@@ -169,11 +194,13 @@ export class FluxImageService implements ImageService {
           this.name,
         );
       }
+      // La richiesta è morta dal fornitore: riprovarla da capo non ne lascia una orfana.
       if (polled.status === "Error" || polled.status === "Failed") {
         throw new ImageError(`Generazione fallita presso il fornitore${polled.details ? `: ${JSON.stringify(polled.details).slice(0, 200)}` : "."}`, this.name, true);
       }
       if (polled.status === "Task not found") throw new ImageError("Il fornitore non trova più la richiesta.", this.name, true);
-      if (Date.now() > deadline) throw new ImageError("Nessun risultato entro il tempo limite: la richiesta è rimasta in coda dal fornitore.", this.name, true);
+      // Questa invece è ancora viva, e forse finirà: rimandarla la pagherebbe due volte.
+      if (Date.now() > deadline) throw new ImageError("Nessun risultato entro il tempo limite: la richiesta è rimasta in coda dal fornitore.", this.name, false);
     }
   }
 }
@@ -215,6 +242,9 @@ export interface AzureFluxOptions {
   fetchImpl?: typeof fetch;
   rewriteUrl?: (url: string) => string;
   safetyTolerance?: number;
+  /** Il tempo massimo di una singola chiamata, risposta compresa: qui la risposta porta l'immagine. */
+  requestTimeoutMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface AzureGenerated {
@@ -263,16 +293,18 @@ export class AzureFluxImageService implements ImageService {
     const started = Date.now();
     const url = `${this.origin}/providers/blackforestlabs/v1/${spec.model}?api-version=preview`;
     const fetchImpl = this.options.fetchImpl ?? fetch;
+    const limited = requestSignal(signal, this.options.requestTimeoutMs);
     let response: Response;
     try {
       response = await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.options.apiKey}` },
         body: JSON.stringify({ model: this.model, ...fluxBody(request, this.options.safetyTolerance) }),
-        ...(signal ? { signal } : {}),
+        signal: limited.signal,
       });
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
+      if (limited.timedOut()) throw new ImageError("Azure AI Foundry non ha risposto in tempo.", this.name, true, cause);
       throw new ImageError("Azure AI Foundry non raggiungibile: controlla la connessione e l'endpoint.", this.name, true, cause);
     }
 
@@ -304,15 +336,27 @@ export class AzureFluxImageService implements ImageService {
       }
     }
 
-    const payload = (await response.json()) as AzureGenerated;
+    const payload = await readBody(() => response.json() as Promise<AzureGenerated>, this.name, signal);
     const image = payload.data?.[0];
     let data: Uint8Array;
     if (image?.b64_json) {
       data = Uint8Array.from(atob(image.b64_json), (c) => c.charCodeAt(0));
     } else if (image?.url) {
-      const download = await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(image.url) : image.url, signal ? { signal } : {});
-      if (!download.ok) throw new ImageError(`Download dell'immagine fallito (${download.status}).`, this.name, true);
-      data = new Uint8Array(await download.arrayBuffer());
+      // L'immagine è già fatta e pagata: un download che non riesce si riprova qui, non rifacendola.
+      const imageUrl = image.url;
+      const sleep = this.options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      data = await followUp(async () => {
+        const download = requestSignal(signal, this.options.requestTimeoutMs);
+        let fetched: Response;
+        try {
+          fetched = await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(imageUrl) : imageUrl, { signal: download.signal });
+        } catch (cause) {
+          if (signal?.aborted) throw new ImageCancelledError(this.name);
+          throw new ImageError("Download dell'immagine da Azure non riuscito.", this.name, true, cause);
+        }
+        if (!fetched.ok) throw new ImageError(`Download dell'immagine fallito (${fetched.status}).`, this.name, true);
+        return new Uint8Array(await readBody(() => fetched.arrayBuffer(), this.name, signal));
+      }, { signal, sleep });
     } else {
       throw new ImageError("Azure ha risposto senza immagine: di solito è il filtro di sicurezza. Riformula l'azione della vignetta, o usa un prompt tuo.", this.name);
     }

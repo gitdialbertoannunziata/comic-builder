@@ -47,7 +47,17 @@ export const desktop: DesktopBridge | null = (globalThis as { comicDesktop?: Des
 
 // --- Cartelle ---
 
-const join = (dir: string, name: string) => `${dir.replace(/[\\/]+$/, "")}${desktop?.platform === "win32" ? "\\" : "/"}${name}`;
+/**
+ * Un nome dentro una cartella, come lo accetta File System Access: niente
+ * separatori, niente `.` né `..`. Il browser rifiuta da sé un nome così; qui
+ * il nome diventa un percorso vero, e `..` uscirebbe dalla cartella.
+ */
+export function entryName(name: string): string {
+  if (name.length === 0 || name === "." || name === ".." || /[\\/\0]/.test(name)) throw new TypeError(t("Nome non valido: {0}", name));
+  return name;
+}
+
+const join = (dir: string, name: string) => `${dir.replace(/[\\/]+$/, "")}${desktop?.platform === "win32" ? "\\" : "/"}${entryName(name)}`;
 const notFound = (what: string) => new DOMException(t("{0} non trovato", what), "NotFoundError");
 
 async function bytesOf(data: unknown): Promise<Uint8Array | string> {
@@ -177,12 +187,19 @@ export const desktopFetch: typeof fetch = async (input, init = {}) => {
   else if (init.body != null) throw new TypeError(t("desktopFetch: corpo della richiesta di un tipo non gestito"));
   const signal = init.signal ?? undefined;
   if (signal?.aborted) throw new DOMException(t("Richiesta annullata"), "AbortError");
-  const onAbort = () => desktop!.net.abort(id);
+  // Un solo ascoltatore, tolto alla fine: chi interroga a lungo riusa lo
+  // stesso segnale per centinaia di chiamate, e non deve accumularne uno a testa.
+  let rejectAborted: (reason: unknown) => void = () => {};
+  const aborted = new Promise<never>((_, reject) => (rejectAborted = reject));
+  aborted.catch(() => {});
+  const onAbort = () => {
+    desktop!.net.abort(id);
+    rejectAborted(new DOMException(t("Richiesta annullata"), "AbortError"));
+  };
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
     const call = desktop.net.fetch(id, url, { method: init.method ?? "GET", headers, ...(body !== undefined ? { body } : {}) });
-    const aborted = signal ? new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException(t("Richiesta annullata"), "AbortError")), { once: true })) : null;
-    const result = await (aborted ? Promise.race([call, aborted]) : call);
+    const result = await (signal ? Promise.race([call, aborted]) : call);
     const empty = result.status === 204 || result.status === 304;
     return new Response(empty ? null : (result.body as BodyInit), { status: result.status, statusText: result.statusText, headers: result.headers });
   } catch (error) {

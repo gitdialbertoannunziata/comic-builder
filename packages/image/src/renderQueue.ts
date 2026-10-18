@@ -51,7 +51,19 @@ export function estimateQueue(service: ImageService, specs: ReadonlyArray<ImageR
 export async function runRenderQueue(jobs: readonly RenderJob[], options: QueueOptions): Promise<RenderOutcome[]> {
   const { service, signal } = options;
   const retries = options.retries ?? 2;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // Fermare la coda non aspetta la fine del backoff: l'attesa si chiude subito, e il giro dopo vede il segnale.
+  const sleep =
+    options.sleep ??
+    ((ms: number) =>
+      new Promise<void>((resolve) => {
+        const wake = () => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", wake);
+          resolve();
+        };
+        const timer = setTimeout(wake, ms);
+        signal?.addEventListener("abort", wake, { once: true });
+      }));
   const outcomes: RenderOutcome[] = new Array<RenderOutcome>(jobs.length);
   let next = 0;
   let done = 0;

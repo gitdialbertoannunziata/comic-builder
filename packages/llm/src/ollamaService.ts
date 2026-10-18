@@ -1,4 +1,4 @@
-import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, networkFailure, requestSignal, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 export interface OllamaOptions {
   /** Modello già scaricato in Ollama (`ollama pull ...`). */
@@ -61,15 +61,14 @@ export class OllamaLlmService implements LlmService {
 
   async complete(request: LlmRequest): Promise<LlmResponse> {
     const started = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 300_000);
+    const limited = requestSignal(request.signal, this.options.timeoutMs ?? 300_000);
 
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.host}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
+        signal: limited.signal,
         body: JSON.stringify({
           model: this.options.model,
           stream: false,
@@ -87,14 +86,13 @@ export class OllamaLlmService implements LlmService {
       // CORS. Distinguerle dal codice non si può — la specifica nasconde
       // apposta i dettagli della risposta bloccata — quindi si nominano
       // entrambe, invece di far cercare nel posto sbagliato.
-      throw new LlmError(
+      throw networkFailure(
+        cause,
+        this.name,
+        limited,
         `Ollama non raggiungibile su ${this.host}. Due possibilità: non è in esecuzione (\`ollama serve\`), ` +
           `oppure è attivo ma rifiuta la richiesta di questa pagina — in quel caso riavvialo con \`OLLAMA_ORIGINS=*\`.`,
-        this.name,
-        cause,
       );
-    } finally {
-      clearTimeout(timeout);
     }
 
     if (!response.ok) {
@@ -102,7 +100,12 @@ export class OllamaLlmService implements LlmService {
       throw new LlmError(`Ollama ha risposto ${response.status}: ${body.slice(0, 300)}`, this.name);
     }
 
-    const payload = (await response.json()) as OllamaChatResponse;
+    let payload: OllamaChatResponse;
+    try {
+      payload = (await response.json()) as OllamaChatResponse;
+    } catch (cause) {
+      throw networkFailure(cause, this.name, limited, "La risposta di Ollama si è interrotta a metà.");
+    }
     if (payload.error) throw new LlmError(`Ollama: ${payload.error}`, this.name);
 
     if (payload.done_reason === "length") {

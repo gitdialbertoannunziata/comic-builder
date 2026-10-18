@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
 import { applyCatalogOverride, type EngineKind } from "./local/catalog.js";
 import { install, overview, recentLog, removeAll, start, stop, stopAll, type InstallPlan } from "./local/manager.js";
+import { within } from "./paths.js";
 
 /**
  * comic-builder come applicazione desktop (§14.4: Electron).
@@ -50,12 +51,8 @@ async function grant(folder: string) {
   await fs.writeFile(rootsFile(), JSON.stringify(roots, null, 2));
 }
 
-/** Il percorso, se sta dentro una cartella concessa; altrimenti un errore, mai un accesso. */
-function inside(target: string): string {
-  const resolved = path.resolve(target);
-  if (!roots.some((root) => resolved === root || resolved.startsWith(root + path.sep))) throw new Error(`Percorso fuori dalle cartelle scelte: ${target}`);
-  return resolved;
-}
+/** Il percorso vero, se sta dentro una cartella concessa (link simbolici risolti); altrimenti un errore, mai un accesso. */
+const inside = (target: string): Promise<string> => within(target, roots);
 
 const notFound = (error: unknown) => (error as NodeJS.ErrnoException)?.code === "ENOENT";
 
@@ -86,7 +83,7 @@ function registerFolders() {
 
   handle("fs:stat", async (target: string) => {
     try {
-      const stat = await fs.stat(inside(target));
+      const stat = await fs.stat(await inside(target));
       return { kind: stat.isDirectory() ? "directory" : "file", size: stat.size, lastModified: stat.mtimeMs };
     } catch (error) {
       if (notFound(error)) return null;
@@ -94,14 +91,15 @@ function registerFolders() {
     }
   });
   handle("fs:list", async (dir: string) => {
-    const entries = await fs.readdir(inside(dir), { withFileTypes: true });
+    const real = await inside(dir);
+    const entries = await fs.readdir(real, { withFileTypes: true });
     const out = [];
     for (const entry of entries) {
       // I file d'appoggio di una scrittura in corso non sono del progetto.
       if (entry.name.includes(".comic-tmp-")) continue;
       if (entry.isDirectory()) out.push({ name: entry.name, kind: "directory" as const });
       else if (entry.isFile()) {
-        const stat = await fs.stat(path.join(dir, entry.name));
+        const stat = await fs.stat(path.join(real, entry.name));
         out.push({ name: entry.name, kind: "file" as const, size: stat.size, lastModified: stat.mtimeMs });
       }
     }
@@ -109,7 +107,7 @@ function registerFolders() {
   });
   handle("fs:read", async (target: string) => {
     try {
-      return new Uint8Array(await fs.readFile(inside(target)));
+      return new Uint8Array(await fs.readFile(await inside(target)));
     } catch (error) {
       if (notFound(error)) return null;
       throw error;
@@ -117,7 +115,7 @@ function registerFolders() {
   });
   /** Scrittura atomica (§11.3): file d'appoggio accanto, poi rename. O il file nuovo intero, o quello vecchio intatto. */
   handle("fs:write", async (target: string, data: Uint8Array | string) => {
-    const file = inside(target);
+    const file = await inside(target);
     await fs.mkdir(path.dirname(file), { recursive: true });
     const temp = `${file}.comic-tmp-${randomBytes(4).toString("hex")}`;
     try {
@@ -129,12 +127,12 @@ function registerFolders() {
     }
   });
   handle("fs:mkdir", async (target: string) => {
-    await fs.mkdir(inside(target), { recursive: true });
+    await fs.mkdir(await inside(target), { recursive: true });
   });
   handle("fs:remove", async (target: string) => {
-    await fs.rm(inside(target), { force: true });
+    await fs.rm(await inside(target), { force: true });
   });
-  handle("shell:reveal", (target: string) => shell.showItemInFolder(inside(target)));
+  handle("shell:reveal", async (target: string) => shell.showItemInFolder(await inside(target)));
 }
 
 // --- Rete ---

@@ -43,6 +43,7 @@ export interface DescribeLocationsInput {
   places: readonly PlaceToDescribe[];
   /** Le regole della serie: spesso è lì che l'autore ha già descritto i suoi luoghi. */
   notes?: string;
+  signal?: AbortSignal;
 }
 
 const NOTES_START = "Regole della serie:";
@@ -69,7 +70,7 @@ export function describeLocationsPrompt(input: Omit<DescribeLocationsInput, "llm
 export async function describeLocations(input: DescribeLocationsInput): Promise<BreakdownPlace[]> {
   if (input.places.length === 0) return [];
   const { system, user } = describeLocationsPrompt(input);
-  const response = await input.llm.complete({ system, user, schema: locationsJsonSchema(), schemaName: LOCATIONS_SCHEMA_NAME });
+  const response = await input.llm.complete({ system, user, schema: locationsJsonSchema(), schemaName: LOCATIONS_SCHEMA_NAME, ...(input.signal ? { signal: input.signal } : {}) });
   const parsed = LocationsAnswerSchema.safeParse(response.data);
   if (!parsed.success) throw new LlmError(`Le descrizioni dei luoghi non sono conformi allo schema: ${parsed.error.issues[0]?.message ?? "forma inattesa"}`, input.llm.name);
   // Si accoppiano per ref: il modello può cambiare maiuscole o un accento, non il posto.

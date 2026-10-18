@@ -1,5 +1,17 @@
 import { canonicalJson, sha1Hex, type RenderSpec } from "@comic-builder/core";
-import { ImageCancelledError, ImageError, type ImageEstimate, type ImageRequest, type ImageResult, type ImageService, type ReferenceImage } from "./service.js";
+import {
+  ImageCancelledError,
+  ImageError,
+  followUp,
+  readBody,
+  requestSignal,
+  settled,
+  type ImageEstimate,
+  type ImageRequest,
+  type ImageResult,
+  type ImageService,
+  type ReferenceImage,
+} from "./service.js";
 
 /**
  * `ImageService` su ComfyUI: il server che l'autore ha già sulla sua
@@ -33,6 +45,8 @@ export interface ComfyUiOptions {
   pollMs?: number;
   /** Il primo caricamento di un modello grande, su una GPU lenta, prende minuti. */
   timeoutMs?: number;
+  /** Il tempo massimo di una singola chiamata, risposta compresa. */
+  requestTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -282,11 +296,13 @@ export class ComfyUiImageService implements ImageService {
   private async call(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const url = `${this.baseUrl}${path}`;
+    const limited = requestSignal(signal, this.options.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, { ...init, ...(signal ? { signal } : {}) });
+      response = await fetchImpl(this.options.rewriteUrl ? this.options.rewriteUrl(url) : url, { ...init, signal: limited.signal });
     } catch (cause) {
       if (signal?.aborted) throw new ImageCancelledError(this.name);
+      if (limited.timedOut()) throw new ImageError(`ComfyUI non ha risposto in tempo su ${this.baseUrl}.`, this.name, true, cause);
       throw new ImageError(`ComfyUI non risponde su ${this.baseUrl}: è avviato? (python main.py, o l'app ComfyUI Desktop)`, this.name, false, cause);
     }
     // Un proxy davanti (il server di sviluppo) risponde 502 quando dietro non c'è nessuno.
@@ -295,12 +311,12 @@ export class ComfyUiImageService implements ImageService {
     return response;
   }
 
-  private async json<T>(response: Response, what: string): Promise<T> {
+  private async json<T>(response: Response, what: string, signal?: AbortSignal): Promise<T> {
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new ImageError(`ComfyUI ha rifiutato ${what} (HTTP ${response.status}): ${describeRejection(text)}`, this.name, response.status >= 500);
     }
-    return (await response.json()) as T;
+    return readBody(() => response.json() as Promise<T>, this.name, signal);
   }
 
   /** Cosa ha questo ComfyUI rispetto al flusso: nodi e file che mancano, prima di accodare. */
@@ -387,24 +403,39 @@ export class ComfyUiImageService implements ImageService {
     const promptId = queued.prompt_id;
     if (!promptId) throw new ImageError("ComfyUI ha accettato il flusso senza restituire l'id del lavoro.", this.name, true);
 
-    const deadline = started + (this.options.timeoutMs ?? 15 * 60_000);
+    // Da qui il lavoro esiste in ComfyUI: qualunque uscita che non sia
+    // l'immagine lo toglie dalla coda, o la GPU continua per nessuno.
+    let finished = false;
+    try {
+      const result = await this.follow(promptId, started, sleep, signal);
+      finished = true;
+      return result;
+    } catch (error) {
+      throw settled(error);
+    } finally {
+      if (!finished) await this.cancel(promptId);
+    }
+  }
+
+  /** Segue il lavoro accodato fino all'immagine. Il tempo limite parte dall'accodamento, non dal caricamento dei riferimenti. */
+  private async follow(promptId: string, started: number, sleep: (ms: number) => Promise<void>, signal: AbortSignal | undefined): Promise<ImageResult> {
+    const deadline = Date.now() + (this.options.timeoutMs ?? 15 * 60_000);
+    const retry = { signal, sleep };
     for (;;) {
-      if (signal?.aborted) {
-        await this.cancel(promptId);
-        throw new ImageCancelledError(this.name);
-      }
+      if (signal?.aborted) throw new ImageCancelledError(this.name);
       if (Date.now() > deadline) {
-        await this.cancel(promptId);
         throw new ImageError("ComfyUI non ha finito in tempo: la coda è occupata da altro, o il modello non ci sta in memoria.", this.name, false);
       }
       await sleep(this.options.pollMs ?? 750);
-      let history: Record<string, HistoryEntry>;
-      try {
-        history = await this.json<Record<string, HistoryEntry>>(await this.call(`/history/${encodeURIComponent(promptId)}`, { method: "GET", headers: { accept: "application/json" } }, signal), "lo storico");
-      } catch (error) {
-        if (error instanceof ImageCancelledError) await this.cancel(promptId);
-        throw error;
-      }
+      const history = await followUp(
+        async () =>
+          this.json<Record<string, HistoryEntry>>(
+            await this.call(`/history/${encodeURIComponent(promptId)}`, { method: "GET", headers: { accept: "application/json" } }, signal),
+            "lo storico",
+            signal,
+          ),
+        retry,
+      );
       const entry = history[promptId];
       if (!entry) continue;
       if (entry.status?.status_str === "error") {
@@ -421,11 +452,14 @@ export class ComfyUiImageService implements ImageService {
         continue;
       }
       const query = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder ?? "", type: image.type ?? "output" });
-      const download = await this.call(`/view?${query}`, { method: "GET" }, signal);
-      if (!download.ok) throw new ImageError(`Download dell'immagine da ComfyUI fallito (${download.status}).`, this.name, true);
+      const data = await followUp(async () => {
+        const download = await this.call(`/view?${query}`, { method: "GET" }, signal);
+        if (!download.ok) throw new ImageError(`Download dell'immagine da ComfyUI fallito (${download.status}).`, this.name, true);
+        return new Uint8Array(await readBody(() => download.arrayBuffer(), this.name, signal));
+      }, retry);
       const extension = image.filename.split(".").pop()?.toLowerCase();
       return {
-        data: new Uint8Array(await download.arrayBuffer()),
+        data,
         mediaType: extension === "jpg" || extension === "jpeg" ? "image/jpeg" : extension === "webp" ? "image/webp" : "image/png",
         meta: { model: this.model, durationMs: Date.now() - started, costUsd: 0, remoteId: promptId },
       };

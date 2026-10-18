@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RenderSpec } from "@comic-builder/core";
 import { ComfyUiImageService, DEFAULT_COMFY_WORKFLOW, comfyModelName, comfyReferenceSlots, fillComfyWorkflow, parseComfyWorkflow } from "../src/comfyService.js";
 import { ImageCancelledError, ImageError } from "../src/service.js";
+import { runRenderQueue } from "../src/renderQueue.js";
 
 const spec: RenderSpec = {
   panel: "ep001-p001-01",
@@ -178,5 +179,56 @@ describe("Servizio ComfyUI", () => {
     expect(info.missingValues).toEqual([{ node: "UNETLoader", input: "unet_name", value: "flux-2-klein-4b.safetensors" }]);
     expect(info.missingNodes).toContain("Flux2Scheduler");
     expect(info.missingNodes).not.toContain("UNETLoader");
+  });
+});
+
+describe("Servizio ComfyUI — dopo l'accodamento non si rimanda il lavoro", () => {
+  /** Un ComfyUI che risponde a `/history` e `/view` come dicono `history` e `view`, una risposta per chiamata. */
+  function flaky(history: Array<() => Response | Promise<Response>>, view: Array<() => Response> = [() => new Response(new Uint8Array([1]))]) {
+    const calls: Array<{ path: string; method: string }> = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      calls.push({ path, method: init?.method ?? "GET" });
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+      if (path === "/upload/image") return json({ name: "r.png", subfolder: "comic-builder" });
+      if (path === "/prompt") return json({ prompt_id: "p1" });
+      if (path === "/queue") return init?.method === "POST" ? json({}) : json({ queue_running: [], queue_pending: [] });
+      if (path === "/history/p1") return (history.length > 1 ? history.shift()! : history[0]!)();
+      if (path === "/view") return (view.length > 1 ? view.shift()! : view[0]!)();
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+    return { calls, fetchImpl, submits: () => calls.filter((c) => c.path === "/prompt").length, removed: () => calls.some((c) => c.path === "/queue" && c.method === "POST") };
+  }
+  const ok = () => new Response(JSON.stringify({ p1: done }), { status: 200 });
+  const busy = () => new Response("overloaded", { status: 503 });
+
+  it("un 5xx passeggero nello storico si riprova sullo stesso lavoro", async () => {
+    const server = flaky([busy, busy, ok]);
+    const result = await new ComfyUiImageService(options(server.fetchImpl)).generate({ spec, references });
+    expect([...result.data]).toEqual([1]);
+    expect(server.submits()).toBe(1);
+  });
+
+  it("un download che non riesce mai: un solo invio anche con la coda che riprova, e il lavoro si toglie", async () => {
+    const server = flaky([ok], [() => new Response("", { status: 500 })]);
+    const outcomes = await runRenderQueue([{ id: "a", request: () => ({ spec, references }) }], { service: new ComfyUiImageService(options(server.fetchImpl)), retries: 5, sleep: async () => {} });
+    expect(outcomes[0]).toMatchObject({ status: "failed", attempts: 1 });
+    expect(server.submits()).toBe(1);
+    expect(server.removed()).toBe(true);
+  });
+
+  it("una chiamata appesa scade, e il lavoro si toglie invece di restare sulla GPU", async () => {
+    const hang = () => new Promise<Response>(() => {});
+    const server = flaky([hang]);
+    const hangingFetch = ((url: string, init?: RequestInit) =>
+      new URL(url).pathname === "/history/p1"
+        ? new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)))
+        : server.fetchImpl(url, init)) as typeof fetch;
+    const error = await new ComfyUiImageService({ ...options(hangingFetch), requestTimeoutMs: 10 }).generate({ spec, references }).catch((e: unknown) => e as ImageError);
+    expect(error).toBeInstanceOf(ImageError);
+    expect(error.message).toMatch(/non ha risposto in tempo/);
+    expect(error.retryable).toBe(false);
+    expect(server.submits()).toBe(1);
+    expect(server.removed()).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
 import { useGeneration } from "../useGeneration.js";
+import { usePreference } from "../usePreference.js";
 
 interface Props {
   doc: ProjectDoc;
@@ -70,6 +71,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
 
   const [generating, setGenerating] = useState<string | null>(null);
   const [sheetNote, setSheetNote] = useState<{ level: "info" | "error"; text: string } | null>(null);
+  const [cap] = usePreference("imageCapUsd", 2);
   const describable = sheet !== undefined && appearanceText(sheet).length > 0;
   const generation = useGeneration(store, doc.project.id);
   const latest = useRef(doc);
@@ -80,6 +82,21 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
    * riferimenti appena arriva, e la successiva la guarda. È questo ordine
    * che fa della scheda una persona sola invece di tre sosia.
    */
+  /**
+   * Quanto costano le viste, stimate sulla scheda di adesso: ogni vista
+   * aggiunge riferimenti alla successiva, quindi la stima sta un po' sotto.
+   * Basta per il tetto, che deve fermare gli errori grossi, non i centesimi.
+   */
+  function estimateSheet(views: readonly SheetView[]): number {
+    if (!sheet) return 0;
+    try {
+      const service = makeService(image);
+      return views.reduce((sum, view) => sum + service.estimate(compileCharacterSheetSpec({ project: doc.project, sheet, view, model: specModel(image), maxReferences: specMaxReferences(image) })).usd, 0);
+    } catch {
+      return 0;
+    }
+  }
+
   async function generateSheet(views: readonly SheetView[]) {
     if (!ref || !sheet) return;
     setSheetNote(null);
@@ -110,7 +127,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
       }, () => {
         const now = latest.current.characters[ref];
         return Boolean(now && appearanceText(now) === appearanceText(sheet) && JSON.stringify(now.wardrobe) === JSON.stringify(sheet.wardrobe));
-      });
+      }, { usd: estimateSheet(views), capUsd: cap });
       setSheetNote({
         level: "info",
         text: t("{0} {1} ai riferimenti{2}. Togli la spunta a quelle che non gli somigliano.", made, made === 1 ? "immagine aggiunta" : "immagini aggiunte", cost > 0 ? ` · addebitati ${cost.toFixed(2).replace(".", ",")} $` : ""),

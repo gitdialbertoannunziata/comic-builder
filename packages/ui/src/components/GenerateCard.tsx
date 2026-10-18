@@ -259,7 +259,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
           isValid: targetValid,
           onProgress: (progress) => { if (mounted.current && isCurrent()) setProgress(progress); },
         });
-      });
+      }, undefined, { usd: expected.usd, capUsd: cap });
       if (mounted.current) {
         setReportPage(pageNumber);
         setReport(result);
@@ -529,7 +529,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
             </select>
           </label>
           <label className="field field--inline">
-            <span className="field__label">{t("tetto di spesa per lancio ($)")}</span>
+            <span className="field__label">{t("tetto di spesa della coda ($)")}</span>
             <input type="number" min={0} step={0.5} value={cap} onChange={(e) => setCap(Math.max(0, Number(e.target.value) || 0))} />
           </label>
           <p className="field__hint">{t("La spesa mostrata è una stima sul listino noto; quella vera la dichiara il fornitore a immagine fatta.")}</p>
@@ -550,7 +550,7 @@ function LocalEngineFields({ config, generation }: { config: ImageConfig; genera
   async function check() {
     setStatus(null);
     try {
-      const info = await generation.schedule("local", "image", t("Verifica {0}", config.localModel ?? "motore immagini locale"), () => localService(config).check());
+      const info = await generation.schedule("local", "image", t("Verifica {0}", config.localModel ?? "motore immagini locale"), (signal) => localService(config).check(signal));
       const klein = /klein/i.test(info.model) && /4b/i.test(info.model);
       setStatus(
         klein
@@ -612,7 +612,7 @@ function ComfyFields({ config, generation }: { config: ImageConfig; generation: 
   async function check() {
     setStatus(null);
     try {
-      const info = await generation.schedule("comfyui", "image", t("Verifica ComfyUI"), () => comfyService(config).check());
+      const info = await generation.schedule("comfyui", "image", t("Verifica ComfyUI"), (signal) => comfyService(config).check(signal));
       const problems = [
         info.missingNodes.length > 0 ? t("nodi che questo ComfyUI non conosce: {0} (installa il pacchetto di nodi, o aggiorna ComfyUI)", info.missingNodes.join(", ")) : null,
         ...info.missingValues.map((m) => t("{0} → {1}: «{2}» non c'è (scarica il file nella cartella dei modelli, o correggi il nome nel flusso)", m.node, m.input, m.value)),

@@ -1,4 +1,4 @@
-import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, networkFailure, requestSignal, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 /**
  * Adapter per `llama-server` di llama.cpp: il modello linguistico in locale
@@ -87,15 +87,14 @@ export class LlamaServerLlmService implements LlmService {
   async complete(request: LlmRequest): Promise<LlmResponse> {
     const started = Date.now();
     const base = (this.options.baseUrl ?? (await this.options.resolveBaseUrl!())).replace(/\/$/, "");
-    const controller = new AbortController();
     // Un modello locale su una GPU piccola, o sulla CPU, ci mette minuti a scrivere uno spoglio.
-    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 20 * 60_000);
+    const limited = requestSignal(request.signal, this.options.timeoutMs ?? 20 * 60_000);
 
     let response: Response;
     try {
       response = await this.fetchImpl(`${base}/v1/chat/completions`, {
         method: "POST",
-        signal: controller.signal,
+        signal: limited.signal,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           messages: [
@@ -110,12 +109,10 @@ export class LlamaServerLlmService implements LlmService {
         }),
       });
     } catch (cause) {
-      clearTimeout(timeout);
-      throw new LlmError(`Il modello locale non risponde su ${base}: è avviato?`, this.name, cause);
+      throw networkFailure(cause, this.name, limited, `Il modello locale non risponde su ${base}: è avviato?`);
     }
 
     if (!response.ok || !response.body) {
-      clearTimeout(timeout);
       const body = await response.text().catch(() => "");
       throw new LlmError(`Il modello locale ha rifiutato la richiesta (HTTP ${response.status})${body ? `: ${body.slice(0, 300)}` : ""}`, this.name);
     }
@@ -124,10 +121,8 @@ export class LlamaServerLlmService implements LlmService {
     try {
       stream = await readChatStream(response.body);
     } catch (cause) {
-      if (controller.signal.aborted) throw new LlmError("Il modello locale non ha finito in tempo: prova un capitolo più corto, o un modello più piccolo.", this.name, cause);
-      throw new LlmError("Il modello locale ha interrotto la risposta a metà.", this.name, cause);
-    } finally {
-      clearTimeout(timeout);
+      if (limited.timedOut()) throw new LlmError("Il modello locale non ha finito in tempo: prova un capitolo più corto, o un modello più piccolo.", this.name, cause);
+      throw networkFailure(cause, this.name, limited, "Il modello locale ha interrotto la risposta a metà.");
     }
     if (stream.finish === "length") {
       throw new LlmTruncatedError("Risposta troncata dal limite di token del modello locale: il capitolo va diviso in parti più corte.", this.name);
