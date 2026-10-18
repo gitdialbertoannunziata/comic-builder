@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, errorText, translateMessage } from "../i18n.js";
 import { useGeneration } from "../useGeneration.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { FLUX2_KLEIN_4B, type RenderSpec } from "@comic-builder/core";
@@ -104,7 +104,7 @@ function Wizard({ overview, step, onStep, onUse, onClose }: { overview: LocalOve
       });
       onStep("try");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(cause));
+      setError(translateMessage(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(cause)));
     } finally {
       off();
       setProgress(null);
@@ -304,7 +304,7 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
       setResults((r) => ({ ...r, text: { ok: true, text: t("«{0}» — {1} s, avvio del motore compreso.", line, Math.round((Date.now() - started) / 1000)) } }));
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setResults((r) => ({ ...r, text: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
+      setResults((r) => ({ ...r, text: { ok: false, text: errorText(cause) } }));
     }
   }
 
@@ -332,7 +332,7 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
       setResults((r) => ({ ...r, image: { ok: true, text: t("512×512 in {0} s, avvio del motore compreso. Una vignetta vera, con i riferimenti, chiede di più.", Math.round((Date.now() - started) / 1000)), image: url } }));
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setResults((r) => ({ ...r, image: { ok: false, text: cause instanceof Error ? cause.message : String(cause) } }));
+      setResults((r) => ({ ...r, image: { ok: false, text: errorText(cause) } }));
     }
   }
 

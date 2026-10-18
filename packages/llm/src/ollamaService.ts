@@ -1,5 +1,7 @@
 import { LlmError, LlmTruncatedError, networkFailure, requestSignal, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
+export const OLLAMA_DEFAULT_HOST = "http://127.0.0.1:11434";
+
 export interface OllamaOptions {
   /** Modello già scaricato in Ollama (`ollama pull ...`). */
   model: string;
@@ -44,7 +46,7 @@ export class OllamaLlmService implements LlmService {
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly options: OllamaOptions) {
-    this.host = (options.host ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+    this.host = (options.host ?? OLLAMA_DEFAULT_HOST).replace(/\/$/, "");
     if (options.fetchImpl) {
       this.fetchImpl = options.fetchImpl;
     } else if (globalThis.fetch) {

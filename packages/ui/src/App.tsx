@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { t, errorText, translate } from "./i18n.js";
 import { useEffect, useRef, useState } from "react";
 import { chapterContext, issue, lessonsOnlyIn, locationRef, nextChapterId, projectDocFrom, sceneLocation, type Page } from "@comic-builder/core";
 import { describeLocations, type PlaceToDescribe, type BreakdownProgress } from "@comic-builder/llm";
@@ -7,7 +7,8 @@ import { llmServiceFor, runBreakdown, type LlmChoice } from "./runBreakdown.js";
 import { initialPages, initialScene, SAMPLE_SCRIPT } from "./samplePage.js";
 import { useArtWatcher } from "./editor/useArtWatcher.js";
 import { useRenders } from "./editor/useRenders.js";
-import type { ImageConfig } from "./components/GenerateCard.js";
+import type { ImageConfig } from "./imageServices.js";
+import { LOCAL_SD_DEFAULT_URL } from "@comic-builder/image";
 import { ChapterBar } from "./components/ChapterBar.js";
 import { BreakdownContext } from "./components/BreakdownContext.js";
 import { ReferencesArea, type ReferencesTab } from "./components/ReferencesArea.js";
@@ -124,7 +125,7 @@ export function App() {
   const [azureFluxEndpoint, setAzureFluxEndpoint] = usePreference("azureFluxEndpoint", prefilled.azureFluxEndpoint);
   const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
   const [megapixels, setMegapixels] = usePreference("imageMegapixels", 1);
-  const [localImageUrl, setLocalImageUrl] = usePreference("localImageUrl", "http://127.0.0.1:1234");
+  const [localImageUrl, setLocalImageUrl] = usePreference("localImageUrl", LOCAL_SD_DEFAULT_URL);
   const [comfyUrl, setComfyUrl] = usePreference("comfyUrl", prefilled.comfyUrl);
   const [comfyWorkflow, setComfyWorkflow] = usePreference("comfyWorkflow", prefilled.comfyWorkflow);
   // I modelli locali dell'app desktop: installati dalla procedura guidata, avviati dall'app.
@@ -230,7 +231,9 @@ export function App() {
         run({ type: "location.upsert", ref, patch: sheet ? { description: place.description } : { name: place.name, description: place.description } }, { gesture });
         places.push(place.name);
       }
-      if (!chapter.title.trim() || /^Capitolo \d+$/.test(chapter.title)) {
+      // Un titolo ancora di partenza, in qualunque lingua sia stato creato, lo sostituisce la prima scena.
+      const untitled = (["it", "en"] as const).some((locale) => chapter.title === translate("Capitolo {0}", locale, [chapter.number]));
+      if (!chapter.title.trim() || untitled) {
         run({ type: "chapter.update", chapterId: chapter.id, title: result.scenes[0]?.title ?? chapter.title }, { gesture });
       }
       endGesture();
@@ -247,7 +250,7 @@ export function App() {
       if (latest.current.chapterId === chapter.id) setArea("pagine");
     } catch (error) {
       if (!breakdown.isCurrent()) return;
-      setBreakdownError(error instanceof Error ? error.message : String(error));
+      setBreakdownError(errorText(error));
       setSummary(null);
     }
   }

@@ -1,4 +1,4 @@
-import { formatUsd as usd, t } from "../i18n.js";
+import { formatUsd as usd, t, errorText } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   appearanceText,
@@ -17,7 +17,7 @@ import {
   type RenderSpec,
 } from "@comic-builder/core";
 import { estimateQueue } from "@comic-builder/image";
-import { jobModel, makeService, onThisMachine, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
+import { jobModel, makeService, onThisMachine, serviceReady, specMaxReferences, specModel, type ImageConfig } from "../imageServices.js";
 import { generateReference } from "../editor/generateArt.js";
 import { usePreference } from "../usePreference.js";
 import { useGeneration } from "../useGeneration.js";
@@ -109,7 +109,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
             continue;
           }
           const name = now.name || now.id;
-          setProgress(t("{0}/{1} · {2}", step, count, name));
+          setProgress(`${step}/${count} · ${name}`);
           try {
             const spec = characterSpec(now);
             const path = characterSheetPath(spec, "front");
@@ -121,7 +121,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
             made++;
           } catch (cause) {
             if (!isCurrent() || signal.aborted) throw cause;
-            failed.push(`${name}: ${cause instanceof Error ? cause.message : String(cause)}`);
+            failed.push(`${name}: ${errorText(cause)}`);
           }
         }
         for (const before of places) {
@@ -132,7 +132,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
             skipped.push(before.name);
             continue;
           }
-          setProgress(t("{0}/{1} · {2}", step, count, before.name));
+          setProgress(`${step}/${count} · ${before.name}`);
           try {
             const spec = placeSpec({ ...before, sheet });
             const path = locationSheetPath(spec);
@@ -144,7 +144,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
             made++;
           } catch (cause) {
             if (!isCurrent() || signal.aborted) throw cause;
-            failed.push(`${before.name}: ${cause instanceof Error ? cause.message : String(cause)}`);
+            failed.push(`${before.name}: ${errorText(cause)}`);
           }
         }
       }, undefined, estimate ? { usd: estimate.usd, capUsd: cap } : undefined);
@@ -158,7 +158,7 @@ export function ReferencesPrep({ doc, store, image, run }: Props) {
       });
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${cause instanceof Error ? cause.message : String(cause)}` });
+      setNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${errorText(cause)}` });
     } finally {
       setProgress(null);
     }

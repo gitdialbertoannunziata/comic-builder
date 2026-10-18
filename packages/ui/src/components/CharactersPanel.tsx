@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, errorText } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   appearanceText,
@@ -13,7 +13,7 @@ import {
   type ProjectStore,
   type SheetView,
 } from "@comic-builder/core";
-import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
+import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "../imageServices.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
@@ -134,7 +134,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
       });
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setSheetNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${cause instanceof Error ? cause.message : String(cause)}` });
+      setSheetNote({ level: "error", text: `${made > 0 ? t("{0} fatte, poi: ", made) : ""}${errorText(cause)}` });
     }
   }
 

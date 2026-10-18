@@ -10,6 +10,7 @@ import {
   type ImageResult,
   type ImageService,
 } from "./service.js";
+import { fromBase64, toBase64 } from "./bytes.js";
 
 /**
  * `ImageService` su FLUX.2 [pro] via l'API di Black Forest Labs (F3).
@@ -92,12 +93,6 @@ function fluxBody(request: ImageRequest, safetyTolerance: number | undefined): R
     body[i === 0 ? "input_image" : `input_image_${i + 1}`] = toBase64(reference.data);
   });
   return body;
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
 }
 
 export class FluxImageService implements ImageService {
@@ -340,7 +335,7 @@ export class AzureFluxImageService implements ImageService {
     const image = payload.data?.[0];
     let data: Uint8Array;
     if (image?.b64_json) {
-      data = Uint8Array.from(atob(image.b64_json), (c) => c.charCodeAt(0));
+      data = fromBase64(image.b64_json);
     } else if (image?.url) {
       // L'immagine è già fatta e pagata: un download che non riesce si riprova qui, non rifacendola.
       const imageUrl = image.url;

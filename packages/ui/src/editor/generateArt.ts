@@ -1,6 +1,6 @@
 import { t } from "../i18n.js";
 import { artMediaType, renderPaths, specHash, type Command, type ImageSize, type Panel, type ProjectStore, type RenderSpec } from "@comic-builder/core";
-import { ImageCancelledError, runRenderQueue, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
+import { ImageCancelledError, imageMediaType, runRenderQueue, sha256Hex, type ImageRequest, type ImageService, type ReferenceImage, type RenderJob } from "@comic-builder/image";
 import { imageSize } from "./useArtWatcher.js";
 
 /** Un pannello da generare, con lo spec che il documento compila adesso. */
@@ -24,11 +24,6 @@ export interface GenerationReport {
   failed: Array<{ panelId: string; error: string }>;
   /** Addebitato dal fornitore, dove lo dichiara. */
   costUsd: number;
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 let batch = 0;
@@ -60,7 +55,7 @@ export async function generatePanels(input: {
 
   // Le dimensioni vere dell'immagine, per l'inquadratura; se non si riesce a leggerle, quelle chieste al modello.
   const sizeOf = async (item: GenerationItem, bytes: Uint8Array): Promise<ImageSize> =>
-    (await imageSize(new Blob([bytes as BlobPart], { type: "image/png" }))) ?? { width: item.spec.width, height: item.spec.height };
+    (await imageSize(new Blob([bytes as BlobPart], { type: imageMediaType(bytes) }))) ?? { width: item.spec.width, height: item.spec.height };
 
   // Un'immagine nuova riparte centrata, senza l'inquadratura di quella di prima: come un disegno nuovo importato.
   const link = (item: GenerationItem, file: string, size: ImageSize) =>
@@ -111,7 +106,7 @@ export async function generatePanels(input: {
         if (outcome.status === "done") {
           const paths = renderPaths(item.spec);
           await store.writeBytes(paths.image, outcome.result.data);
-          const references = await Promise.all(outcome.request.references.map(async (r) => ({ path: r.path, sha256: await sha256(r.data) })));
+          const references = await Promise.all(outcome.request.references.map(async (r) => ({ path: r.path, sha256: await sha256Hex(r.data) })));
           await store.writeText(
             paths.sidecar,
             `${JSON.stringify({ spec: item.spec, spec_hash: specHash(item.spec), engine: service.name, rendered_at: new Date().toISOString(), cost_usd: outcome.result.meta.costUsd, remote_id: outcome.result.meta.remoteId ?? null, references }, null, 2)}\n`,

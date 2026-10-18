@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { dataUri, sha256Hex } from "@comic-builder/image";
 import { ART_DIR, artCommands, artMediaType, isArtFile, type ArtFile, type Command, type ProjectDoc, type ProjectStore } from "@comic-builder/core";
 
 /**
@@ -32,11 +33,6 @@ export async function imageSize(blob: Blob): Promise<{ width: number; height: nu
   } catch {
     return null;
   }
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export interface ArtWatcher {
@@ -79,7 +75,7 @@ export function useArtWatcher(
         const blob = new Blob([bytes as BlobPart], { type: artMediaType(path) ?? "application/octet-stream" });
         const url = URL.createObjectURL(blob);
         const pixels = await imageSize(blob);
-        seen.current.set(path, { lastModified: entry.lastModified ?? 0, size: entry.size ?? bytes.length, sha: await sha256(bytes), url, ...(pixels ? { pixels } : {}) });
+        seen.current.set(path, { lastModified: entry.lastModified ?? 0, size: entry.size ?? bytes.length, sha: await sha256Hex(bytes), url, ...(pixels ? { pixels } : {}) });
         changed = true;
       }
       for (const [path, info] of seen.current) {
@@ -139,9 +135,7 @@ export function useArtWatcher(
           if (!panel.art.source) continue;
           const bytes = await store.readBytes(panel.art.source);
           if (!bytes) continue;
-          let binary = "";
-          for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          out.set(panel.id, `data:${artMediaType(panel.art.source) ?? "image/png"};base64,${btoa(binary)}`);
+          out.set(panel.id, dataUri(bytes, artMediaType(panel.art.source) ?? "image/png"));
         }
       }
       return out;

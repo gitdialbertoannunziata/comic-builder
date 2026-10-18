@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, translateMessage } from "../i18n.js";
 import type { ZodIssue } from "zod";
 import type { ValidationIssue } from "@comic-builder/core";
 
@@ -38,7 +38,7 @@ export function ValidationPanel({ schemaIssues, docIssues, onSelectPanel, knownP
           <div className="issue issue--error">
             <span className="issue__code">schema</span>
             <span className="issue__text">
-              {issue.path.join(".")}: {issue.message}
+              {issue.path.join(".")}: {translateMessage(issue.message)}
             </span>
           </div>
         </li>
@@ -50,7 +50,7 @@ export function ValidationPanel({ schemaIssues, docIssues, onSelectPanel, knownP
         const content = (
           <>
             <span className="issue__code">{issue.code}</span>
-            <span className="issue__text">{issue.message}</span>
+            <span className="issue__text">{translateMessage(issue.message)}</span>
           </>
         );
 

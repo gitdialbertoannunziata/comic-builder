@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, translateMessage } from "../i18n.js";
 import { describeTarget, type ExportOutcome } from "../exportPages.js";
 import { project } from "../project.js";
 import { targetLabel } from "../labels.js";
@@ -189,7 +189,7 @@ export function ExportPanel({
           })}
           {[...errors, ...warnings].map((i, n) => (
             <li key={n} className={`issue issue--${i.level}`}>
-              {i.message}
+              {translateMessage(i.message)}
             </li>
           ))}
         </ul>

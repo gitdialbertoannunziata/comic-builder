@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, errorText } from "../i18n.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   balloonBox,
@@ -47,7 +47,8 @@ import { StripView } from "./StripView.js";
 import { RevisionsPanel } from "./RevisionsPanel.js";
 import { NoteButton } from "./NoteButton.js";
 import { PromptCard } from "./PromptCard.js";
-import { GenerateCard, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
+import { GenerateCard } from "./GenerateCard.js";
+import { specMaxReferences, specModel, type ImageConfig } from "../imageServices.js";
 import { PanelCharacters } from "./PanelCharacters.js";
 import { ExportPanel } from "./ExportPanel.js";
 import { Tabs } from "./Tabs.js";
@@ -186,7 +187,7 @@ export function Workspace({ editor, art, platform, image, chapter, imageGenerati
       setExportOutcome(outcome);
       setExportResult(t("{0} file in {1}.", written.written, written.destination));
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : String(error));
+      setExportError(errorText(error));
     } finally {
       setExporting(false);
       setExportProgress(null);

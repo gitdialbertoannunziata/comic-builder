@@ -93,14 +93,16 @@ export function ChapterBar({ chapters, currentId, onSelect, run, endGesture, nex
           >
             <strong>{c.number}</strong>
             <span>{c.title}</span>
-            <span className="chapter-chip__meta">{c.pages.length > 0 ? `${c.pages.length} p.` : "vuoto"}</span>
+            <span className="chapter-chip__meta">{c.pages.length > 0 ? t("{0} p.", c.pages.length) : t("vuoto")}</span>
           </button>
         ))}
         <button
           type="button"
           className="chapter-chip chapter-chip--add"
           onClick={() => {
-            if (run({ type: "chapter.add", title: "" })) onSelect(nextId);
+            // Il titolo di partenza nella lingua di chi lo crea: il Core, da solo, scriverebbe «Capitolo N».
+            const number = Math.max(0, ...chapters.map((c) => c.number)) + 1;
+            if (run({ type: "chapter.add", title: t("Capitolo {0}", number) })) onSelect(nextId);
           }}
           title={t("Aggiungi un capitolo all'opera")}
         >

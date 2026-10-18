@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, errorText } from "../i18n.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acquireLock,
@@ -171,7 +171,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
         setSaved(target);
         setStatus({ kind: "saved", at: new Date() });
       })
-      .catch((error: unknown) => setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) }))
+      .catch((error: unknown) => setStatus({ kind: "error", message: errorText(error) }))
       .finally(() => {
         saving.current = false;
       });
@@ -304,7 +304,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       void rememberFolder(handle);
       void clearRecovery();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(errorText(error));
     }
   }
 
@@ -421,7 +421,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
       setLoadIssues([]);
       setStatus({ kind: "saved", at: new Date() });
     } catch (error) {
-      setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      setStatus({ kind: "error", message: errorText(error) });
     }
   }
 

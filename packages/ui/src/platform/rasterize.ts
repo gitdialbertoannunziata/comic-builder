@@ -1,4 +1,5 @@
 import { t } from "../i18n.js";
+import { toBase64 } from "@comic-builder/image";
 /**
  * Rasterizzazione nel browser, via canvas.
  *
@@ -7,15 +8,6 @@ import { t } from "../i18n.js";
  * partono dallo stesso SVG prodotto dal Core, che resta l'unica descrizione
  * della pagina.
  */
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
 
 /**
  * Incorpora il font dentro l'SVG come data URI.

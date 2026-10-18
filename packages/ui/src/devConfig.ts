@@ -1,3 +1,6 @@
+import { COMFY_DEFAULT_URL } from "@comic-builder/image";
+import { OLLAMA_DEFAULT_HOST } from "@comic-builder/llm";
+
 /**
  * Configurazione comoda per lo sviluppo, letta dall'ambiente.
  *
@@ -73,7 +76,7 @@ export function prefilledConfig(): PrefilledConfig {
   return {
     anthropicKey: key,
     anthropicModel: env.VITE_ANTHROPIC_MODEL?.trim() || "claude-opus-5",
-    ollamaHost: env.VITE_OLLAMA_HOST?.trim() || "http://localhost:11434",
+    ollamaHost: env.VITE_OLLAMA_HOST?.trim() || OLLAMA_DEFAULT_HOST,
     ollamaModel: env.VITE_OLLAMA_MODEL?.trim() || "mistral",
     anthropicKeyFromEnv: key.length > 0,
     deepseekKey,
@@ -91,7 +94,7 @@ export function prefilledConfig(): PrefilledConfig {
     azureFluxKey,
     azureFluxDeployment: env.VITE_AZURE_FLUX_DEPLOYMENT?.trim() || "FLUX.2-pro",
     azureFluxKeyFromEnv: azureFluxKey.length > 0,
-    comfyUrl: env.VITE_COMFYUI_URL?.trim() || "http://127.0.0.1:8188",
+    comfyUrl: env.VITE_COMFYUI_URL?.trim() || COMFY_DEFAULT_URL,
     comfyWorkflow: "",
   };
 }

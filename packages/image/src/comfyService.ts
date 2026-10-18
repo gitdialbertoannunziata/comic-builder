@@ -12,6 +12,7 @@ import {
   type ImageService,
   type ReferenceImage,
 } from "./service.js";
+import { sha256Hex } from "./bytes.js";
 
 /**
  * `ImageService` su ComfyUI: il server che l'autore ha già sulla sua
@@ -234,11 +235,6 @@ export interface ComfyEngineInfo {
   missingNodes: string[];
   /** I valori a scelta che questo ComfyUI non ha: di solito file di modello da scaricare. */
   missingValues: Array<{ node: string; input: string; value: string }>;
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 const EXTENSION: Readonly<Record<string, string>> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };

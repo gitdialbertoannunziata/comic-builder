@@ -11,6 +11,7 @@ import {
   type ImageResult,
   type ImageService,
 } from "./service.js";
+import { dataUri, fromBase64 } from "./bytes.js";
 
 /**
  * `ImageService` su un modello locale, servito da `sd-server` di
@@ -75,20 +76,7 @@ export interface LocalEngineInfo {
   modes: string[];
 }
 
-const DEFAULT_URL = "http://127.0.0.1:1234";
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
-}
-
-function fromBase64(text: string): Uint8Array {
-  const binary = atob(text);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
+export const LOCAL_SD_DEFAULT_URL = "http://127.0.0.1:1234";
 
 const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 /** Una riga di solo avanzamento: barre, passi, «2.10s/it». Il campionamento le riscrive sulla stessa riga. */
@@ -147,7 +135,7 @@ export class LocalSdImageService implements ImageService {
   private readonly baseUrl: string;
 
   constructor(private readonly options: LocalSdOptions = {}) {
-    this.baseUrl = (options.baseUrl?.trim() || DEFAULT_URL).replace(/\/$/, "");
+    this.baseUrl = (options.baseUrl?.trim() || LOCAL_SD_DEFAULT_URL).replace(/\/$/, "");
     this.model = options.model ?? FLUX2_KLEIN_4B;
     this.maxReferences = maxReferencesFor(this.model);
   }
@@ -218,7 +206,7 @@ export class LocalSdImageService implements ImageService {
       seed: spec.seed,
       batch_count: 1,
       // Nello stesso ordine dello spec: il prompt le chiama «image 1», «image 2»…
-      ref_images: references.map((r) => `data:${r.mediaType};base64,${toBase64(r.data)}`),
+      ref_images: references.map((r) => dataUri(r.data, r.mediaType)),
       sample_params: {
         sample_steps: this.options.steps ?? 4,
         sample_method: this.options.sampler ?? "euler",

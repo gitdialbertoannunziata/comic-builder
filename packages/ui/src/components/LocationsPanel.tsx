@@ -1,8 +1,8 @@
-import { formatUsd as usd, t } from "../i18n.js";
+import { formatUsd as usd, t, errorText } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compileLocationSpec, LocationSheetSchema, locationSheetPath, projectLocations, type Command, type LocationPatch, type ProjectDoc, type ProjectLocation, type ProjectStore, type RenderSpec } from "@comic-builder/core";
 import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
-import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
+import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "../imageServices.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
@@ -100,7 +100,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
       );
     } catch (cause) {
       if (!descriptionScope.isCurrent()) return;
-      setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+      setNote({ level: "error", text: errorText(cause) });
     }
   }
 
@@ -126,7 +126,7 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
       });
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setNote({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+      setNote({ level: "error", text: errorText(cause) });
     }
   }
 

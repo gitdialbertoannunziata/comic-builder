@@ -1,4 +1,4 @@
-import { t } from "../i18n.js";
+import { t, translateMessage } from "../i18n.js";
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   canForceRevision,
@@ -24,6 +24,7 @@ import {
   type RevisionState,
 } from "@comic-builder/core";
 import { isTyping, listArrows, useLegend } from "../keyboard.js";
+import { sha256Hex } from "@comic-builder/image";
 
 interface Props {
   doc: ProjectDoc;
@@ -95,11 +96,6 @@ const ORIGIN_LABEL: Record<RevisionEntry["origin"], string> = {
   "find-replace": "sostituzione",
   manual: "a mano",
 };
-
-async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 let batch = 0;
 
@@ -284,7 +280,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
     // Correzioni e copione nuovo sono un passo solo: un Ctrl+Z torna al prima.
     const gesture = `script-${++batch}`;
     if (impact.corrections.length > 0) run({ type: "revision.add", chapterId, entries: impact.corrections, by, at: now() }, { gesture });
-    run({ type: "script.set", chapterId, text: compared, sha: await sha256(compared) }, { gesture });
+    run({ type: "script.set", chapterId, text: compared, sha: await sha256Hex(compared) }, { gesture });
     endGesture();
     done(t("Copione aggiornato: {0} pannelli toccati, {1} correzioni da decidere.", impact.touched.length, impact.corrections.length));
     setCompared(null);
@@ -464,7 +460,7 @@ export function RevisionsPanel({ doc, chapterId, run, endGesture, onSelectPanel,
         )}
         {changelogIssues.map((i) => (
           <p key={i.path + i.code} className="issue issue--warning">
-            {i.message}
+            {translateMessage(i.message)}
           </p>
         ))}
         <p className="card__title card__title--row">

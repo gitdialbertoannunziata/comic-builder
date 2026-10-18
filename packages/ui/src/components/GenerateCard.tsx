@@ -1,10 +1,9 @@
-import { formatUsd as usd, t } from "../i18n.js";
-import { useEffect, useRef, useState } from "react";
+import { formatUsd as usd, t, errorText, translateMessage } from "../i18n.js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FLUX2_FLEX,
   FLUX2_KLEIN_4B,
   FLUX2_PRO,
-  maxReferencesFor,
   panelSeed,
   renderState,
   sceneLocation,
@@ -22,154 +21,23 @@ import {
 import {
   AZURE_FLUX_DEPLOYMENT,
   AZURE_FLUX_FLEX_DEPLOYMENT,
-  AzureFluxImageService,
-  azureFluxModel,
-  ComfyUiImageService,
-  comfyModelName,
-  comfyReferenceSlots,
+  COMFY_DEFAULT_URL,
+  LOCAL_SD_DEFAULT_URL,
   DEFAULT_COMFY_WORKFLOW,
   estimateQueue,
-  parseComfyWorkflow,
   FluxImageService,
-  LocalSdImageService,
   MockImageService,
   type ImageService,
 } from "@comic-builder/image";
 import { generatePanels, promoteRender, type GenerationItem, type GenerationReport } from "../editor/generateArt.js";
 import { usePreference } from "../usePreference.js";
 import type { ReferencesTab } from "./ReferencesArea.js";
-import { desktop, networkFetch, useKeyNote } from "../platform/desktop.js";
-import { local, openLocalModels } from "../platform/localModels.js";
+import { useKeyNote } from "../platform/desktop.js";
+import { openLocalModels } from "../platform/localModels.js";
 import type { GenerationScope } from "../useGeneration.js";
-
-/** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
-export interface ImageConfig {
-  service: "azure" | "flux" | "local" | "comfyui" | "mock";
-  onService: (service: ImageConfig["service"]) => void;
-  apiKey: string;
-  onApiKey: (key: string) => void;
-  keyFromEnv: boolean;
-  model: string;
-  onModel: (model: string) => void;
-  baseUrl: string;
-  /** FLUX.2 distribuito su Azure AI Foundry: endpoint della risorsa, sua chiave, nome del deployment (da cui si riconosce il modello). */
-  azureKey: string;
-  onAzureKey: (key: string) => void;
-  azureKeyFromEnv: boolean;
-  azureEndpoint: string;
-  onAzureEndpoint: (endpoint: string) => void;
-  azureDeployment: string;
-  onAzureDeployment: (deployment: string) => void;
-  megapixels: number;
-  onMegapixels: (megapixels: number) => void;
-  /** Il motore locale: dove ascolta sd-server di stable-diffusion.cpp (nel browser, avviato a mano). */
-  localUrl: string;
-  onLocalUrl: (url: string) => void;
-  /** Nell'app desktop il motore locale lo installa e lo avvia l'app: niente indirizzo da scrivere. */
-  localManaged: boolean;
-  /** Il modello delle immagini installato dalla procedura guidata; null se manca. */
-  localModel: string | null;
-  /** ComfyUI dell'autore: dove ascolta, e il flusso in formato API coi segnaposto (vuoto: quello di partenza). */
-  comfyUrl: string;
-  onComfyUrl: (url: string) => void;
-  comfyWorkflow: string;
-  onComfyWorkflow: (workflow: string) => void;
-}
-
-type ComfyWorkflowState = { model: string; slots: number; error: null } | { model: string; slots: 0; error: string };
-/** Il flusso ComfyUI letto una volta per testo: lo si chiede a ogni render, e l'impronta costa. */
-let comfyCache: { text: string; state: ComfyWorkflowState } | null = null;
-
-export function comfyWorkflowState(text: string): ComfyWorkflowState {
-  if (comfyCache?.text === text) return comfyCache.state;
-  let state: ComfyWorkflowState;
-  try {
-    const workflow = parseComfyWorkflow(text);
-    state = { model: comfyModelName(workflow), slots: comfyReferenceSlots(workflow).length, error: null };
-  } catch (cause) {
-    state = { model: "comfyui:?", slots: 0, error: cause instanceof Error ? cause.message : String(cause) };
-  }
-  comfyCache = { text, state };
-  return state;
-}
-
-/** Se il servizio gira sulla GPU di questa macchina: una vignetta alla volta, nessuna spesa, la coda locale. */
-export function onThisMachine(config: Pick<ImageConfig, "service">): boolean {
-  return config.service === "local" || config.service === "comfyui";
-}
-
-/** Quante immagini di riferimento si allegano: le dice il modello o, con ComfyUI, i posti del flusso. */
-export function specMaxReferences(config: ImageConfig): number {
-  return config.service === "comfyui" ? comfyWorkflowState(config.comfyWorkflow).slots : maxReferencesFor(specModel(config));
-}
-
-/** Come si chiama il lavoro nella barra delle code. */
-export function jobModel(config: ImageConfig): string {
-  if (config.service === "local") return config.localModel ?? t("locale");
-  if (config.service === "comfyui") return `ComfyUI · ${specModel(config).slice("comfyui:".length)}`;
-  return specModel(config);
-}
-
-/**
- * Il modello che finisce nello spec: col servizio finto non si registra un
- * render come se fosse di FLUX. Su Azure è il modello, non il nome del
- * deployment: lo stesso spec vale da qualunque fornitore arrivi l'immagine.
- */
-export function specModel(config: ImageConfig): string {
-  if (config.service === "mock") return "mock-image";
-  if (config.service === "local") return FLUX2_KLEIN_4B;
-  // Con ComfyUI il modello è il flusso: i file che carica e un'impronta del grafo.
-  if (config.service === "comfyui") return comfyWorkflowState(config.comfyWorkflow).model;
-  return config.service === "azure" ? azureFluxModel(config.azureDeployment) : config.model.trim() || FLUX2_PRO;
-}
+import { comfyService, comfyWorkflowState, jobModel, localService, makeService, onThisMachine, serviceReady, specModel, type ImageConfig } from "../imageServices.js";
 
 const MODEL_LABEL: Readonly<Record<string, string>> = { [FLUX2_PRO]: "FLUX.2 [pro]", [FLUX2_FLEX]: "FLUX.2 [flex]", [FLUX2_KLEIN_4B]: "FLUX.2 [klein] 4B" };
-
-// Nessuno dei due fornitori abilita CORS: nel browser si passa dal server di sviluppo (vite.config.ts);
-// nell'app desktop le chiamate le fa il processo principale, e il proxy non serve.
-const viaProxy = desktop ? {} : { rewriteUrl: (url: string) => `/image-proxy/${url.replace(/^https:\/\//, "")}` };
-// Il motore locale nemmeno, per quanto se ne sa: stesso server di sviluppo, solo verso questa macchina.
-const viaLocalProxy = desktop ? {} : { rewriteUrl: (url: string) => `/local-image/${url.replace(/^http:\/\//, "")}` };
-
-export function localService(config: ImageConfig): LocalSdImageService {
-  // Nell'app desktop l'indirizzo lo dà il motore quando parte (e ferma quello dello spoglio): lo si chiede alla prima richiesta.
-  // Il log del motore va con la richiesta: se un lavoro fallisce, «generate_image returned no results» senza le sue righe non dice niente.
-  if (config.localManaged && local) {
-    return new LocalSdImageService({ resolveBaseUrl: () => local!.start("image"), engineLog: () => local!.log("image"), model: specModel(config), ...networkFetch });
-  }
-  return new LocalSdImageService({ baseUrl: config.localUrl, model: specModel(config), ...viaLocalProxy, ...networkFetch });
-}
-
-export function comfyService(config: ImageConfig): ComfyUiImageService {
-  return new ComfyUiImageService({ baseUrl: config.comfyUrl, workflow: config.comfyWorkflow, ...viaLocalProxy, ...networkFetch });
-}
-
-export function makeService(config: ImageConfig): ImageService {
-  if (config.service === "mock") return new MockImageService();
-  if (config.service === "local") return localService(config);
-  if (config.service === "comfyui") return comfyService(config);
-  if (config.service === "azure") {
-    return new AzureFluxImageService({ apiKey: config.azureKey, endpoint: config.azureEndpoint, deployment: config.azureDeployment, ...viaProxy, ...networkFetch });
-  }
-  return new FluxImageService({
-    apiKey: config.apiKey,
-    model: specModel(config),
-    baseUrl: config.baseUrl,
-    ...viaProxy,
-    ...networkFetch,
-  });
-}
-
-/** ComfyUI sulla macchina dell'autore: in chiaro solo verso sé stessi, come il resto dei motori locali. */
-const LOOPBACK_URL = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\/?$/;
-
-/** Se c'è quanto serve per chiamare il servizio scelto. */
-export function serviceReady(config: ImageConfig): boolean {
-  if (config.service === "mock") return true;
-  if (config.service === "comfyui") return LOOPBACK_URL.test(config.comfyUrl.trim()) && comfyWorkflowState(config.comfyWorkflow).error === null;
-  if (config.service === "local") return config.localManaged ? config.localModel !== null : /^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(config.localUrl.trim());
-  return config.service === "azure" ? config.azureKey.trim().length > 0 && config.azureEndpoint.trim().length > 0 : config.apiKey.trim().length > 0;
-}
 
 interface Props {
   config: ImageConfig;
@@ -225,14 +93,20 @@ export function GenerateCard({ config, generation, store, project, characters, l
   const ready = serviceReady(config);
 
   // La stima non ha bisogno della chiave: si vede quanto costa prima di metterla.
-  const estimator: ImageService =
-    config.service === "mock" || (config.service === "comfyui" && !ready)
-      ? new MockImageService()
-      : config.service === "local"
-        ? localService(config)
-        : config.service === "comfyui"
-          ? comfyService(config)
-          : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
+  // Uno per configurazione, non uno per render: con ComfyUI costruirlo vuol dire rileggere il flusso.
+  const estimatorModel = specModel(config);
+  const estimator: ImageService = useMemo(
+    () =>
+      config.service === "mock" || (config.service === "comfyui" && !ready)
+        ? new MockImageService()
+        : config.service === "local"
+          ? localService(config)
+          : config.service === "comfyui"
+            ? comfyService(config)
+            : new FluxImageService({ apiKey: "-", model: estimatorModel }),
+    // La stima dipende da servizio e modello, non dalla chiave né dalle callback di `config`.
+    [config.service, ready, estimatorModel, config.comfyUrl, config.comfyWorkflow, config.localUrl, config.localManaged],
+  );
   const local = onThisMachine(config);
   const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec), local ? 1 : 2);
 
@@ -266,7 +140,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
       }
     } catch (cause) {
       if (!mounted.current || !generation.isCurrent()) return;
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(errorText(cause));
     }
   }
 
@@ -406,7 +280,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
                 {config.service === "azure"
                   ? t("Servono endpoint e chiave della risorsa Azure AI Foundry")
                   : config.service === "comfyui"
-                    ? comfyWorkflowState(config.comfyWorkflow).error ?? t("Serve l'indirizzo di ComfyUI, su questa macchina (http://127.0.0.1:8188)")
+                    ? translateMessage(comfyWorkflowState(config.comfyWorkflow).error ?? "") || t("Serve l'indirizzo di ComfyUI, su questa macchina ({0})", COMFY_DEFAULT_URL)
                     : config.service === "local"
                     ? config.localManaged
                       ? t("Il modello locale delle immagini non è ancora installato (Progetto → Modelli locali…)")
@@ -559,7 +433,7 @@ function LocalEngineFields({ config, generation }: { config: ImageConfig; genera
       );
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setStatus({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+      setStatus({ level: "error", text: errorText(cause) });
     }
   }
 
@@ -582,7 +456,7 @@ function LocalEngineFields({ config, generation }: { config: ImageConfig; genera
       ) : (
         <label className="field">
           <span className="field__label">{t("indirizzo del motore")}</span>
-          <input type="text" value={config.localUrl} onChange={(e) => config.onLocalUrl(e.target.value)} placeholder="http://127.0.0.1:1234" />
+          <input type="text" value={config.localUrl} onChange={(e) => config.onLocalUrl(e.target.value)} placeholder={LOCAL_SD_DEFAULT_URL} />
           <span className="field__hint">
             {t("sd-server di stable-diffusion.cpp, avviato su questa macchina con FLUX.2 [klein] 4B, il suo text encoder (Qwen3 4B) e il VAE di FLUX.2. Niente si paga e niente esce dal computer; serve una GPU con 8–13 GB di memoria, o un Mac con Apple Silicon. Nell'app desktop lo installa e lo avvia la procedura guidata.")}</span>
         </label>
@@ -624,7 +498,7 @@ function ComfyFields({ config, generation }: { config: ImageConfig; generation: 
       );
     } catch (cause) {
       if (!generation.isCurrent()) return;
-      setStatus({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+      setStatus({ level: "error", text: errorText(cause) });
     }
   }
 
@@ -632,7 +506,7 @@ function ComfyFields({ config, generation }: { config: ImageConfig; generation: 
     <>
       <label className="field">
         <span className="field__label">{t("indirizzo di ComfyUI")}</span>
-        <input type="text" value={config.comfyUrl} onChange={(e) => config.onComfyUrl(e.target.value)} placeholder="http://127.0.0.1:8188" spellCheck={false} />
+        <input type="text" value={config.comfyUrl} onChange={(e) => config.onComfyUrl(e.target.value)} placeholder={COMFY_DEFAULT_URL} spellCheck={false} />
         <span className="field__hint">{t("ComfyUI avviato su questa macchina (python main.py, o ComfyUI Desktop). Niente si paga e niente esce dal computer.")}</span>
       </label>
       <label className="field">

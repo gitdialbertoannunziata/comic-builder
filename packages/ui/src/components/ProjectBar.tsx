@@ -4,7 +4,7 @@ import type { ProjectEditor, SaveStatus } from "../editor/useProjectEditor.js";
 import type { Area } from "./Workspace.js";
 import { Tabs } from "./Tabs.js";
 import { useLanguage } from "../useLanguage.js";
-import { t } from "../i18n.js";
+import { t, translateMessage } from "../i18n.js";
 
 function statusText(status: SaveStatus, folder: string | null): string {
   switch (status.kind) {
@@ -17,9 +17,9 @@ function statusText(status: SaveStatus, folder: string | null): string {
     case "saved":
       return t("Salvato in «{0}» alle {1}.", folder ?? "?", status.at.toLocaleTimeString());
     case "error":
-      return t("Salvataggio non riuscito: {0}", status.message);
+      return t("Salvataggio non riuscito: {0}", translateMessage(status.message));
     case "locked-out":
-      return status.message;
+      return translateMessage(status.message);
   }
 }
 

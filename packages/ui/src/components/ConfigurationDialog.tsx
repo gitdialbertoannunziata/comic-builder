@@ -4,7 +4,7 @@ import type { PrefilledConfig } from "../devConfig.js";
 import { useKeyNote } from "../platform/desktop.js";
 import { local } from "../platform/localModels.js";
 import type { LlmChoice } from "../runBreakdown.js";
-import type { ImageConfig } from "./GenerateCard.js";
+import type { ImageConfig } from "../imageServices.js";
 import { Tabs } from "./Tabs.js";
 
 export type Configuration = Omit<PrefilledConfig, `${string}FromEnv`>;

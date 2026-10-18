@@ -1,7 +1,7 @@
 import { t } from "../i18n.js";
 import type { Command, ProjectDoc, ProjectStore } from "@comic-builder/core";
 import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
-import type { ImageConfig } from "./GenerateCard.js";
+import type { ImageConfig } from "../imageServices.js";
 import { CharactersPanel } from "./CharactersPanel.js";
 import { LocationsPanel } from "./LocationsPanel.js";
 import { ReferencesPrep } from "./ReferencesPrep.js";

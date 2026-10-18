@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { t, errorText } from "./i18n.js";
 import { useEffect, useState } from "react";
 import { parseFont, type LoadedFont } from "@comic-builder/lettering";
 
@@ -28,7 +28,7 @@ export function useFont(url: string): FontState {
         if (!cancelled) setState({ font: parseFont(buffer), bytes: new Uint8Array(buffer), error: null });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ font: null, bytes: null, error: err instanceof Error ? err.message : String(err) });
+        if (!cancelled) setState({ font: null, bytes: null, error: errorText(err) });
       });
     return () => {
       cancelled = true;

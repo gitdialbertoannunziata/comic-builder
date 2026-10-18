@@ -1,5 +1,57 @@
 # comic-builder
 
+Dal copione in prosa alle tavole di un fumetto: lo spoglio in scene e
+vignette con un modello linguistico, l'impaginazione, il lettering e l'arte
+generata con FLUX.2 (cloud), un motore locale o ComfyUI. Gira nel browser
+o come app desktop (Electron). La specifica è in [`docs/PLAN.md`](docs/PLAN.md),
+e i rimandi `§x.y` nel codice puntano lì.
+
+## Avvio rapido
+
+Servono Node 22 e pnpm 10 (`corepack enable` lo attiva dalla versione
+dichiarata in `package.json`).
+
+```bash
+pnpm install
+pnpm build                              # i pacchetti, core per primo: gli altri ne leggono i tipi compilati
+pnpm --filter @comic-builder/ui dev     # l'interfaccia su http://localhost:5173
+```
+
+Per l'app desktop, e per i modelli locali che installa da sé, vedi
+[`packages/desktop/README.md`](packages/desktop/README.md). Le chiavi e gli
+indirizzi di sviluppo si mettono in `packages/ui/.env.local`, partendo da
+[`packages/ui/.env.example`](packages/ui/.env.example).
+
+## Comandi
+
+| Comando | Cosa fa |
+|---|---|
+| `pnpm build` | compila tutti i pacchetti e la UI |
+| `pnpm test` | i test (Vitest) di tutti i pacchetti |
+| `pnpm lint` | ESLint su tutto il repository |
+| `pnpm typecheck` | TypeScript, senza emettere |
+| `pnpm desktop` | avvia l'app desktop |
+
+La CI (`.github/workflows/ci.yml`) esegue build, lint, typecheck e test a
+ogni push su `main` e su ogni pull request. Su Windows due test degli archivi
+dei motori richiedono la modalità sviluppatore, per creare link simbolici.
+
+## Struttura
+
+| Pacchetto | Cosa contiene |
+|---|---|
+| `core` | il dominio, senza I/O: schemi zod del progetto, comandi dell'editor e cronologia, compilazione di prompt e `RenderSpec`, impaginazione, SVG, revisioni, validazione. ESLint vieta qui fs, rete e React. |
+| `lettering` | metriche dei font e adattamento del testo nei balloon |
+| `llm` | i servizi linguistici (Anthropic, OpenAI, DeepSeek, Ollama, llama-server, finto) e lo spoglio del copione |
+| `image` | i servizi di immagini (FLUX.2 da Black Forest Labs o Azure, sd-server locale, ComfyUI, finto) e la coda di render con tentativi e annullamento |
+| `export` | rasterizzazione con resvg, per Node |
+| `ui` | l'interfaccia React (Vite); nel browser il progetto sta in una cartella scelta con File System Access |
+| `desktop` | il processo principale di Electron: cartelle, rete senza CORS, chiavi cifrate, motori locali |
+
+I lavori di generazione passano da uno scheduler con una coda per corsia
+(`local`, `online-text`, `online-image`): uno alla volta per corsia, con un
+tetto di spesa sul totale di ciò che è in coda.
+
 ## Lingua dell'interfaccia
 
 Il selettore nella barra principale permette di scegliere **Italiano** o

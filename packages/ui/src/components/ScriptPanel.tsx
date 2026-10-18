@@ -1,6 +1,6 @@
-import { t } from "../i18n.js";
+import { t, translateMessage } from "../i18n.js";
 import type { ValidationIssue } from "@comic-builder/core";
-import type { BreakdownProgress } from "@comic-builder/llm";
+import { OLLAMA_DEFAULT_HOST, type BreakdownProgress } from "@comic-builder/llm";
 import { useKeyNote } from "../platform/desktop.js";
 import { installedModel, local, openLocalModels, useLocalModels } from "../platform/localModels.js";
 
@@ -204,7 +204,7 @@ export function ScriptPanel({
                   type="text"
                   value={ollamaHost}
                   onChange={(e) => onOllamaHostChange(e.target.value)}
-                  placeholder="http://localhost:11434"
+                  placeholder={OLLAMA_DEFAULT_HOST}
                 />
                 <span className="field__hint">
                   {t("La richiesta parte dal")}{" "}<strong>browser</strong>{t(", non dal server che serve questa pagina: vale quindi il")}{" "}<code>localhost</code> {" "}{t("della tua macchina. Se Ollama rifiuta, riavvialo con")}{" "}
@@ -338,7 +338,7 @@ export function ScriptPanel({
                     <li key={i}>
                       <div className={`issue issue--${issue.level}`}>
                         <span className="issue__code">{issue.code}</span>
-                        <span className="issue__text">{issue.message}</span>
+                        <span className="issue__text">{translateMessage(issue.message)}</span>
                       </div>
                     </li>
                   ))}

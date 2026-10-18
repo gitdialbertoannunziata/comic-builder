@@ -2,12 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectDoc, ProjectStore } from "@comic-builder/core";
 import { primaryTarget } from "../project.js";
 import type { ArtWatcher } from "./useArtWatcher.js";
-
-function base64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
-}
+import { dataUri, imageMediaType } from "@comic-builder/image";
 
 /** Pannello → file del render che lo riempie: solo dove l'autore non ha messo arte sua, che vince sempre. */
 function renderFiles(doc: ProjectDoc): Map<string, string> {
@@ -49,7 +44,7 @@ export function useRenders(store: ProjectStore, doc: ProjectDoc, art: ArtWatcher
         const bytes = await store.readBytes(path);
         if (!alive) return;
         if (!bytes) continue;
-        cache.current.set(path, URL.createObjectURL(new Blob([bytes as BlobPart], { type: "image/png" })));
+        cache.current.set(path, URL.createObjectURL(new Blob([bytes as BlobPart], { type: imageMediaType(bytes) })));
         changed = true;
       }
       if (changed) setVersion((v) => v + 1);
@@ -84,7 +79,7 @@ export function useRenders(store: ProjectStore, doc: ProjectDoc, art: ArtWatcher
       const out = await artDataUris(target);
       for (const [panelId, file] of renderFiles(target)) {
         const bytes = await store.readBytes(file);
-        if (bytes) out.set(panelId, `data:image/png;base64,${base64(bytes)}`);
+        if (bytes) out.set(panelId, dataUri(bytes, imageMediaType(bytes)));
       }
       return out;
     },
