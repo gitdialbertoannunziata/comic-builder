@@ -363,11 +363,13 @@ export function compileCharacterSheetSpec(input: {
   sheet: CharacterSheet;
   view: SheetView;
   model?: string;
+  /** I posti per i riferimenti, quando non li dice il modello (un flusso ComfyUI). */
+  maxReferences?: number;
 }): RenderSpec {
   const { project, sheet, view } = input;
   const shape = SHEET_VIEWS[view];
-  const max = maxReferencesFor(input.model ?? FLUX2_PRO);
-  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
+  const max = input.maxReferences ?? maxReferencesFor(input.model ?? FLUX2_PRO);
+  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, max, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
   const own: RenderReference[] = used(sheet.references).slice(0, max - style.length).map((path) => ({ kind: "character", ref: sheet.id, path }));
   const references = [...style, ...own];
   const wearing = wardrobeText(sheet, "default");
@@ -422,10 +424,11 @@ export function compileLocationSpec(input: {
   /** L'ora e la luce della scena in cui serve, se si vuole: di norma una luce neutra che mostri il posto. */
   time?: string;
   model?: string;
+  maxReferences?: number;
 }): RenderSpec {
   const { project, location } = input;
-  const max = maxReferencesFor(input.model ?? FLUX2_PRO);
-  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
+  const max = input.maxReferences ?? maxReferencesFor(input.model ?? FLUX2_PRO);
+  const style: RenderReference[] = used(project.style.references).slice(0, Math.min(MAX_STYLE_REFERENCES, max, Math.max(1, Math.floor(max / 4)))).map((path) => ({ kind: "style", ref: "style", path }));
   const own: RenderReference[] = used(location.references).slice(0, max - style.length).map((path) => ({ kind: "location", ref: location.id, path }));
   const references = [...style, ...own];
   const shown = indexesOf(references, "location", location.id);

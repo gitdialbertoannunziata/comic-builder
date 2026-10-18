@@ -4,6 +4,7 @@ import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
 import type { ImageConfig } from "./GenerateCard.js";
 import { CharactersPanel } from "./CharactersPanel.js";
 import { LocationsPanel } from "./LocationsPanel.js";
+import { ReferencesPrep } from "./ReferencesPrep.js";
 import { StylePanel } from "./StylePanel.js";
 import { Tabs } from "./Tabs.js";
 
@@ -19,7 +20,7 @@ interface Props {
   onTab: (tab: ReferencesTab) => void;
   /** Il personaggio o il luogo da aprire, quando ci si arriva da una vignetta. */
   focus: { ref: string; at: number } | null;
-  describe: (places: readonly PlaceToDescribe[]) => Promise<BreakdownPlace[]>;
+  describe: (places: readonly PlaceToDescribe[], signal?: AbortSignal) => Promise<BreakdownPlace[]>;
   describer: string;
   describeService: string;
 }
@@ -43,6 +44,7 @@ export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab,
         <h2 className="area__title">{t("Riferimenti")}</h2>
         <p className="area__lead">{t(LEAD[tab])}</p>
       </header>
+      <ReferencesPrep doc={doc} store={store} image={image} run={run} />
       <Tabs<ReferencesTab>
         label={t("Riferimenti dell'opera")}
         className="tabs--references"

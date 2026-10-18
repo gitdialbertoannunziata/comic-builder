@@ -187,6 +187,7 @@ describe("generation scheduler", () => {
     expect(started).toEqual(["local", "online-text", "online-image"]);
     expect(generationLane("openai", "text")).toBe("online-text");
     expect(generationLane("ollama", "text")).toBe("local");
+    expect(generationLane("comfyui", "image")).toBe("local");
     expect(generationLane("mock", "image")).toBeNull();
     gate.resolve();
     await Promise.all([...jobs, extra]);
@@ -324,5 +325,33 @@ describe("queued image pipeline", () => {
     controller.abort();
     await expect(generatePanels({ ...cancelled, signal: controller.signal })).rejects.toThrow();
     expect(cancelled.service.requests).toHaveLength(0);
+  });
+});
+describe("Tetto di spesa sulla coda", () => {
+  it("conta ciò che è in coda e in corso, e lo libera quando il lavoro finisce", async () => {
+    const scheduler = new GenerationScheduler();
+    const gate = deferred();
+    const first = scheduler.enqueue("online-image", "a", () => gate.promise, { spend: { usd: 1.5, capUsd: 2 } });
+    expect(scheduler.committedUsd()).toBe(1.5);
+    await expect(scheduler.enqueue("online-image", "b", async () => {}, { spend: { usd: 1, capUsd: 2 } })).rejects.toThrow(/già in coda/);
+    // Un lavoro gratis (un motore locale) non tocca il tetto.
+    await scheduler.enqueue("local", "c", async () => {}, { spend: { usd: 0, capUsd: 2 } });
+    gate.resolve();
+    await first;
+    expect(scheduler.committedUsd()).toBe(0);
+    await expect(scheduler.enqueue("online-image", "d", async () => "ok", { spend: { usd: 1, capUsd: 2 } })).resolves.toBe("ok");
+    await expect(scheduler.enqueue("online-image", "e", async () => {}, { spend: { usd: 3, capUsd: 2 } })).rejects.toThrow(/supera il tetto/);
+  });
+
+  it("un lavoro annullato mentre aspetta libera la sua parte", async () => {
+    const scheduler = new GenerationScheduler();
+    const gate = deferred();
+    const running = scheduler.enqueue("online-image", "a", () => gate.promise, { spend: { usd: 1, capUsd: 2 } });
+    const waiting = scheduler.enqueue("online-image", "b", async () => {}, { spend: { usd: 1, capUsd: 2 } });
+    scheduler.cancel(scheduler.getSnapshot()[1]!.id);
+    await expect(waiting).rejects.toThrow();
+    expect(scheduler.committedUsd()).toBe(1);
+    gate.resolve();
+    await running;
   });
 });

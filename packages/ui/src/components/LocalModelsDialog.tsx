@@ -293,7 +293,8 @@ function TryStep({ overview, onBack, onUse, onClose }: { overview: LocalOverview
     const started = Date.now();
     try {
       const llm = new LlamaServerLlmService({ resolveBaseUrl: () => local!.start("text"), fetchImpl: desktopFetch, maxTokens: 200 });
-      const answer = await generation.schedule("local", "text", t("Prova {0}", overview.models.find((model) => model.id === overview.state.models.text)?.label ?? "testo locale"), () => llm.complete({
+      const answer = await generation.schedule("local", "text", t("Prova {0}", overview.models.find((model) => model.id === overview.state.models.text)?.label ?? "testo locale"), (signal) => llm.complete({
+        signal,
         system: "Rispondi solo con JSON conforme allo schema.",
         user: "Scrivi una battuta di un fumetto, in italiano, di non più di dieci parole.",
         schema: { type: "object", properties: { battuta: { type: "string" } }, required: ["battuta"], additionalProperties: false },

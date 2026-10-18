@@ -1,4 +1,4 @@
-import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmError, LlmTruncatedError, networkFailure, requestSignal, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 export const DEFAULT_DEEPSEEK_MODEL = "deepseek-flash";
 
@@ -77,14 +77,13 @@ export class DeepSeekLlmService implements LlmService {
 
   async complete(request: LlmRequest): Promise<LlmResponse> {
     const started = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 300_000);
+    const limited = requestSignal(request.signal, this.options.timeoutMs ?? 300_000);
 
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
         method: "POST",
-        signal: controller.signal,
+        signal: limited.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.options.apiKey}`,
@@ -102,9 +101,7 @@ export class DeepSeekLlmService implements LlmService {
         }),
       });
     } catch (cause) {
-      throw new LlmError(`DeepSeek non raggiungibile su ${this.baseUrl}: controlla la connessione.`, this.name, cause);
-    } finally {
-      clearTimeout(timeout);
+      throw networkFailure(cause, this.name, limited, `DeepSeek non raggiungibile su ${this.baseUrl}: controlla la connessione.`);
     }
 
     if (!response.ok) {
@@ -112,7 +109,12 @@ export class DeepSeekLlmService implements LlmService {
       throw new LlmError(describeStatus(response.status, body), this.name);
     }
 
-    const payload = (await response.json()) as ChatCompletion;
+    let payload: ChatCompletion;
+    try {
+      payload = (await response.json()) as ChatCompletion;
+    } catch (cause) {
+      throw networkFailure(cause, this.name, limited, "La risposta di DeepSeek si è interrotta a metà, o non è JSON: riprova.");
+    }
     const choice = payload.choices?.[0];
 
     if (choice?.finish_reason === "length") {

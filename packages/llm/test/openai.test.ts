@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { OpenAiLlmService } from "../src/openaiService.js";
 import { breakdownJsonSchema, BREAKDOWN_SCHEMA_NAME } from "../src/breakdownSchema.js";
 import { breakdownScript } from "../src/breakdown.js";
-import { LlmTruncatedError } from "../src/service.js";
+import { LlmCancelledError, LlmTruncatedError } from "../src/service.js";
 
 const BREAKDOWN = {
   scenes: [
@@ -192,5 +192,44 @@ describe("Lo spoglio funziona con OpenAI come con gli altri fornitori", () => {
     });
     expect(result.scenes[0]!.id).toBe("s001");
     expect(result.meta.service).toBe("openai");
+  });
+});
+
+describe("OpenAI — annullare e tempo massimo", () => {
+  const request = { system: "s", user: "u", schema: breakdownJsonSchema(), schemaName: BREAKDOWN_SCHEMA_NAME };
+  /** Un server che manda gli header e poi tace finché la richiesta non viene interrotta. */
+  const silent = ((_url: string, init: RequestInit) =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            init.signal?.addEventListener("abort", () => controller.error(init.signal!.reason));
+          },
+        }),
+      ),
+    )) as unknown as typeof fetch;
+
+  it("fermare il lavoro ferma la richiesta, e non è un errore da mostrare", async () => {
+    const controller = new AbortController();
+    const service = new OpenAiLlmService({ apiKey: "k", fetchImpl: silent });
+    const pending = service.complete({ ...request, signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toBeInstanceOf(LlmCancelledError);
+  });
+
+  it("il tempo massimo vale anche mentre arriva la risposta, non solo fino agli header", async () => {
+    const service = new OpenAiLlmService({ apiKey: "k", fetchImpl: silent, timeoutMs: 20 });
+    const error = await service.complete(request).catch((e: unknown) => e as Error);
+    expect(error).not.toBeInstanceOf(LlmCancelledError);
+    expect(error.message).toMatch(/tempo massimo/);
+  });
+
+  it("uno spoglio fermato non fa partire altre richieste", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    const llm = { name: "conta", constraint: "schema" as const, complete: async () => { calls++; throw new Error("non doveva partire"); } };
+    await expect(breakdownScript({ llm, script: "Riga.", scriptFile: "script/c1.md", signal: controller.signal })).rejects.toBeInstanceOf(LlmCancelledError);
+    expect(calls).toBe(0);
   });
 });

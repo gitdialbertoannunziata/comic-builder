@@ -1,0 +1,34 @@
+# Controlli a ogni push su main e a ogni pull request: lint, tipi, test.
+# Gli installer restano in desktop.yml, a mano.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuovo sulla stessa PR rende inutile la corsa precedente.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Prima la build (core per primo): gli altri pacchetti ne leggono i tipi compilati.
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm typecheck
+      # Su Linux anche i test degli archivi dei motori, coi link simbolici, girano davvero.
+      - run: pnpm test

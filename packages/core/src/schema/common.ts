@@ -20,6 +20,19 @@ export type TextDirection = z.infer<typeof TextDirectionSchema>;
 export const IsoDateTimeSchema = z.string().datetime({ offset: true });
 
 /**
+ * Un percorso dentro il progetto: relativo, con `/`, senza `.` né `..`. Il
+ * progetto è un file che si scambia: un percorso che esce dalla cartella
+ * leggerebbe o scriverebbe altrove — e un riferimento letto da lì finirebbe
+ * a un fornitore cloud.
+ */
+export function isProjectPath(path: string): boolean {
+  if (path.length === 0 || path.startsWith("/") || path.includes("\\") || /^[A-Za-z]:/.test(path)) return false;
+  return path.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
+export const ProjectPathSchema = z.string().refine(isProjectPath, { message: "Percorso non valido: dev'essere relativo alla cartella del progetto, senza «..»" });
+
+/**
  * Un'immagine di riferimento curata dall'autore: di un personaggio, di un
  * luogo, dello stile dell'opera. Il modello copia ciò che vede, quindi la
  * curatela è `use`: una scheda raccoglie anche schizzi e prove, e al modello
@@ -27,7 +40,7 @@ export const IsoDateTimeSchema = z.string().datetime({ offset: true });
  */
 export const ReferenceImageSchema = z.object({
   /** Percorso nel progetto, es. `characters/sara/fronte.png`. */
-  path: z.string(),
+  path: ProjectPathSchema,
   note: z.string().default(""),
   /** Se va allegata al modello quando si genera. */
   use: z.boolean().default(true),

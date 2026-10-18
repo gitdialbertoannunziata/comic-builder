@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IdSchema, ReadingDirectionSchema, ReferenceImageSchema, TextDirectionSchema } from "./common.js";
+import { IdSchema, ProjectPathSchema, ReadingDirectionSchema, ReferenceImageSchema, TextDirectionSchema } from "./common.js";
 import { BalloonTypeSchema } from "./balloon.js";
 
 /**
@@ -205,7 +205,7 @@ export type DraftStyle = z.infer<typeof DraftStyleSchema>;
 
 export const FontDeclarationSchema = z.object({
   family: z.string(),
-  path: z.string(),
+  path: ProjectPathSchema,
   license: z.string(),
   scope: z.enum(["dialogue", "caption", "sfx"]),
 });

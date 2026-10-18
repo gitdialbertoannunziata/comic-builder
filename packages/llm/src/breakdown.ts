@@ -2,7 +2,7 @@ import { SceneSchema, beatId, issue, locationRef, type Appearance, type Scene, t
 import { BreakdownSchema, breakdownJsonSchemaForLines, BREAKDOWN_SCHEMA_NAME, ScenePlanSchema, scenePlanJsonSchema, type BreakdownCast, type BreakdownScene } from "./breakdownSchema.js";
 import type { BreakdownPlace } from "./locations.js";
 import { breakdownSystemPrompt, breakdownUserPrompt, type CharacterContext } from "./prompt.js";
-import { LlmError, LlmTruncatedError, type LlmService } from "./service.js";
+import { LlmCancelledError, LlmError, LlmTruncatedError, type LlmService } from "./service.js";
 
 export interface BreakdownProgress {
   done: number;
@@ -45,6 +45,8 @@ export interface BreakdownInput {
   };
   /** Avanzamento, per chi aspetta: «parte 2 di 4». */
   onProgress?: (progress: BreakdownProgress) => void;
+  /** Fermare lo spoglio ferma la richiesta in corso e non ne fa partire altre. */
+  signal?: AbortSignal;
 }
 
 /** Un personaggio del capitolo come il testo lo presenta: la materia di una scheda nuova (§5.1). */
@@ -290,6 +292,7 @@ async function planScenes(input: BreakdownInput): Promise<{ chunks: ScriptChunk[
   let durationMs = 0;
   let sceneIndex = 0;
   for (const [index, window] of windows.entries()) {
+    if (input.signal?.aborted) throw new LlmCancelledError(input.llm.name);
     input.onProgress?.({ done: index, total: windows.length, phase: "planning" });
     const lines = window.text.split("\n");
     const response = await input.llm.complete({
@@ -304,6 +307,7 @@ async function planScenes(input: BreakdownInput): Promise<{ chunks: ScriptChunk[
       user: lines.map((line, offset) => `${window.firstLine + offset}\t${line}`).join("\n"),
       schema: scenePlanJsonSchema(),
       schemaName: "ScenePlan",
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     durationMs += response.meta.durationMs;
     const parsed = ScenePlanSchema.safeParse(response.data);
@@ -427,6 +431,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
   // Ogni parte è una richiesta. Se il fornitore la tronca comunque, la si
   // dimezza e si riprova: il capitolo si spoglia lo stesso, solo in più giri.
   while (queue.length > 0) {
+    if (input.signal?.aborted) throw new LlmCancelledError(input.llm.name);
     const chunk = queue.shift()!;
     input.onProgress?.({ done, total: done + queue.length + 1, ...(chunk.scene ? { phase: "scenes", scene: chunk.scene.index, scenes: chunk.scene.total } as const : {}) });
     let response;
@@ -445,6 +450,7 @@ export async function breakdownScript(input: BreakdownInput): Promise<BreakdownR
         // deve restare: sono quelle della parte che riceve.
         schema: breakdownJsonSchemaForLines(chunk.firstLine, lastLineOf(chunk)),
         schemaName: BREAKDOWN_SCHEMA_NAME,
+        ...(input.signal ? { signal: input.signal } : {}),
       });
     } catch (error) {
       if (error instanceof LlmTruncatedError) {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IdSchema, SourceRefSchema } from "./common.js";
+import { IdSchema, ProjectPathSchema, SourceRefSchema } from "./common.js";
 import { CameraSchema } from "./camera.js";
 import { BalloonSchema } from "./balloon.js";
 
@@ -66,7 +66,7 @@ export const ImageSizeSchema = z.object({ width: z.number().positive(), height: 
 export type ImageSize = z.infer<typeof ImageSizeSchema>;
 
 export const ArtSchema = z.object({
-  source: z.string().nullable(),
+  source: ProjectPathSchema.nullable(),
   status: ArtStatusSchema,
   /** sha del file d'arte al momento della composizione (§9.2): equivalente della staleness nel ramo manuale. */
   sha: z.string().nullable().optional(),
@@ -130,7 +130,7 @@ export const PanelSchema = z.object({
   characters: z.array(PanelCharacterSchema).default([]),
   art: ArtSchema,
   prompt: PromptOverrideSchema.default({ override: null, negative_override: null }),
-  control_image: z.string().nullable().default(null),
+  control_image: ProjectPathSchema.nullable().default(null),
   seed: SeedSchema,
   render: z.record(z.string(), RenderRecordSchema.nullable()).default({}),
   balloons: z.array(BalloonSchema).default([]),

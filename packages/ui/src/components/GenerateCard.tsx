@@ -4,6 +4,7 @@ import {
   FLUX2_FLEX,
   FLUX2_KLEIN_4B,
   FLUX2_PRO,
+  maxReferencesFor,
   panelSeed,
   renderState,
   sceneLocation,
@@ -23,7 +24,12 @@ import {
   AZURE_FLUX_FLEX_DEPLOYMENT,
   AzureFluxImageService,
   azureFluxModel,
+  ComfyUiImageService,
+  comfyModelName,
+  comfyReferenceSlots,
+  DEFAULT_COMFY_WORKFLOW,
   estimateQueue,
+  parseComfyWorkflow,
   FluxImageService,
   LocalSdImageService,
   MockImageService,
@@ -38,7 +44,7 @@ import type { GenerationScope } from "../useGeneration.js";
 
 /** Come si genera: scelto una volta per la sessione, vale per tutti i capitoli. */
 export interface ImageConfig {
-  service: "azure" | "flux" | "local" | "mock";
+  service: "azure" | "flux" | "local" | "comfyui" | "mock";
   onService: (service: ImageConfig["service"]) => void;
   apiKey: string;
   onApiKey: (key: string) => void;
@@ -63,6 +69,45 @@ export interface ImageConfig {
   localManaged: boolean;
   /** Il modello delle immagini installato dalla procedura guidata; null se manca. */
   localModel: string | null;
+  /** ComfyUI dell'autore: dove ascolta, e il flusso in formato API coi segnaposto (vuoto: quello di partenza). */
+  comfyUrl: string;
+  onComfyUrl: (url: string) => void;
+  comfyWorkflow: string;
+  onComfyWorkflow: (workflow: string) => void;
+}
+
+type ComfyWorkflowState = { model: string; slots: number; error: null } | { model: string; slots: 0; error: string };
+/** Il flusso ComfyUI letto una volta per testo: lo si chiede a ogni render, e l'impronta costa. */
+let comfyCache: { text: string; state: ComfyWorkflowState } | null = null;
+
+export function comfyWorkflowState(text: string): ComfyWorkflowState {
+  if (comfyCache?.text === text) return comfyCache.state;
+  let state: ComfyWorkflowState;
+  try {
+    const workflow = parseComfyWorkflow(text);
+    state = { model: comfyModelName(workflow), slots: comfyReferenceSlots(workflow).length, error: null };
+  } catch (cause) {
+    state = { model: "comfyui:?", slots: 0, error: cause instanceof Error ? cause.message : String(cause) };
+  }
+  comfyCache = { text, state };
+  return state;
+}
+
+/** Se il servizio gira sulla GPU di questa macchina: una vignetta alla volta, nessuna spesa, la coda locale. */
+export function onThisMachine(config: Pick<ImageConfig, "service">): boolean {
+  return config.service === "local" || config.service === "comfyui";
+}
+
+/** Quante immagini di riferimento si allegano: le dice il modello o, con ComfyUI, i posti del flusso. */
+export function specMaxReferences(config: ImageConfig): number {
+  return config.service === "comfyui" ? comfyWorkflowState(config.comfyWorkflow).slots : maxReferencesFor(specModel(config));
+}
+
+/** Come si chiama il lavoro nella barra delle code. */
+export function jobModel(config: ImageConfig): string {
+  if (config.service === "local") return config.localModel ?? t("locale");
+  if (config.service === "comfyui") return `ComfyUI · ${specModel(config).slice("comfyui:".length)}`;
+  return specModel(config);
 }
 
 /**
@@ -73,6 +118,8 @@ export interface ImageConfig {
 export function specModel(config: ImageConfig): string {
   if (config.service === "mock") return "mock-image";
   if (config.service === "local") return FLUX2_KLEIN_4B;
+  // Con ComfyUI il modello è il flusso: i file che carica e un'impronta del grafo.
+  if (config.service === "comfyui") return comfyWorkflowState(config.comfyWorkflow).model;
   return config.service === "azure" ? azureFluxModel(config.azureDeployment) : config.model.trim() || FLUX2_PRO;
 }
 
@@ -93,9 +140,14 @@ export function localService(config: ImageConfig): LocalSdImageService {
   return new LocalSdImageService({ baseUrl: config.localUrl, model: specModel(config), ...viaLocalProxy, ...networkFetch });
 }
 
+export function comfyService(config: ImageConfig): ComfyUiImageService {
+  return new ComfyUiImageService({ baseUrl: config.comfyUrl, workflow: config.comfyWorkflow, ...viaLocalProxy, ...networkFetch });
+}
+
 export function makeService(config: ImageConfig): ImageService {
   if (config.service === "mock") return new MockImageService();
   if (config.service === "local") return localService(config);
+  if (config.service === "comfyui") return comfyService(config);
   if (config.service === "azure") {
     return new AzureFluxImageService({ apiKey: config.azureKey, endpoint: config.azureEndpoint, deployment: config.azureDeployment, ...viaProxy, ...networkFetch });
   }
@@ -108,9 +160,13 @@ export function makeService(config: ImageConfig): ImageService {
   });
 }
 
+/** ComfyUI sulla macchina dell'autore: in chiaro solo verso sé stessi, come il resto dei motori locali. */
+const LOOPBACK_URL = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\/?$/;
+
 /** Se c'è quanto serve per chiamare il servizio scelto. */
 export function serviceReady(config: ImageConfig): boolean {
   if (config.service === "mock") return true;
+  if (config.service === "comfyui") return LOOPBACK_URL.test(config.comfyUrl.trim()) && comfyWorkflowState(config.comfyWorkflow).error === null;
   if (config.service === "local") return config.localManaged ? config.localModel !== null : /^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(config.localUrl.trim());
   return config.service === "azure" ? config.azureKey.trim().length > 0 && config.azureEndpoint.trim().length > 0 : config.apiKey.trim().length > 0;
 }
@@ -170,8 +226,15 @@ export function GenerateCard({ config, generation, store, project, characters, l
 
   // La stima non ha bisogno della chiave: si vede quanto costa prima di metterla.
   const estimator: ImageService =
-    config.service === "mock" ? new MockImageService() : config.service === "local" ? localService(config) : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
-  const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec), config.service === "local" ? 1 : 2);
+    config.service === "mock" || (config.service === "comfyui" && !ready)
+      ? new MockImageService()
+      : config.service === "local"
+        ? localService(config)
+        : config.service === "comfyui"
+          ? comfyService(config)
+          : new FluxImageService({ apiKey: config.apiKey.trim() || "-", model: specModel(config) });
+  const local = onThisMachine(config);
+  const estimate = (list: readonly GenerationItem[]) => estimateQueue(estimator, list.map((i) => i.spec), local ? 1 : 2);
 
   async function generate(list: readonly GenerationItem[]) {
     if (list.length === 0) return;
@@ -184,19 +247,19 @@ export function GenerateCard({ config, generation, store, project, characters, l
       return;
     }
     try {
-      const result = await generation.schedule(config.service, "image", t("Pagina {0} · {1} vignette · {2}", pageNumber, list.length, config.service === "local" ? config.localModel ?? "locale" : specModel(config)), async (signal, isCurrent) => {
+      const result = await generation.schedule(config.service, "image", t("Pagina {0} · {1} vignette · {2}", pageNumber, list.length, jobModel(config)), async (signal, isCurrent) => {
         if (mounted.current) setProgress({ done: 0, total: list.length });
         const targetValid = (entry: GenerationItem) => isCurrent() && isItemCurrent(entry);
         return generatePanels({
           store, service: makeService(config), items: list,
           run: (command, options) => isCurrent() && run(command, options),
           endGesture: () => { if (isCurrent()) endGesture(); },
-          signal, concurrency: config.service === "local" ? 1 : 2,
+          signal, concurrency: local ? 1 : 2,
           cancelInFlight: config.service !== "local",
           isValid: targetValid,
           onProgress: (progress) => { if (mounted.current && isCurrent()) setProgress(progress); },
         });
-      });
+      }, undefined, { usd: expected.usd, capUsd: cap });
       if (mounted.current) {
         setReportPage(pageNumber);
         setReport(result);
@@ -267,7 +330,9 @@ export function GenerateCard({ config, generation, store, project, characters, l
               ? `${MODEL_LABEL[specModel(config)]} · Azure`
               : config.service === "local"
                 ? t("{0} · locale", MODEL_LABEL[FLUX2_KLEIN_4B])
-                : specModel(config)}
+                : config.service === "comfyui"
+                  ? jobModel(config)
+                  : specModel(config)}
         </span>
       </p>
 
@@ -340,7 +405,9 @@ export function GenerateCard({ config, generation, store, project, characters, l
               <p className="field__hint">
                 {config.service === "azure"
                   ? t("Servono endpoint e chiave della risorsa Azure AI Foundry")
-                  : config.service === "local"
+                  : config.service === "comfyui"
+                    ? comfyWorkflowState(config.comfyWorkflow).error ?? t("Serve l'indirizzo di ComfyUI, su questa macchina (http://127.0.0.1:8188)")
+                    : config.service === "local"
                     ? config.localManaged
                       ? t("Il modello locale delle immagini non è ancora installato (Progetto → Modelli locali…)")
                       : t("Serve l'indirizzo del motore locale, su questa macchina (http://127.0.0.1:porta)")
@@ -403,6 +470,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
               <option value="azure">FLUX.2 — Azure AI Foundry</option>
               <option value="flux">FLUX.2 — Black Forest Labs</option>
               <option value="local">{t("FLUX.2 [klein] 4B — in locale, sulla tua GPU")}</option>
+              <option value="comfyui">{t("ComfyUI — il tuo flusso, sulla tua GPU")}</option>
               <option value="mock">{t("prova, senza rete né spesa (immagine grigia)")}</option>
             </select>
           </label>
@@ -437,6 +505,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
             </>
           )}
           {config.service === "local" && <LocalEngineFields config={config} generation={generation} />}
+          {config.service === "comfyui" && <ComfyFields config={config} generation={generation} />}
           {config.service === "flux" && (
             <>
               <label className="field">
@@ -460,7 +529,7 @@ export function GenerateCard({ config, generation, store, project, characters, l
             </select>
           </label>
           <label className="field field--inline">
-            <span className="field__label">{t("tetto di spesa per lancio ($)")}</span>
+            <span className="field__label">{t("tetto di spesa della coda ($)")}</span>
             <input type="number" min={0} step={0.5} value={cap} onChange={(e) => setCap(Math.max(0, Number(e.target.value) || 0))} />
           </label>
           <p className="field__hint">{t("La spesa mostrata è una stima sul listino noto; quella vera la dichiara il fornitore a immagine fatta.")}</p>
@@ -481,7 +550,7 @@ function LocalEngineFields({ config, generation }: { config: ImageConfig; genera
   async function check() {
     setStatus(null);
     try {
-      const info = await generation.schedule("local", "image", t("Verifica {0}", config.localModel ?? "motore immagini locale"), () => localService(config).check());
+      const info = await generation.schedule("local", "image", t("Verifica {0}", config.localModel ?? "motore immagini locale"), (signal) => localService(config).check(signal));
       const klein = /klein/i.test(info.model) && /4b/i.test(info.model);
       setStatus(
         klein
@@ -527,6 +596,81 @@ function LocalEngineFields({ config, generation }: { config: ImageConfig; genera
       {status && <p className={`issue issue--${status.level}`}>{status.text}</p>}
       <p className="field__hint">
         {t("Quattro immagini di riferimento al massimo per vignetta (una di stile, una del luogo, il resto ai personaggi). Il modello è molto più piccolo di [pro]: buono per provare inquadrature e pagine, da confrontare con [pro] prima di fidarsene.")}</p>
+    </>
+  );
+}
+
+/**
+ * ComfyUI: dove ascolta, il flusso coi segnaposto, e una verifica che dica
+ * quali nodi o file di modello mancano prima di accodare una pagina intera.
+ */
+function ComfyFields({ config, generation }: { config: ImageConfig; generation: GenerationScope }) {
+  const [status, setStatus] = useState<{ level: "info" | "warning" | "error"; text: string } | null>(null);
+  const checking = generation.phase !== null;
+  const state = comfyWorkflowState(config.comfyWorkflow);
+
+  async function check() {
+    setStatus(null);
+    try {
+      const info = await generation.schedule("comfyui", "image", t("Verifica ComfyUI"), (signal) => comfyService(config).check(signal));
+      const problems = [
+        info.missingNodes.length > 0 ? t("nodi che questo ComfyUI non conosce: {0} (installa il pacchetto di nodi, o aggiorna ComfyUI)", info.missingNodes.join(", ")) : null,
+        ...info.missingValues.map((m) => t("{0} → {1}: «{2}» non c'è (scarica il file nella cartella dei modelli, o correggi il nome nel flusso)", m.node, m.input, m.value)),
+      ].filter((p): p is string => p !== null);
+      setStatus(
+        problems.length === 0
+          ? { level: "info", text: t("ComfyUI {0} risponde ({1}) e ha tutto ciò che il flusso chiede.", info.version, info.device) }
+          : { level: "warning", text: t("ComfyUI {0} risponde ({1}), ma manca qualcosa: {2}.", info.version, info.device, problems.join("; ")) },
+      );
+    } catch (cause) {
+      if (!generation.isCurrent()) return;
+      setStatus({ level: "error", text: cause instanceof Error ? cause.message : String(cause) });
+    }
+  }
+
+  return (
+    <>
+      <label className="field">
+        <span className="field__label">{t("indirizzo di ComfyUI")}</span>
+        <input type="text" value={config.comfyUrl} onChange={(e) => config.onComfyUrl(e.target.value)} placeholder="http://127.0.0.1:8188" spellCheck={false} />
+        <span className="field__hint">{t("ComfyUI avviato su questa macchina (python main.py, o ComfyUI Desktop). Niente si paga e niente esce dal computer.")}</span>
+      </label>
+      <label className="field">
+        <span className="field__label">{t("flusso (formato API)")}</span>
+        <textarea
+          className="comfy-workflow"
+          rows={8}
+          value={config.comfyWorkflow}
+          onChange={(e) => config.onComfyWorkflow(e.target.value)}
+          placeholder={t("Vuoto: FLUX.2 [klein] 4B con quattro riferimenti. Incolla qui il tuo flusso esportato con «Export (API)».")}
+          spellCheck={false}
+        />
+        <span className="field__hint">
+          {t("Segnaposto: {{prompt}}, {{seed}}, {{width}}, {{height}} e {{image_1}} … {{image_N}} nei nodi LoadImage. Se una vignetta ha meno riferimenti dei posti, i nodi dei posti vuoti si tolgono da soli. Cambiare il flusso rende «da rigenerare» le vignette fatte col vecchio.")}
+        </span>
+      </label>
+      {state.error ? (
+        <p className="issue issue--error">{state.error}</p>
+      ) : (
+        <p className="field__hint">
+          {t("Modello registrato:")} <code>{state.model}</code> · {t("{0} posti per i riferimenti", state.slots)}
+        </p>
+      )}
+      <div className="tool-row">
+        <button type="button" className="btn btn--small" disabled={!serviceReady(config)} onClick={() => void check()}>
+          {t("Verifica ComfyUI")}
+        </button>
+        <button type="button" className="btn btn--small" onClick={() => config.onComfyWorkflow(DEFAULT_COMFY_WORKFLOW)} title={t("Scrive qui il flusso di partenza, da modificare")}>
+          {t("mostra il flusso di partenza")}
+        </button>
+        {config.comfyWorkflow.trim() && (
+          <button type="button" className="link-btn" onClick={() => config.onComfyWorkflow("")}>
+            {t("ripristina")}
+          </button>
+        )}
+        {checking && <span role="status">{generation.phase === "queued" ? t("Verifica in coda…") : t("Verifico…")}</span>}
+      </div>
+      {status && <p className={`issue issue--${status.level}`}>{status.text}</p>}
     </>
   );
 }

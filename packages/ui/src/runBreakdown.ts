@@ -40,6 +40,8 @@ export interface RunBreakdownInput extends LlmChoice {
   chapterId: string;
   /** Ciò che si sa dell'opera: personaggi con scheda, luoghi già visti, regole della serie, riassunto del precedente. */
   context?: ChapterContext;
+  /** Annullare il lavoro dalla coda ferma la richiesta al modello. */
+  signal?: AbortSignal;
 }
 
 export interface RunBreakdownResult {
@@ -98,6 +100,7 @@ export async function runBreakdown(input: RunBreakdownInput): Promise<RunBreakdo
     scenePrefix: `${input.chapterId}-s`,
     ...(input.context ? { context: input.context } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+    ...(input.signal ? { signal: input.signal } : {}),
   });
 
   const pages: Page[] = [];

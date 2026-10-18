@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
+import { LlmCancelledError, LlmError, LlmTruncatedError, type LlmService, type LlmRequest, type LlmResponse } from "./service.js";
 
 /**
  * Modello di riferimento. Si cambia dalla configurazione: l'interfaccia esiste
@@ -83,7 +83,7 @@ export class AnthropicLlmService implements LlmService {
         // configurabile dall'utente, e i modelli attuali hanno regole diverse:
         // omettendolo, Opus 5 usa comunque il ragionamento adattivo, mentre un
         // modello che non lo accetta non riceve un parametro che rifiuterebbe.
-      });
+      }, request.signal ? { signal: request.signal } : undefined);
 
       if (response.stop_reason === "refusal") {
         throw new LlmError(
@@ -113,6 +113,7 @@ export class AnthropicLlmService implements LlmService {
       };
     } catch (error) {
       if (error instanceof LlmError) throw error;
+      if (request.signal?.aborted) throw new LlmCancelledError(this.name);
       throw new LlmError(describe(error), this.name, error);
     }
   }

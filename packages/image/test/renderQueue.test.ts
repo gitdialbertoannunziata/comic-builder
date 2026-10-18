@@ -161,3 +161,18 @@ describe("RenderQueue (§9.3)", () => {
     expect(service.requests).toHaveLength(2);
   });
 });
+
+describe("RenderQueue — fermare durante l'attesa fra due tentativi", () => {
+  it("non aspetta la fine del backoff", async () => {
+    const controller = new AbortController();
+    const service = new MockImageService();
+    service.generate = async () => {
+      setTimeout(() => controller.abort(), 10);
+      throw new ImageError("limite", "mock", true, undefined, 60_000);
+    };
+    const started = Date.now();
+    const outcomes = await runRenderQueue(jobs(1), { service, signal: controller.signal });
+    expect(outcomes[0]?.status).toBe("cancelled");
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});

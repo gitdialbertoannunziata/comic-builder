@@ -15,6 +15,8 @@ export interface LlmRequest {
   schema: Record<string, unknown>;
   /** Nome dello schema: alcuni fornitori lo richiedono nella richiesta. */
   schemaName: string;
+  /** Chi ferma il lavoro ferma anche la richiesta: un modello locale non scrive per nessuno. */
+  signal?: AbortSignal;
 }
 
 export interface LlmResponse {
@@ -70,4 +72,37 @@ export class LlmTruncatedError extends LlmError {
     super(message, service);
     this.name = "LlmTruncatedError";
   }
+}
+
+/** Chi ha chiesto ha fermato il lavoro: non è un errore da mostrare. */
+export class LlmCancelledError extends LlmError {
+  constructor(service: string) {
+    super("Richiesta annullata.", service);
+    this.name = "LlmCancelledError";
+  }
+}
+
+/**
+ * Il segnale di una richiesta: quello di chi chiama più il tempo massimo.
+ * Il tempo vale fino all'ultimo byte della risposta, non solo fino agli
+ * header: un fornitore che manda gli header e poi tace non tiene ferma la coda.
+ */
+export function requestSignal(signal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; cancelled: () => boolean; timedOut: () => boolean } {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    cancelled: () => signal?.aborted === true,
+    timedOut: () => timeout.aborted && signal?.aborted !== true,
+  };
+}
+
+/**
+ * Un guasto di rete o di lettura, detto per quello che è: annullato da chi
+ * chiama, scaduto, o — solo se non è nessuno dei due — `otherwise`.
+ */
+export function networkFailure(cause: unknown, service: string, limited: ReturnType<typeof requestSignal>, otherwise: string): LlmError {
+  if (cause instanceof LlmError) return cause;
+  if (limited.cancelled()) return new LlmCancelledError(service);
+  if (limited.timedOut()) return new LlmError(`Il modello (${service}) non ha finito entro il tempo massimo della richiesta: prova un capitolo più corto, o un modello più veloce.`, service, cause);
+  return new LlmError(otherwise, service, cause);
 }

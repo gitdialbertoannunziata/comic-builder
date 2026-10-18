@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { formatUsd, t } from "./i18n.js";
 export type GenerationLane = "local" | "online-text" | "online-image";
 export type GenerationKind = "text" | "image";
 
@@ -7,6 +7,8 @@ export interface GenerationJob {
   lane: GenerationLane;
   label: string;
   state: "queued" | "running";
+  /** Quanto si stima che costi: conta per il tetto di spesa finché il lavoro è in coda o in corso. */
+  usd: number;
 }
 
 interface PendingJob {
@@ -19,11 +21,17 @@ interface PendingJob {
 export interface GenerationOptions {
   signal?: AbortSignal;
   isValid?: () => boolean;
+  /**
+   * La stima del lavoro e il tetto di spesa. Il tetto vale per tutto ciò che
+   * è in coda insieme: dieci clic da 1 $ sotto un tetto di 2 $ non fanno 10 $.
+   */
+  spend?: { usd: number; capUsd: number };
 }
 
 export function generationLane(service: string, kind: GenerationKind): GenerationLane | null {
   if (service === "mock") return null;
-  if (service === "local" || service === "ollama") return "local";
+  // ComfyUI gira sulla stessa GPU dei modelli locali: una coda sola, o si contendono la memoria.
+  if (service === "local" || service === "ollama" || service === "comfyui") return "local";
   return kind === "text" ? "online-text" : "online-image";
 }
 
@@ -45,13 +53,31 @@ export class GenerationScheduler {
     this.jobs.find((job) => job.info.id === id)?.cancel();
   }
 
+  /** La spesa stimata di ciò che è in coda o in corso. */
+  committedUsd(): number {
+    return this.jobs.reduce((sum, job) => sum + job.info.usd, 0);
+  }
+
   enqueue<Result>(lane: GenerationLane, label: string, run: (signal: AbortSignal) => Promise<Result>, options: GenerationOptions = {}): Promise<Result> {
     if (options.signal?.aborted) return Promise.reject(new DOMException(t("Generazione annullata."), "AbortError"));
+    const usd = Math.max(0, options.spend?.usd ?? 0);
+    if (options.spend && usd > 0) {
+      const committed = this.committedUsd();
+      if (committed + usd > options.spend.capUsd) {
+        return Promise.reject(
+          new Error(
+            committed > 0
+              ? t("La stima ({0}), sommata a quanto è già in coda ({1}), supera il tetto di spesa ({2}): aspetta che la coda si svuoti, o alza il tetto.", formatUsd(usd), formatUsd(committed), formatUsd(options.spend.capUsd))
+              : t("La stima ({0}) supera il tetto di spesa ({1}).", formatUsd(usd), formatUsd(options.spend.capUsd)),
+          ),
+        );
+      }
+    }
     return new Promise<Result>((resolve, reject) => {
       const controller = new AbortController();
       const cleanup = () => options.signal?.removeEventListener("abort", job.cancel);
       const job: PendingJob = {
-        info: { id: ++this.nextId, lane, label, state: "queued" },
+        info: { id: ++this.nextId, lane, label, state: "queued", usd },
         controller,
         cancel: () => {
           controller.abort();

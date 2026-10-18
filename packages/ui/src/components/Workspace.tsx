@@ -47,7 +47,7 @@ import { StripView } from "./StripView.js";
 import { RevisionsPanel } from "./RevisionsPanel.js";
 import { NoteButton } from "./NoteButton.js";
 import { PromptCard } from "./PromptCard.js";
-import { GenerateCard, specModel, type ImageConfig } from "./GenerateCard.js";
+import { GenerateCard, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
 import { PanelCharacters } from "./PanelCharacters.js";
 import { ExportPanel } from "./ExportPanel.js";
 import { Tabs } from "./Tabs.js";
@@ -307,6 +307,7 @@ export function Workspace({ editor, art, platform, image, chapter, imageGenerati
   // Gli spec di generazione (§9.1) per la pagina, solo sul formato principale:
   // è lì che `panel.render` conta per l'anteprima e per l'export.
   const model = specModel(image);
+  const maxReferences = specMaxReferences(image);
   const generation = useMemo(() => {
     if (!briefs || !preview || preview.targetId !== primaryTarget.id) return null;
     return briefs.list.flatMap((brief) => {
@@ -317,11 +318,11 @@ export function Workspace({ editor, art, platform, image, chapter, imageGenerati
         {
           pageId: page.id,
           panel,
-          spec: compileRenderSpec({ brief, panel, project: doc.project, scene: own, characters: doc.characters, locations: doc.locations, model, megapixels: image.megapixels }),
+          spec: compileRenderSpec({ brief, panel, project: doc.project, scene: own, characters: doc.characters, locations: doc.locations, model, maxReferences, megapixels: image.megapixels }),
         },
       ];
     });
-  }, [briefs, preview, page, doc.project, doc.scenes.scenes, doc.characters, doc.locations, scene, model, image.megapixels]);
+  }, [briefs, preview, page, doc.project, doc.scenes.scenes, doc.characters, doc.locations, scene, model, maxReferences, image.megapixels]);
 
   // Avvisi sui personaggi (Appendice A) che riguardano la pagina aperta.
   const characterIssues = useMemo(() => {

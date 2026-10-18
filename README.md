@@ -51,3 +51,36 @@ vuoto, non annulla i lavori immagini: conservano la pagina di destinazione
 originale. Cambiare progetto rimuove i relativi lavori in attesa. Le code sono in memoria nella singola
 istanza dell'app: ricaricare o chiudere l'app le svuota, senza ripristino
 automatico dei lavori. Le code non sostituiscono i limiti e i retry dei provider.
+
+## ComfyUI
+
+In **Progetto > Configurazione > Immagini** (o in Pagine → Arte → «servizio e
+spesa») si può scegliere **ComfyUI**: le immagini le genera il ComfyUI avviato
+su questa macchina (di norma `http://127.0.0.1:8188`), coi suoi modelli e i
+suoi nodi. Niente si paga e niente esce dal computer; i lavori usano la coda
+locale, come gli altri modelli sulla GPU.
+
+Senza un flusso proprio vale quello di partenza: FLUX.2 [klein] 4B
+(`flux-2-klein-4b.safetensors`, `qwen_3_4b.safetensors`,
+`flux2-vae.safetensors`) con quattro immagini di riferimento. Per usare un
+altro modello si incolla un flusso esportato da ComfyUI con **Export (API)**,
+scrivendo nei campi i segnaposto `{{prompt}}`, `{{seed}}`, `{{width}}`,
+`{{height}}` e `{{image_1}}` … `{{image_N}}` (nei nodi `LoadImage`). Il numero
+di segnaposto delle immagini decide quanti riferimenti si allegano; se una
+vignetta ne ha meno, i nodi dei posti vuoti si tolgono e la catena dei
+`ReferenceLatent` si ricollega da sola.
+
+**Verifica ComfyUI** dice se mancano nodi o file di modello prima di
+accodare. Lo spec registra il modello come `comfyui:<file>@<impronta>`:
+cambiare il flusso rende «da rigenerare» le vignette fatte col precedente.
+Fermare un lavoro lo toglie dalla coda di ComfyUI, o interrompe il render se
+e' gia' in corso.
+
+## Preparare i riferimenti
+
+In **Riferimenti** il riquadro «prepara i riferimenti» genera in un solo
+lavoro la vista di fronte di ogni personaggio descritto e la tavola di ogni
+luogo descritto che non hanno ancora un'immagine. Conviene farlo dopo lo
+spoglio e prima delle vignette: ogni vignetta riceve poi quelle immagini, e
+facce e stanze restano le stesse da una pagina all'altra. Chi nel frattempo
+riceve un'immagine o cambia descrizione viene saltato.
