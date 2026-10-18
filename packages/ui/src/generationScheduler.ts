@@ -23,7 +23,8 @@ export interface GenerationOptions {
 
 export function generationLane(service: string, kind: GenerationKind): GenerationLane | null {
   if (service === "mock") return null;
-  if (service === "local" || service === "ollama") return "local";
+  // ComfyUI gira sulla stessa GPU dei modelli locali: una coda sola, o si contendono la memoria.
+  if (service === "local" || service === "ollama" || service === "comfyui") return "local";
   return kind === "text" ? "online-text" : "online-image";
 }
 

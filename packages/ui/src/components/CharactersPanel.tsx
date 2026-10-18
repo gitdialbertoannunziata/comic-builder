@@ -13,7 +13,7 @@ import {
   type ProjectStore,
   type SheetView,
 } from "@comic-builder/core";
-import { makeService, serviceReady, specModel, type ImageConfig } from "./GenerateCard.js";
+import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
@@ -88,7 +88,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
     let made = 0;
     const created: CharacterSheet["references"] = [];
     try {
-      await generation.schedule(image.service, "image", t("Personaggio {0} · {1}", sheet.name, image.service === "local" ? image.localModel ?? "locale" : specModel(image)), async (signal, isCurrent) => {
+      await generation.schedule(image.service, "image", t("Personaggio {0} · {1}", sheet.name, jobModel(image)), async (signal, isCurrent) => {
         const service = makeService(image);
         for (const view of views) {
           if (!isCurrent()) throw new DOMException(t("Generazione annullata."), "AbortError");
@@ -96,7 +96,7 @@ export function CharactersPanel({ doc, store, image, run, endGesture, focus = nu
           if (!now || appearanceText(now) !== appearanceText(sheet)) throw new Error(t("La scheda personaggio e' cambiata. Rilancia la generazione."));
           current = { ...current, references: [...now.references, ...created.filter((entry) => !now.references.some((reference) => reference.path === entry.path))] };
           setGenerating(`${SHEET_VIEWS[view].label} (${made + 1}/${views.length})`);
-          const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image) });
+          const spec = compileCharacterSheetSpec({ project: doc.project, sheet: current, view, model: specModel(image), maxReferences: specMaxReferences(image) });
           const path = characterSheetPath(spec, view);
           cost += (await generateReference({ store, service, spec, path, signal, cancelInFlight: image.service !== "local" })).costUsd;
           if (!isCurrent()) throw new DOMException(t("Generazione annullata."), "AbortError");

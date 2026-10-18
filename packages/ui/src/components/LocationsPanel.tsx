@@ -2,7 +2,7 @@ import { formatUsd as usd, t } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compileLocationSpec, LocationSheetSchema, locationSheetPath, projectLocations, type Command, type LocationPatch, type ProjectDoc, type ProjectLocation, type ProjectStore } from "@comic-builder/core";
 import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
-import { makeService, serviceReady, specModel, type ImageConfig } from "./GenerateCard.js";
+import { jobModel, makeService, serviceReady, specMaxReferences, specModel, type ImageConfig } from "./GenerateCard.js";
 import { ReferenceImages } from "./ReferenceImages.js";
 import { generateReference } from "../editor/generateArt.js";
 import { listArrows } from "../keyboard.js";
@@ -102,9 +102,9 @@ export function LocationsPanel({ doc, store, image, run, endGesture, describe, d
     setBusy(t("genero la tavola del luogo…"));
     try {
       const current = sheet ?? LocationSheetSchema.parse({ schema: 1, id: location.ref, name: location.name });
-      const spec = compileLocationSpec({ project: doc.project, location: current, model: specModel(image) });
+      const spec = compileLocationSpec({ project: doc.project, location: current, model: specModel(image), maxReferences: specMaxReferences(image) });
       const path = locationSheetPath(spec);
-      const { costUsd } = await generation.schedule(image.service, "image", t("Luogo {0} · {1}", location.name, image.service === "local" ? image.localModel ?? "locale" : specModel(image)), (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => {
+      const { costUsd } = await generation.schedule(image.service, "image", t("Luogo {0} · {1}", location.name, jobModel(image)), (signal) => generateReference({ store, service: makeService(image), spec, path, signal, cancelInFlight: image.service !== "local" }), () => {
         const now = latest.current.locations[location.ref];
         return now?.description === sheet?.description && now?.palette === sheet?.palette && now?.name === sheet?.name;
       });

@@ -23,7 +23,8 @@ interface Props {
 interface ConfigField {
   key: keyof Configuration;
   label: string;
-  type?: "password" | "url";
+  type?: "password" | "url" | "textarea";
+  placeholder?: string;
 }
 
 const TEXT_GROUPS: readonly { label: string; fields: readonly ConfigField[] }[] = [
@@ -36,6 +37,13 @@ const TEXT_GROUPS: readonly { label: string; fields: readonly ConfigField[] }[] 
 const IMAGE_GROUPS: typeof TEXT_GROUPS = [
   { label: "Azure AI Foundry · FLUX", fields: [{ key: "azureFluxEndpoint", label: "Endpoint", type: "url" }, { key: "azureFluxKey", label: "Chiave API", type: "password" }, { key: "azureFluxDeployment", label: "Deployment" }] },
   { label: "Black Forest Labs · FLUX", fields: [{ key: "bflKey", label: "Chiave API", type: "password" }, { key: "bflModel", label: "Modello" }, { key: "bflBaseUrl", label: "URL base", type: "url" }] },
+  {
+    label: "ComfyUI",
+    fields: [
+      { key: "comfyUrl", label: "Indirizzo", type: "url" },
+      { key: "comfyWorkflow", label: "Flusso (formato API)", type: "textarea", placeholder: "Vuoto: FLUX.2 [klein] 4B con quattro riferimenti. Incolla qui il tuo flusso esportato con «Export (API)»." },
+    ],
+  },
 ];
 
 export function ConfigurationDialog({ open, onClose, config, onChange, service, onService, imageService, onImageService }: Props) {
@@ -87,6 +95,7 @@ export function ConfigurationDialog({ open, onClose, config, onChange, service, 
                 <option value="azure">Azure AI Foundry</option>
                 <option value="flux">Black Forest Labs</option>
                 <option value="local">{t("Modello locale")}</option>
+                <option value="comfyui">ComfyUI</option>
               </select>
             )}
           </label>
@@ -97,13 +106,24 @@ export function ConfigurationDialog({ open, onClose, config, onChange, service, 
                 {group.fields.map((field) => (
                   <label className="field" key={field.key}>
                     <span className="field__label">{t(field.label)}</span>
-                    <input
-                      type={field.type ?? "text"}
-                      value={config[field.key]}
-                      onChange={(event) => onChange(field.key, event.target.value)}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
+                    {field.type === "textarea" ? (
+                      <textarea
+                        className="comfy-workflow"
+                        rows={6}
+                        value={config[field.key]}
+                        onChange={(event) => onChange(field.key, event.target.value)}
+                        placeholder={field.placeholder ? t(field.placeholder) : undefined}
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <input
+                        type={field.type ?? "text"}
+                        value={config[field.key]}
+                        onChange={(event) => onChange(field.key, event.target.value)}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    )}
                   </label>
                 ))}
               </div>

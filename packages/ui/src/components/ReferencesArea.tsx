@@ -4,6 +4,7 @@ import type { BreakdownPlace, PlaceToDescribe } from "@comic-builder/llm";
 import type { ImageConfig } from "./GenerateCard.js";
 import { CharactersPanel } from "./CharactersPanel.js";
 import { LocationsPanel } from "./LocationsPanel.js";
+import { ReferencesPrep } from "./ReferencesPrep.js";
 import { StylePanel } from "./StylePanel.js";
 import { Tabs } from "./Tabs.js";
 
@@ -43,6 +44,7 @@ export function ReferencesArea({ doc, store, image, run, endGesture, tab, onTab,
         <h2 className="area__title">{t("Riferimenti")}</h2>
         <p className="area__lead">{t(LEAD[tab])}</p>
       </header>
+      <ReferencesPrep doc={doc} store={store} image={image} run={run} />
       <Tabs<ReferencesTab>
         label={t("Riferimenti dell'opera")}
         className="tabs--references"

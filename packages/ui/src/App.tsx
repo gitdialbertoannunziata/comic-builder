@@ -125,6 +125,8 @@ export function App() {
   const [azureFluxDeployment, setAzureFluxDeployment] = usePreference("azureFluxDeployment", prefilled.azureFluxDeployment);
   const [megapixels, setMegapixels] = usePreference("imageMegapixels", 1);
   const [localImageUrl, setLocalImageUrl] = usePreference("localImageUrl", "http://127.0.0.1:1234");
+  const [comfyUrl, setComfyUrl] = usePreference("comfyUrl", prefilled.comfyUrl);
+  const [comfyWorkflow, setComfyWorkflow] = usePreference("comfyWorkflow", prefilled.comfyWorkflow);
   // I modelli locali dell'app desktop: installati dalla procedura guidata, avviati dall'app.
   const localModels = useLocalModels();
   const [localDialog, setLocalDialog] = useState(false);
@@ -150,6 +152,10 @@ export function App() {
     onMegapixels: setMegapixels,
     localUrl: localImageUrl,
     onLocalUrl: setLocalImageUrl,
+    comfyUrl,
+    onComfyUrl: setComfyUrl,
+    comfyWorkflow,
+    onComfyWorkflow: setComfyWorkflow,
     localManaged: local !== null,
     localModel: installedModel(localModels, "image")?.label ?? null,
   };
@@ -305,7 +311,7 @@ export function App() {
       <ConfigurationDialog
         open={configurationOpen}
         onClose={() => setConfigurationOpen(false)}
-        config={{ ...llm, bflKey, bflModel, bflBaseUrl, azureFluxKey, azureFluxEndpoint, azureFluxDeployment }}
+        config={{ ...llm, bflKey, bflModel, bflBaseUrl, azureFluxKey, azureFluxEndpoint, azureFluxDeployment, comfyUrl, comfyWorkflow }}
         onChange={(field, value) => ({
           anthropicKey: setAnthropicKey,
           anthropicModel: setAnthropicModel,
@@ -322,6 +328,8 @@ export function App() {
           azureFluxKey: setAzureFluxKey,
           azureFluxEndpoint: setAzureFluxEndpoint,
           azureFluxDeployment: setAzureFluxDeployment,
+          comfyUrl: setComfyUrl,
+          comfyWorkflow: setComfyWorkflow,
         })[field](value)}
         service={service}
         onService={setService}

@@ -187,6 +187,7 @@ describe("generation scheduler", () => {
     expect(started).toEqual(["local", "online-text", "online-image"]);
     expect(generationLane("openai", "text")).toBe("online-text");
     expect(generationLane("ollama", "text")).toBe("local");
+    expect(generationLane("comfyui", "image")).toBe("local");
     expect(generationLane("mock", "image")).toBeNull();
     gate.resolve();
     await Promise.all([...jobs, extra]);

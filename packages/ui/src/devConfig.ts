@@ -28,6 +28,7 @@ interface DevEnv {
   VITE_AZURE_FLUX_ENDPOINT?: string;
   VITE_AZURE_FLUX_API_KEY?: string;
   VITE_AZURE_FLUX_DEPLOYMENT?: string;
+  VITE_COMFYUI_URL?: string;
 }
 
 function devEnv(): DevEnv {
@@ -56,6 +57,9 @@ export interface PrefilledConfig {
   azureFluxKey: string;
   azureFluxDeployment: string;
   azureFluxKeyFromEnv: boolean;
+  /** ComfyUI, sulla macchina dell'autore: dove ascolta e il flusso in formato API (vuoto: quello di partenza). */
+  comfyUrl: string;
+  comfyWorkflow: string;
 }
 
 export function prefilledConfig(): PrefilledConfig {
@@ -87,5 +91,7 @@ export function prefilledConfig(): PrefilledConfig {
     azureFluxKey,
     azureFluxDeployment: env.VITE_AZURE_FLUX_DEPLOYMENT?.trim() || "FLUX.2-pro",
     azureFluxKeyFromEnv: azureFluxKey.length > 0,
+    comfyUrl: env.VITE_COMFYUI_URL?.trim() || "http://127.0.0.1:8188",
+    comfyWorkflow: "",
   };
 }

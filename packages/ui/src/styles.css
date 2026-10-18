@@ -1867,6 +1867,13 @@ code {
   width: 100%;
 }
 
+/* Il flusso ComfyUI è JSON: si legge meglio a spaziatura fissa. */
+.comfy-workflow {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+
 /* Personaggi. */
 .character-list {
   display: flex;
