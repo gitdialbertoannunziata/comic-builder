@@ -74,6 +74,8 @@ const holder = (() => {
 export interface ProjectEditor {
   doc: ProjectDoc;
   history: History;
+  /** La cartella o il recupero della sessione precedente sono stati controllati. */
+  initialized: boolean;
   folder: string | null;
   /** La cartella del progetto su disco, se scelta. */
   store: ProjectStore | null;
@@ -121,6 +123,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   const [recoveredAt, setRecoveredAt] = useState<Date | null>(null);
   const [saved, setSaved] = useState<ProjectDoc | null>(null);
   const [status, setStatus] = useState<SaveStatus>({ kind: "memory" });
+  const [initialized, setInitialized] = useState(false);
   const [loadIssues, setLoadIssues] = useState<ValidationIssue[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const historyRef = useRef(history);
@@ -348,30 +351,34 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
     if (restored.current) return;
     restored.current = true;
     void (async () => {
-      // Se l'ultima riapertura automatica ha fatto cadere la scheda (vedi
-      // `markFolderRestore`), non la si ritenta: si dimentica la cartella.
-      if (folderRestoreCrashed()) {
-        await forgetFolder();
-        setNotice(t("La riapertura automatica dell'ultimo progetto non è riuscita: aprilo da «Apri progetto…»."));
-      }
-      markFolderRestore(true);
-      const handle = await rememberedFolder();
-      markFolderRestore(false);
-      if (handle) {
-        // Senza API dei permessi (cartelle private del browser) non c'è nulla da chiedere.
-        const state = (await handle.queryPermission?.({ mode: "readwrite" })) ?? "granted";
-        if (state === "granted") {
-          await openHandle(handle);
+      try {
+        // Se l'ultima riapertura automatica ha fatto cadere la scheda (vedi
+        // `markFolderRestore`), non la si ritenta: si dimentica la cartella.
+        if (folderRestoreCrashed()) {
+          await forgetFolder();
+          setNotice(t("La riapertura automatica dell'ultimo progetto non è riuscita: aprilo da «Apri progetto…»."));
+        }
+        markFolderRestore(true);
+        const handle = await rememberedFolder();
+        markFolderRestore(false);
+        if (handle) {
+          // Senza API dei permessi (cartelle private del browser) non c'è nulla da chiedere.
+          const state = (await handle.queryPermission?.({ mode: "readwrite" })) ?? "granted";
+          if (state === "granted") {
+            await openHandle(handle);
+            return;
+          }
+          setReopenHandle(handle);
           return;
         }
-        setReopenHandle(handle);
-        return;
+        const recovery = await loadRecovery();
+        if (!recovery) return;
+        for (const asset of recovery.assets) await memory.writeBytes(asset.path, asset.data);
+        commit(() => createHistory(recovery.doc));
+        setRecoveredAt(new Date(recovery.at));
+      } finally {
+        setInitialized(true);
       }
-      const recovery = await loadRecovery();
-      if (!recovery) return;
-      for (const asset of recovery.assets) await memory.writeBytes(asset.path, asset.data);
-      commit(() => createHistory(recovery.doc));
-      setRecoveredAt(new Date(recovery.at));
     })();
     // Una volta sola, all'avvio.
   }, []);
@@ -447,6 +454,7 @@ export function useProjectEditor(initial: ProjectDoc): ProjectEditor {
   return {
     doc: history.present,
     history,
+    initialized,
     folder: store?.label ?? null,
     store,
     assets: store ?? memory,

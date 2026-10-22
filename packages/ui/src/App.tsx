@@ -23,6 +23,7 @@ import { usePreference } from "./usePreference.js";
 import { useSecret } from "./platform/desktop.js";
 import { focusCanvas, isTyping, LIST_LEGEND, useLegend, useShortcuts } from "./keyboard.js";
 import { ShortcutsHelp } from "./components/ShortcutsHelp.js";
+import { WelcomeDialog } from "./components/WelcomeDialog.js";
 import { LocalModelsDialog } from "./components/LocalModelsDialog.js";
 import { ConfigurationDialog } from "./components/ConfigurationDialog.js";
 import { installedModel, local, onOpenLocalModels, useLocalModels } from "./platform/localModels.js";
@@ -265,6 +266,27 @@ export function App() {
   const openRevisions = (doc.revisions[chapter.id]?.entries ?? []).filter((e) => e.status === "open").length;
 
   const [help, setHelp] = useState(false);
+  const [welcomeDismissed, setWelcomeDismissed] = usePreference("welcomeDismissed", false);
+  const [guideStep, setGuideStep] = useState<number | null>(null);
+  const showWelcome = editor.initialized && !editor.folder && !editor.reopenable && !editor.recoveredAt && !welcomeDismissed && guideStep === null;
+  useEffect(() => {
+    if (editor.initialized && (editor.folder || editor.reopenable || editor.recoveredAt)) setWelcomeDismissed(true);
+  }, [editor.initialized, editor.folder, editor.reopenable, editor.recoveredAt, setWelcomeDismissed]);
+  function startGuide() {
+    setWelcomeDismissed(true);
+    setArea("copione");
+    setGuideStep(0);
+  }
+  function closeWelcome() {
+    setWelcomeDismissed(true);
+    setGuideStep(null);
+  }
+  function createProjectFromWelcome() {
+    setWelcomeDismissed(true);
+    setGuideStep(null);
+    setArea("copione");
+    void editor.newProject(t("Senza titolo"));
+  }
   function stepChapter(step: 1 | -1) {
     const ordered = [...chapters].sort((a, b) => a.number - b.number);
     const next = ordered[ordered.findIndex((c) => c.id === chapter.id) + step];
@@ -306,12 +328,25 @@ export function App() {
           onArea={setArea}
           openRevisions={openRevisions}
           onHelp={() => setHelp(true)}
+          onGuide={startGuide}
           onConfiguration={() => setConfigurationOpen(true)}
           {...(local ? { onLocalModels: () => setLocalDialog(true) } : {})}
         />
         <GenerationQueues />
       </div>
       <ShortcutsHelp open={help} onClose={() => setHelp(false)} />
+      <WelcomeDialog
+        open={showWelcome || guideStep !== null}
+        mode={guideStep === null ? "welcome" : "guide"}
+        step={guideStep ?? 0}
+        onExplore={startGuide}
+        onCreate={createProjectFromWelcome}
+        onClose={closeWelcome}
+        onStep={(step, nextArea) => {
+          setGuideStep(step);
+          setArea(nextArea);
+        }}
+      />
       <ConfigurationDialog
         open={configurationOpen}
         onClose={() => setConfigurationOpen(false)}

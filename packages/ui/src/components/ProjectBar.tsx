@@ -54,6 +54,7 @@ interface Props {
   openRevisions: number;
   /** Apre la legenda delle scorciatoie. */
   onHelp: () => void;
+  onGuide: () => void;
   onConfiguration: () => void;
   /** Solo nell'app desktop: la procedura guidata dei modelli locali. */
   onLocalModels?: () => void;
@@ -63,7 +64,7 @@ interface Props {
  * La barra: dove si è (opera, capitolo, area di lavoro) e se il lavoro è al
  * sicuro. Una riga; avvisi ed errori ne aggiungono una solo quando ci sono.
  */
-export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp, onConfiguration, onLocalModels }: Props) {
+export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area, onArea, openRevisions, onHelp, onGuide, onConfiguration, onLocalModels }: Props) {
   const [language, onLanguage] = useLanguage();
   const { status, folder } = editor;
   const tone = status.kind === "error" || status.kind === "locked-out" ? "error" : status.kind === "memory" ? "warn" : status.kind === "saved" ? "ok" : "busy";
@@ -170,6 +171,8 @@ export function ProjectBar({ editor, chapters, chapterId, onSelectChapter, area,
               )}
               <button type="button" className="menu__item" onClick={onConfiguration}>
                 {t("Configurazione…")}</button>
+              <button type="button" className="menu__item" onClick={onGuide}>
+                {t("Guida rapida…")}</button>
               {onLocalModels && (
                 <button type="button" className="menu__item" onClick={onLocalModels}>
                   {t("Modelli locali…")}</button>

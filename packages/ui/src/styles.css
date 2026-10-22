@@ -2757,6 +2757,61 @@ kbd {
   border-radius: var(--r-sm);
 }
 
+.welcome {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 0;
+  border: 2px solid var(--ink-line);
+  border-radius: var(--r-lg);
+  box-shadow: 6px 6px 0 var(--ink-shadow);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.welcome::backdrop {
+  background: rgba(28, 28, 26, 0.4);
+}
+
+.welcome__body {
+  padding: 24px;
+}
+
+.welcome__eyebrow,
+.welcome__progress {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.welcome__title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.welcome__description {
+  margin: 12px 0 18px;
+  max-width: 58ch;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.welcome__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome__note {
+  margin: 14px 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
