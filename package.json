@@ -8,7 +8,8 @@
     "build": "pnpm --filter @comic-builder/core build && pnpm -r --filter !@comic-builder/core build",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
-    "desktop": "pnpm --filter @comic-builder/desktop start"
+    "desktop": "pnpm --filter @comic-builder/desktop start",
+    "mcp": "pnpm --filter @comic-builder/mcp start"
   },
   "devDependencies": {
     "eslint": "^9.15.0",
