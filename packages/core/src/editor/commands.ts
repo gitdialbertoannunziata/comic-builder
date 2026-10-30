@@ -1,7 +1,7 @@
 import type { ProjectDoc } from "../document/projectDoc.js";
 import type { Page } from "../schema/page.js";
 import type { Area, Panel } from "../schema/panel.js";
-import type { Balloon, TextRun, Tail } from "../schema/balloon.js";
+import type { Balloon, BalloonSize, PerTargetBalloonOverride, TextRun, Tail } from "../schema/balloon.js";
 import type { Camera } from "../schema/camera.js";
 import { nextBalloonId, nextIndex, nextPanelId, pageId as derivePageId, panelId as derivePanelId, trailingIndex } from "../script/ids.js";
 import { validateDocument } from "../validate/validateDocument.js";
@@ -50,6 +50,7 @@ export type Command =
   | { type: "balloon.text"; pageId: string; balloonId: string; text: TextRun[] }
   | { type: "balloon.update"; pageId: string; balloonId: string; patch: BalloonPatch }
   | { type: "balloon.scale"; pageId: string; balloonId: string; fontScale: number; target?: string }
+  | { type: "balloon.resize"; pageId: string; balloonId: string; size: BalloonSize | null; anchor?: Point; target?: string }
   | { type: "balloon.reset"; pageId: string; balloonId: string; target: string }
   | { type: "balloon.add"; pageId: string; panelId: string; text: TextRun[]; anchor?: Point; balloonType?: Balloon["type"] }
   | { type: "balloon.remove"; pageId: string; balloonId: string }
@@ -94,7 +95,7 @@ export interface Point {
   y: number;
 }
 
-export type BalloonPatch = Partial<Pick<Balloon, "type" | "font_scale" | "speaker" | "size_mode" | "z">>;
+export type BalloonPatch = Partial<Pick<Balloon, "type" | "font_scale" | "speaker" | "size_mode" | "z" | "shape" | "rotation">>;
 export type PanelPatch = Partial<
   Pick<Panel, "action" | "setting" | "props" | "continuity_notes" | "characters" | "border" | "art" | "slice_avoid" | "prompt" | "seed" | "render">
 >;
@@ -102,6 +103,8 @@ export type PanelPatch = Partial<
 export class CommandError extends Error {}
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+/** Una dimensione normalizzata: mai nulla (il balloon sparirebbe), mai oltre il contenitore. */
+const clampSize = (v: number) => Math.min(1, Math.max(0.02, v));
 
 function requirePage(doc: ProjectDoc, id: string): Page {
   const page = doc.pages[id];
@@ -221,7 +224,9 @@ function remapBalloon(b: Balloon, from: Rect, to: Rect): Balloon {
   const tail = b.tail.target ? { ...b.tail, target: remap(b.tail.target, from, to) } : b.tail;
   // Gli override per target si riferiscono a una geometria che è appena
   // cambiata: tenerli vorrebbe dire puntare a posizioni ormai senza senso.
-  return { ...b, anchor: remap(b.anchor, from, to), tail, per_target: {} };
+  // Una dimensione scelta a mano resta la stessa sulla pagina: cambia solo il contenitore a cui è riferita.
+  const size = b.size ? { w: clampSize((b.size.w * from.w) / to.w), h: clampSize((b.size.h * from.h) / to.h) } : undefined;
+  return { ...b, anchor: remap(b.anchor, from, to), tail, per_target: {}, ...(size ? { size } : {}) };
 }
 
 // --- Merge e split ---
@@ -521,7 +526,37 @@ export function applyCommand(doc: ProjectDoc, command: Command): ProjectDoc {
     }
     case "balloon.update": {
       const page = requirePage(doc, command.pageId);
-      return withPage(doc, mapBalloon(page, command.balloonId, (b) => ({ ...b, ...command.patch })));
+      const { rotation } = command.patch;
+      if (rotation !== undefined && !(Math.abs(rotation) <= 180)) throw new CommandError("La rotazione va da -180 a 180 gradi");
+      return withPage(
+        doc,
+        mapBalloon(page, command.balloonId, (b) => {
+          const next = { ...b, ...command.patch };
+          // Dritto è il default: un balloon raddrizzato torna com'era nel file.
+          if (next.rotation === 0) delete next.rotation;
+          return next;
+        }),
+      );
+    }
+    case "balloon.resize": {
+      const page = requirePage(doc, command.pageId);
+      const size = command.size ? { w: clampSize(command.size.w), h: clampSize(command.size.h) } : null;
+      const anchor = command.anchor ? { x: clamp01(command.anchor.x), y: clamp01(command.anchor.y) } : undefined;
+      return withPage(
+        doc,
+        mapBalloon(page, command.balloonId, (b) => {
+          if (isPrimary(page, command.target)) {
+            const next: Balloon = { ...b, ...(anchor ? { anchor } : {}) };
+            if (size) next.size = size;
+            else delete next.size;
+            return next;
+          }
+          const override: PerTargetBalloonOverride = { ...b.per_target[command.target!], size, ...(anchor ? { anchor } : {}) };
+          // Né sul principale né qui una dimensione scelta: per questo formato non c'è niente da dire.
+          if (size === null && !b.size) delete override.size;
+          return { ...b, per_target: { ...b.per_target, [command.target!]: override } };
+        }),
+      );
     }
     case "balloon.scale": {
       if (!(command.fontScale > 0)) throw new CommandError("Il corpo deve essere positivo");
@@ -784,6 +819,8 @@ export function describeCommand(command: Command): string {
       return "Modifica testo";
     case "balloon.update":
       return "Modifica balloon";
+    case "balloon.resize":
+      return command.target ? `Dimensioni del balloon (${command.target})` : "Dimensioni del balloon";
     case "balloon.scale":
       return command.target ? `Corpo del balloon (${command.target})` : "Corpo del balloon";
     case "balloon.reset":

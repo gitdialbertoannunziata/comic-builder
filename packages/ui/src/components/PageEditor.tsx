@@ -6,6 +6,7 @@ import {
   balloonBox,
   dragTrackBoundary,
   gutterHandles,
+  rotatePoint,
   shownArt,
   shownArtPatch,
   tailPoint,
@@ -14,6 +15,7 @@ import {
   type GutterHandle,
   type LetteringFit,
   type Page,
+  type Tail,
 } from "@comic-builder/core";
 import { primaryGeometry, primaryTarget } from "../project.js";
 
@@ -44,11 +46,78 @@ interface Props {
 
 type Drag =
   | { kind: "balloon"; balloonId: string; panelBox: Box; dx: number; dy: number; gesture: string }
-  | { kind: "tail"; balloonId: string; panelBox: Box; gesture: string }
+  | { kind: "tail"; balloonId: string; panelBox: Box; tail: Tail; gesture: string }
+  | { kind: "resize"; balloonId: string; panelBox: Box; box: Box; rotation: number; handle: ResizeHandle; gesture: string }
+  | { kind: "rotate"; balloonId: string; center: { x: number; y: number }; gesture: string }
   | { kind: "gutter"; handle: GutterHandle; gesture: string }
   | { kind: "art"; panelId: string; startX: number; startY: number; focusX: number; focusY: number; width: number; height: number; gesture: string };
 
 let gestureCounter = 0;
+
+/** Una maniglia di ridimensionamento: da che lato si tira, in orizzontale e in verticale (0 = quel lato resta fermo). */
+interface ResizeHandle {
+  id: string;
+  sx: -1 | 0 | 1;
+  sy: -1 | 0 | 1;
+}
+
+const RESIZE_HANDLES: readonly ResizeHandle[] = [
+  { id: "nw", sx: -1, sy: -1 },
+  { id: "n", sx: 0, sy: -1 },
+  { id: "ne", sx: 1, sy: -1 },
+  { id: "e", sx: 1, sy: 0 },
+  { id: "se", sx: 1, sy: 1 },
+  { id: "s", sx: 0, sy: 1 },
+  { id: "sw", sx: -1, sy: 1 },
+  { id: "w", sx: -1, sy: 0 },
+];
+
+/** Il balloon più piccolo che si può tirare a mano, in px di pagina: sotto, non lo si riafferra più. */
+const MIN_BALLOON_PX = 32;
+
+/**
+ * Il box dopo aver tirato una maniglia fino a `p`. Si ragiona nel sistema
+ * del balloon non ruotato: lì il lato opposto resta fermo. Poi il nuovo
+ * centro torna nella pagina ruotando attorno al centro di partenza, così
+ * anche un balloon storto si allarga dal lato che si tira, senza scivolare.
+ */
+function resizedBox(start: Box, rotation: number, handle: ResizeHandle, p: { x: number; y: number }, keepRatio: boolean): Box {
+  const center = { x: start.x + start.width / 2, y: start.y + start.height / 2 };
+  const local = rotatePoint(p, center, -rotation);
+  let left = start.x;
+  let right = start.x + start.width;
+  let top = start.y;
+  let bottom = start.y + start.height;
+  if (handle.sx < 0) left = Math.min(local.x, right - MIN_BALLOON_PX);
+  if (handle.sx > 0) right = Math.max(local.x, left + MIN_BALLOON_PX);
+  if (handle.sy < 0) top = Math.min(local.y, bottom - MIN_BALLOON_PX);
+  if (handle.sy > 0) bottom = Math.max(local.y, top + MIN_BALLOON_PX);
+  if (keepRatio && handle.sx !== 0 && handle.sy !== 0) {
+    // Shift su un angolo: si tiene la proporzione, e comanda il lato che si è allungato di più.
+    const factor = Math.max((right - left) / start.width, (bottom - top) / start.height);
+    const width = start.width * factor;
+    const height = start.height * factor;
+    if (handle.sx < 0) left = right - width;
+    else right = left + width;
+    if (handle.sy < 0) top = bottom - height;
+    else bottom = top + height;
+  }
+  const localCenter = { x: (left + right) / 2, y: (top + bottom) / 2 };
+  const pageCenter = rotatePoint(localCenter, center, rotation);
+  const width = right - left;
+  const height = bottom - top;
+  return { x: pageCenter.x - width / 2, y: pageCenter.y - height / 2, width, height };
+}
+
+/** L'angolo del puntatore attorno al centro, con 0° in alto; Shift scatta ogni 15°. */
+function rotationFor(center: { x: number; y: number }, p: { x: number; y: number }, snap: boolean): number {
+  let degrees = (Math.atan2(p.y - center.y, p.x - center.x) * 180) / Math.PI + 90;
+  if (degrees > 180) degrees -= 360;
+  degrees = snap ? Math.round(degrees / 15) * 15 : Math.round(degrees);
+  // Vicino a dritto è dritto: raddrizzare a occhio non deve lasciare un balloon storto di un grado.
+  if (Math.abs(degrees) <= 2) degrees = 0;
+  return degrees === -180 ? 180 : degrees;
+}
 
 /**
  * La pagina renderizzata con sopra uno strato di maniglie: pannelli da
@@ -131,7 +200,16 @@ export function PageEditor(props: Props) {
     } else if (drag.kind === "tail") {
       const point = { x: (p.x - drag.panelBox.x) / drag.panelBox.width, y: (p.y - drag.panelBox.y) / drag.panelBox.height };
       const clamped = { x: Math.min(1, Math.max(0, point.x)), y: Math.min(1, Math.max(0, point.y)) };
-      run({ type: "balloon.tail", pageId: page.id, balloonId: drag.balloonId, tail: { mode: "manual", target: clamped }, ...forTarget }, { gesture: drag.gesture });
+      run({ type: "balloon.tail", pageId: page.id, balloonId: drag.balloonId, tail: { ...drag.tail, mode: "manual", target: clamped }, ...forTarget }, { gesture: drag.gesture });
+    } else if (drag.kind === "resize") {
+      const next = resizedBox(drag.box, drag.rotation, drag.handle, p, event.shiftKey);
+      const size = { w: next.width / drag.panelBox.width, h: next.height / drag.panelBox.height };
+      run(
+        { type: "balloon.resize", pageId: page.id, balloonId: drag.balloonId, size, anchor: anchorFor(next.x, next.y, drag.panelBox), ...forTarget },
+        { gesture: drag.gesture },
+      );
+    } else if (drag.kind === "rotate") {
+      run({ type: "balloon.update", pageId: page.id, balloonId: drag.balloonId, patch: { rotation: rotationFor(drag.center, p, event.shiftKey) } }, { gesture: drag.gesture });
     } else if (page.layout.mode === "page") {
       const { axis, index } = drag.handle;
       const weights = page.layout[axis];
@@ -181,6 +259,9 @@ export function PageEditor(props: Props) {
   });
   const active = balloons.find((b) => b.balloon.id === selectedBalloonId);
   const hasTail = (type: string) => type !== "caption" && type !== "sfx";
+  /** La rotazione del balloon, come trasformazione SVG attorno al suo centro: le maniglie girano con lui. */
+  const turn = (balloon: { rotation?: number | undefined }, box: Box) =>
+    balloon.rotation ? `rotate(${balloon.rotation} ${box.x + box.width / 2} ${box.y + box.height / 2})` : undefined;
 
   return (
     <>
@@ -283,6 +364,7 @@ export function PageEditor(props: Props) {
               width={box.width}
               height={box.height}
               rx={8}
+              transform={turn(balloon, box)}
               onPointerDown={(e) => {
                 const p = toPage(e);
                 props.onSelectBalloon(balloon.id, panel.id);
@@ -299,10 +381,61 @@ export function PageEditor(props: Props) {
               cx={active.tail.x}
               cy={active.tail.y}
               r={12}
-              onPointerDown={(e) => begin(e, { kind: "tail", balloonId: active.balloon.id, panelBox: active.panelBox, gesture: `tail-${++gestureCounter}` })}
+              onPointerDown={(e) => begin(e, { kind: "tail", balloonId: active.balloon.id, panelBox: active.panelBox, tail: active.balloon.tail, gesture: `tail-${++gestureCounter}` })}
             >
               <title>{t("Trascina la punta della coda verso chi parla")}</title>
             </circle>
+          )}
+
+          {!framed && active && (
+            <g transform={turn(active.balloon, active.box)}>
+              <line
+                className="rotate-handle__stem"
+                x1={active.box.x + active.box.width / 2}
+                y1={active.box.y}
+                x2={active.box.x + active.box.width / 2}
+                y2={active.box.y - 34}
+              />
+              <circle
+                className="rotate-handle"
+                cx={active.box.x + active.box.width / 2}
+                cy={active.box.y - 34}
+                r={9}
+                onPointerDown={(e) =>
+                  begin(e, {
+                    kind: "rotate",
+                    balloonId: active.balloon.id,
+                    center: { x: active.box.x + active.box.width / 2, y: active.box.y + active.box.height / 2 },
+                    gesture: `rotate-${++gestureCounter}`,
+                  })
+                }
+              >
+                <title>{t("Trascina per ruotare il balloon (Shift: a scatti di 15°)")}</title>
+              </circle>
+              {RESIZE_HANDLES.map((handle) => (
+                <rect
+                  key={handle.id}
+                  className={`resize-handle resize-handle--${handle.id}`}
+                  x={active.box.x + ((handle.sx + 1) / 2) * active.box.width - 6}
+                  y={active.box.y + ((handle.sy + 1) / 2) * active.box.height - 6}
+                  width={12}
+                  height={12}
+                  onPointerDown={(e) =>
+                    begin(e, {
+                      kind: "resize",
+                      balloonId: active.balloon.id,
+                      panelBox: active.panelBox,
+                      box: active.box,
+                      rotation: active.balloon.rotation ?? 0,
+                      handle,
+                      gesture: `resize-${++gestureCounter}`,
+                    })
+                  }
+                >
+                  <title>{t("Trascina per cambiare forma al balloon (Shift sugli angoli: in proporzione){0}", primary ? "" : ` — solo in ${targetId}`)}</title>
+                </rect>
+              ))}
+            </g>
           )}
         </svg>
       </div>

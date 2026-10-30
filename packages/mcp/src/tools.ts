@@ -68,7 +68,8 @@ const COMMANDS_HELP = `Each command is an object with a "type" and its fields (i
 - panel.camera {pageId, panelId, camera: Partial<Camera>}
 - panel.merge {pageId, panelIds: [a, b]} · panel.split {pageId, panelId, axis: "cols"|"rows"}
 - balloon.text {pageId, balloonId, text: [{t: string}]} · balloon.add {pageId, panelId, text: [{t}], balloonType?} · balloon.remove {pageId, balloonId}
-- balloon.update {pageId, balloonId, patch: {type?, font_scale?, speaker?, size_mode?, z?}}
+- balloon.update {pageId, balloonId, patch: {type?, font_scale?, speaker?, size_mode?, z?, shape?: "rounded"|"ellipse"|"rect"|"cloud"|"burst"|"spiky"|"wavy"|"none", rotation?: degrees -180..180}}
+- balloon.resize {pageId, balloonId, size: {w, h} (0..1 of the panel) | null to fit the text, anchor?: {x, y}} · balloon.tail {pageId, balloonId, tail: {mode, target?, width?, curve?: -1..1, bubbles?}}
 - page.add {chapterId, templateId, sceneId, after?} · page.remove {pageId} · page.move {pageId, toIndex}
 - character.upsert {ref, patch: {name?, summary?, appearance?: {...}}} · character.remove {ref} · character.rename {from, to}
 - location.upsert {ref, patch: {name?, description?}} · location.remove {ref}

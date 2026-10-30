@@ -29,6 +29,7 @@ export * from "./document/lock.js";
 export * from "./editor/commands.js";
 export * from "./editor/history.js";
 export * from "./render/geometry.js";
+export * from "./render/balloonShape.js";
 export * from "./art/artLink.js";
 export * from "./revisions/revisionCommands.js";
 export * from "./revisions/lintRevisions.js";

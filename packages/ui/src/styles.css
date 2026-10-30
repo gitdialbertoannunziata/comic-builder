@@ -2593,6 +2593,95 @@ kbd {
   opacity: 0.45;
 }
 
+/* La miniatura è un bottone: un clic la ingrandisce. */
+.reference__zoom {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.reference__zoom:focus-visible img {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Un riferimento a tutta finestra. */
+.reference-zoom {
+  width: min(1100px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 2px solid var(--ink-line);
+  border-radius: var(--r-lg);
+  box-shadow: 6px 6px 0 var(--ink-shadow);
+  background: var(--surface);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.reference-zoom[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.reference-zoom::backdrop {
+  background: rgba(28, 28, 26, 0.6);
+}
+
+.reference-zoom__bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.reference-zoom__label {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-zoom__actions {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.reference-zoom__view {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+  padding: 12px;
+  background: var(--bg);
+  overflow: auto;
+}
+
+.reference-zoom__view img {
+  max-width: 100%;
+  max-height: calc(100vh - 120px);
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+/* Misura vera: l'immagine scorre dentro la finestra. */
+.reference-zoom__view--actual {
+  display: block;
+}
+
+.reference-zoom__view--actual img {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+
 /* Cosa manca perché le vignette escano coerenti: stile, luogo, personaggi. */
 .readiness {
   list-style: none;
@@ -2819,4 +2908,124 @@ kbd {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---------- forme e trasformazioni dei balloon ---------- */
+
+.shape-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.shape-picker__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 2px 4px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.shape-picker__option:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.shape-picker__option[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.shape-icon {
+  width: 40px;
+  height: 29px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.shape-icon__ghost {
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
+}
+
+.shape-icon text {
+  fill: currentColor;
+  stroke: none;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-row input[type="range"],
+.tail-options input[type="range"] {
+  flex: 1;
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.tail-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+
+.resize-handle {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.resize-handle--nw,
+.resize-handle--se {
+  cursor: nwse-resize;
+}
+
+.resize-handle--ne,
+.resize-handle--sw {
+  cursor: nesw-resize;
+}
+
+.resize-handle--n,
+.resize-handle--s {
+  cursor: ns-resize;
+}
+
+.resize-handle--e,
+.resize-handle--w {
+  cursor: ew-resize;
+}
+
+.rotate-handle {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 3;
+  cursor: grab;
+}
+
+.rotate-handle__stem {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
 }

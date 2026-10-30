@@ -314,6 +314,21 @@ describe("Scheda personaggio generata (F5)", () => {
     expect(spec.prompt).toContain("image 1 shows this same character");
   });
 
+  it("il tre quarti col fronte allegato chiede la rotazione, e prende dal fronte solo l'identità", () => {
+    const withFront = { ...sara, references: [{ path: "characters/sara/front-aaaa.png", note: "", use: true }] };
+    const { prompt } = sheetSpec(withFront, "three-quarter");
+    expect(prompt).toContain("turned 45 degrees to the side");
+    expect(prompt).toContain("take from it the face, hair, build and costume");
+    expect(prompt).toContain("head angle and framing given in View");
+    expect(prompt).not.toContain("change only the view");
+    // La vista viene prima dell'aspetto e dei riferimenti.
+    expect(prompt.indexOf("View:")).toBeLessThan(prompt.indexOf("Character:"));
+  });
+
+  it("le viste a mezzo busto non chiedono la figura intera", () => {
+    for (const view of ["front", "three-quarter"] as const) expect(sheetSpec(sara, view).prompt).not.toContain("full figure");
+  });
+
   it("le tavole di stile vengono prima: la scheda nasce nello stile dell'opera", () => {
     const withFront = { ...sara, references: [{ path: "characters/sara/front-aaaa.png", note: "", use: true }] };
     const s = compileCharacterSheetSpec({ project: styled, sheet: withFront, view: "three-quarter" });

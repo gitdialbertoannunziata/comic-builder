@@ -7,6 +7,7 @@ import type { Box } from "../layout/resolveLayout.js";
 import type { LetteringFit, RenderConfig } from "./types.js";
 import { panelNeedsDraft, renderPanelDraft } from "./renderDraft.js";
 import { artPlacement, balloonBox, tailPoint } from "./geometry.js";
+import { balloonShape, rotatePoint, shapePath, tailGeometry } from "./balloonShape.js";
 import { shownArt } from "../art/shownArt.js";
 
 function escapeXml(text: string): string {
@@ -113,6 +114,13 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
   const centerY = y + h / 2;
 
   const visual = resolveBalloonVisual(config.balloonStyle, balloon.type);
+  const form = balloonShape(balloon);
+  const { width: tailScale, curve, bubbles } = balloon.tail;
+  // Il balloon di sempre si disegna come sempre, byte per byte: solo forme e
+  // code ritoccate passano dal disegno nuovo.
+  if (form !== "rounded" || !hasContainer(balloon.type) || balloon.rotation || tailScale !== undefined || curve || bubbles) {
+    return renderShapedBalloon(balloon, containerBox, { x, y, width: w, height: h }, fit, config, visual);
+  }
 
   // Rettangolo arrotondato invece di un'ellisse: un'ellisse inscritta nel
   // rettangolo testo+padding è più stretta del rettangolo ai bordi e taglia
@@ -137,13 +145,60 @@ function renderBalloon(balloon: Balloon, containerBox: Box, fit: LetteringFit, c
     tail = renderTail({ x: centerX, y: centerY }, w / 2, h / 2, target, config.tailWidthPx, visual);
   }
 
+  return `${tail}${shape}${renderBalloonText(fit, { x, y, width: w, height: h }, config)}`;
+}
+
+function renderBalloonText(fit: LetteringFit, box: Box, config: RenderConfig): string {
   // Centrato nell'altezza del box, non `y + padding`: il box può includere un
   // margine di sicurezza oltre al padding dichiarato (§8.1, pacchetto lettering),
   // e centrare sulla differenza reale lo distribuisce simmetricamente in ogni caso.
-  const textTopY = y + (h - fit.blockHeight) / 2;
-  const text = `<text x="${centerX}" y="${textTopY}" font-family="${escapeXml(config.fontFamily)}" font-size="${fit.fontSizePx}" text-anchor="middle">${renderTextLines(fit, centerX, textTopY, config.lineHeight)}</text>`;
+  const centerX = box.x + box.width / 2;
+  const textTopY = box.y + (box.height - fit.blockHeight) / 2;
+  return `<text x="${centerX}" y="${textTopY}" font-family="${escapeXml(config.fontFamily)}" font-size="${fit.fontSizePx}" text-anchor="middle">${renderTextLines(fit, centerX, textTopY, config.lineHeight)}</text>`;
+}
 
-  return `${tail}${shape}${text}`;
+/**
+ * Forme, rotazione e code ritoccate. Tutto si disegna nel sistema del balloon
+ * non ruotato, dentro un gruppo che lo ruota: la punta della coda si riporta
+ * in quel sistema, così dopo la rotazione cade esattamente dove deve.
+ *
+ * La coda va disegnata due volte: sotto la forma col contorno, e sopra con il
+ * solo riempimento. Il secondo passaggio cancella il tratto della forma dove
+ * la coda si attacca: balloon e coda diventano un'unica sagoma.
+ */
+function renderShapedBalloon(balloon: Balloon, containerBox: Box, box: Box, fit: LetteringFit, config: RenderConfig, visual: BalloonVisualStyle): string {
+  const shape = balloonShape(balloon);
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const rotation = balloon.rotation ?? 0;
+  const fill = escapeXml(visual.fill);
+  const stroke = escapeXml(visual.stroke);
+  const dashAttr = visual.dash ? ` stroke-dasharray="${escapeXml(visual.dash)}"` : "";
+  const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${visual.stroke_width}"`;
+
+  let outline = "";
+  if (shape === "rounded" || shape === "rect") {
+    const radius = shape === "rect" ? 0 : Math.min(box.height / 2, visual.corner_radius_px);
+    outline = `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="${radius}" ry="${radius}" ${paint}${dashAttr}/>`;
+  } else if (shape === "ellipse") {
+    outline = `<ellipse cx="${center.x}" cy="${center.y}" rx="${box.width / 2}" ry="${box.height / 2}" ${paint}${dashAttr}/>`;
+  } else if (shape !== "none") {
+    outline = `<path d="${shapePath(shape, box)}" ${paint} stroke-linejoin="round"${dashAttr}/>`;
+  }
+
+  let tailUnder = "";
+  let tailOver = "";
+  if (shape !== "none" && hasTail(balloon.type) && balloon.tail.mode !== "none") {
+    const tip = rotatePoint(tailPoint(balloon, containerBox, box), center, -rotation);
+    const geometry = tailGeometry(shape, box, tip, balloon.tail, config.tailWidthPx);
+    if (geometry.path) {
+      tailUnder = `<path d="${geometry.path}" ${paint} stroke-linejoin="round"/>`;
+      tailOver = `<path d="${geometry.path}" fill="${fill}" stroke="none"/>`;
+    }
+    for (const b of geometry.bubbles) tailUnder += `<circle cx="${b.cx}" cy="${b.cy}" r="${b.r}" ${paint}/>`;
+  }
+
+  const body = `${tailUnder}${outline}${tailOver}${renderBalloonText(fit, box, config)}`;
+  return rotation ? `<g transform="rotate(${rotation} ${center.x} ${center.y})">${body}</g>` : body;
 }
 
 /**

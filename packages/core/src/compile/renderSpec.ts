@@ -340,7 +340,13 @@ export function renderState(panel: Panel, spec: RenderSpec): "none" | "fresh" | 
  */
 export const SHEET_VIEWS = {
   front: { label: "fronte", prompt: "front view, head and shoulders portrait, looking at the viewer, neutral expression", width: 1024, height: 1024 },
-  "three-quarter": { label: "tre quarti", prompt: "three-quarter view, head and shoulders portrait, looking slightly off-camera, neutral expression", width: 1024, height: 1024 },
+  // La rotazione va detta in gradi e con ciò che si vede: "looking slightly off-camera" spostava solo gli occhi, e con il fronte allegato usciva un altro fronte.
+  "three-quarter": {
+    label: "tre quarti",
+    prompt: "three-quarter view, head and shoulders portrait, head and shoulders turned 45 degrees to the side, the near cheek and ear toward the camera and the far side of the face turning away, eyes following the head, neutral expression",
+    width: 1024,
+    height: 1024,
+  },
   "full-body": { label: "figura intera", prompt: "full body, standing in a relaxed neutral pose, head to feet in frame, facing the viewer", width: 832, height: 1248 },
 } as const;
 export type SheetView = keyof typeof SHEET_VIEWS;
@@ -374,14 +380,22 @@ export function compileCharacterSheetSpec(input: {
   const references = [...style, ...own];
   const wearing = wardrobeText(sheet, "default");
   const shown = indexesOf(references, "character", sheet.id);
+  // La vista sta subito dopo l'intestazione: è ciò che distingue un'immagine
+  // della scheda dalle altre, e con i riferimenti allegati è la prima cosa che
+  // il modello tende a copiare da loro invece che dal testo. Per lo stesso
+  // motivo i riferimenti del personaggio danno l'identità, e l'angolo resta
+  // quello della vista — detto in positivo: FLUX.2 disegna ciò che si nomina,
+  // anche per escluderlo.
   const lines = [
-    "Character reference image for a comic: one character alone, on a plain light grey background, even flat lighting, full figure readable.",
-    ...styleLines(project, references),
+    "Character reference image for a comic: one character alone, on a plain light grey background, even flat lighting.",
     `View: ${shape.prompt}.`,
+    ...styleLines(project, references),
     `Character: ${appearanceText(sheet)}.`,
     wearing ? `Wearing: ${fragment(wearing)}.` : null,
     sheet.palette ? `Colours: ${fragment(sheet.palette)}.` : null,
-    shown.length > 0 ? `${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} this same character: keep face, hair, build and costume identical, and change only the view.` : null,
+    shown.length > 0
+      ? `${imageNames(shown)} ${shown.length > 1 ? "show" : "shows"} this same character: take from ${shown.length > 1 ? "them" : "it"} the face, hair, build and costume, and draw a new image with the head angle and framing given in View.`
+      : null,
   ].filter((line): line is string => line !== null);
   return {
     panel: `${sheet.id}-${view}`,

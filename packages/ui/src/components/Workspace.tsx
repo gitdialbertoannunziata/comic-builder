@@ -534,7 +534,7 @@ export function Workspace({ editor, art, platform, image, chapter, imageGenerati
       tip = { x: (point.x - panelBox.x) / panelBox.width, y: (point.y - panelBox.y) / panelBox.height };
     }
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
-    nudge({ type: "balloon.tail", pageId: page.id, balloonId: activeBalloon.id, tail: { mode: "manual", target: { x: clamp(tip.x + dx), y: clamp(tip.y + dy) } }, ...forTarget }, `${activeBalloon.id}:tail`);
+    nudge({ type: "balloon.tail", pageId: page.id, balloonId: activeBalloon.id, tail: { ...activeBalloon.tail, mode: "manual", target: { x: clamp(tip.x + dx), y: clamp(tip.y + dy) } }, ...forTarget }, `${activeBalloon.id}:tail`);
   }
 
   function resizeBalloon(step: 1 | -1): void | false {
@@ -896,6 +896,8 @@ export function Workspace({ editor, art, platform, image, chapter, imageGenerati
                 onText={(text) => run({ type: "balloon.text", pageId: page.id, balloonId: balloon.id, text }, { gesture: `${balloon.id}:text` })}
                 onAnchor={(anchor) => run({ type: "balloon.move", pageId: page.id, balloonId: balloon.id, anchor, ...forTarget }, { gesture: `${balloon.id}:anchor` })}
                 onTail={(tail) => run({ type: "balloon.tail", pageId: page.id, balloonId: balloon.id, tail, ...forTarget }, { gesture: `${balloon.id}:tail` })}
+                onUpdate={(patch) => run({ type: "balloon.update", pageId: page.id, balloonId: balloon.id, patch }, patch.rotation !== undefined ? { gesture: `${balloon.id}:rotation` } : {})}
+                onResize={(size) => run({ type: "balloon.resize", pageId: page.id, balloonId: balloon.id, size, ...forTarget })}
                 onScale={(fontScale) => run({ type: "balloon.scale", pageId: page.id, balloonId: balloon.id, fontScale, ...forTarget }, { gesture: `${balloon.id}:scale` })}
                 onReset={() => editTarget && run({ type: "balloon.reset", pageId: page.id, balloonId: balloon.id, target: editTarget })}
                 onRemove={() => run({ type: "balloon.remove", pageId: page.id, balloonId: balloon.id })}

@@ -45,12 +45,16 @@ export function scaleStyles(styles: TargetStyles, factor: number): TargetStyles 
 function withTargetOverride(balloon: Balloon, targetId: string): Balloon {
   const override = balloon.per_target[targetId];
   if (!override) return balloon;
-  return {
+  const shown: Balloon = {
     ...balloon,
     ...(override.anchor ? { anchor: override.anchor } : {}),
     ...(override.tail ? { tail: override.tail } : {}),
     ...(override.font_scale !== undefined ? { font_scale: override.font_scale } : {}),
+    ...(override.size ? { size: override.size } : {}),
   };
+  // `null`: in questo formato il balloon torna grande quanto il suo testo.
+  if (override.size === null) delete shown.size;
+  return shown;
 }
 
 /**

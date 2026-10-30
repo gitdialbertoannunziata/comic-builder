@@ -273,3 +273,39 @@ describe("repairPage — ripara solo ciò che ha una risposta ovvia (§12)", () 
     expect(repaired).toEqual(page);
   });
 });
+
+describe("forme dei balloon nate dallo spoglio", () => {
+  function withLines(): Scene {
+    const s = scene(SIX);
+    s.beats[2]!.lines = [
+      { speaker: "sara", text: "Chissà se torna.", type: "thought" },
+      { speaker: "elio", text: "SARA!", type: "shout" },
+      { speaker: null, text: "Più tardi.", type: "caption" },
+      { speaker: "elio", text: "Mi senti?", type: "offpanel" },
+      { speaker: "sara", text: "Sì.", type: "speech" },
+    ];
+    return s;
+  }
+  const balloonsOf = (page: Page) => page.panels.flatMap((p) => p.balloons);
+
+  it("la forma segue il tipo della battuta; il parlato resta classico", () => {
+    const shapes = balloonsOf(firstPage(withLines())).map((b) => [b.type, b.shape ?? null, b.tail.bubbles ?? false]);
+    expect(shapes).toEqual([
+      ["thought", "cloud", true],
+      ["shout", "burst", false],
+      ["caption", "rect", false],
+      ["offpanel", "spiky", false],
+      ["speech", null, false],
+    ]);
+  });
+
+  it("rifare lo spoglio non sovrascrive una forma cambiata a mano", () => {
+    const base = firstPage(withLines());
+    const current = clone(base);
+    const shout = current.panels.flatMap((p) => p.balloons).find((b) => b.type === "shout")!;
+    shout.shape = "wavy";
+    const { merged, conflicts } = mergeRerun(base, firstPage(withLines()), current);
+    expect(conflicts).toEqual([]);
+    expect(balloonsOf(merged).find((b) => b.type === "shout")?.shape).toBe("wavy");
+  });
+});

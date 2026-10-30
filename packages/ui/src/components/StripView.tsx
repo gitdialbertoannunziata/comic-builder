@@ -203,6 +203,7 @@ export function StripView({ context, targetId, selectedPanelId, onSelect, onSele
                         width={box.width}
                         height={box.height}
                         rx={10}
+                        transform={balloon.rotation ? `rotate(${balloon.rotation} ${box.x + box.width / 2} ${box.y + box.height / 2})` : undefined}
                         onPointerDown={(e) => {
                           e.stopPropagation();
                           (e.currentTarget as Element).setPointerCapture(e.pointerId);

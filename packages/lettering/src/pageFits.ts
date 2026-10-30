@@ -1,4 +1,6 @@
 import {
+  balloonShape,
+  shapeTextScale,
   panelNeedsDraft,
   draftActionFontSizePx,
   type Page,
@@ -72,6 +74,12 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
     }
 
     for (const balloon of panel.balloons) {
+      // Una forma tonda contiene meno testo del suo box: il testo si misura per
+      // lo spazio che resta dentro, e il box cresce per farcelo stare.
+      const scale = shapeTextScale(balloonShape(balloon));
+      // Con una dimensione scelta a mano il box è quello, e il testo va a capo dentro.
+      const sized = balloon.size ? { width: balloon.size.w * box.width, height: balloon.size.h * box.height } : null;
+      const inset = (lettering.padding + lettering.base_size_px * balloon.font_scale * lettering.safety_margin_ratio) * 2;
       const result = fitBalloonTextCached({
         runs: balloon.text,
         font,
@@ -80,15 +88,15 @@ export function computePageFits(input: ComputePageFitsInput): Map<string, Letter
         lineHeight: lettering.line_height,
         padding: lettering.padding,
         safetyMarginRatio: lettering.safety_margin_ratio,
-        maxWidthPx: box.width * lettering.max_width_ratio,
-        maxHeightPx: box.height * 0.9,
+        maxWidthPx: sized ? Math.max(1, sized.width / scale.x - inset) : (box.width * lettering.max_width_ratio) / scale.x,
+        maxHeightPx: sized ? sized.height / scale.y : (box.height * 0.9) / scale.y,
       });
       fits.set(balloon.id, {
         lines: result.lines,
         fontSizePx: result.fontSizePx,
         blockHeight: result.blockHeight,
-        balloonWidth: result.balloonWidth,
-        balloonHeight: result.balloonHeight,
+        balloonWidth: sized ? sized.width : result.balloonWidth * scale.x,
+        balloonHeight: sized ? sized.height : result.balloonHeight * scale.y,
       });
     }
   }

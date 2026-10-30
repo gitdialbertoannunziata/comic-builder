@@ -8,6 +8,7 @@ import { expandTemplate } from "../templates/expand.js";
 import { cameraForBeat, beatWantsEmptyPanel } from "./beatCamera.js";
 import { paginateBeats, chooseTemplate } from "./paginate.js";
 import { pageId, panelId, balloonId } from "./ids.js";
+import { conventionalShape } from "../render/balloonShape.js";
 
 export interface BuildPagesInput {
   chapterId: string;
@@ -76,21 +77,29 @@ function balloonAnchor(index: number, direction: ReadingDirection): { x: number;
 }
 
 function balloonsForBeat(beat: Beat, panelIdValue: string, direction: ReadingDirection): Balloon[] {
-  return beat.lines.map((line, index) => ({
-    id: balloonId(panelIdValue, index + 1),
-    type: line.type,
-    speaker: { ref: line.speaker, visible: line.speaker !== null, offscreen_dir: null },
-    text: [{ t: line.text }],
-    anchor: balloonAnchor(index, direction),
-    // Nessun `target`: la bocca dello speaker non è nota a questo livello, e
-    // inventarne una sarebbe peggio del default del renderer (§8.2).
-    tail: { mode: "auto" as const },
-    size_mode: "grow" as const,
-    font_scale: 1,
-    per_target: {},
-    z: 2,
-    rev: 1,
-  }));
+  return beat.lines.map((line, index) => {
+    // Il tipo lo sceglie lo spoglio; la forma ne segue per convenzione (nuvola
+    // per i pensieri, esplosione per le urla...). Resta un punto di partenza:
+    // chi ritocca la forma a mano la tiene anche se lo spoglio si rifà, perché
+    // il merge non tocca i campi che il copione non governa.
+    const { shape, bubbles } = conventionalShape(line.type);
+    return {
+      id: balloonId(panelIdValue, index + 1),
+      type: line.type,
+      speaker: { ref: line.speaker, visible: line.speaker !== null, offscreen_dir: null },
+      text: [{ t: line.text }],
+      anchor: balloonAnchor(index, direction),
+      // Nessun `target`: la bocca dello speaker non è nota a questo livello, e
+      // inventarne una sarebbe peggio del default del renderer (§8.2).
+      tail: { mode: "auto" as const, ...(bubbles ? { bubbles } : {}) },
+      size_mode: "grow" as const,
+      font_scale: 1,
+      per_target: {},
+      ...(shape ? { shape } : {}),
+      z: 2,
+      rev: 1,
+    };
+  });
 }
 
 /**
